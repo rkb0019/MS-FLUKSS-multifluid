@@ -1,0 +1,10 @@
+C
+C   Fortran parameters for the charge exchange routines
+C
+        real_t ce_scaleVel, ce_scaleLen, ce_scaleNDen
+        real_t ce_scaleSigmaFite, ce_scaleSigmaLindsay
+        real_t ce_photoSigma
+
+        common /chargeexcm/
+     .                   ce_scaleVel, ce_scaleLen, ce_scaleNDen,
+     .                   ce_photoSigma, ce_scaleSigmaFite, ce_scaleSigmaLindsay

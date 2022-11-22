@@ -1,0 +1,269 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETCLOUD(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[aucloudRL],
+     &    CHF_CONST_REAL[aucloudUL],
+     &    CHF_CONST_REAL[aucloudVL],
+     &    CHF_CONST_REAL[aucloudWL],
+     &    CHF_CONST_REAL[aucloudPL],
+     &    CHF_CONST_REAL[aucloudBXL],
+     &    CHF_CONST_REAL[aucloudBYL],
+     &    CHF_CONST_REAL[aucloudBZL],
+     &    CHF_CONST_REAL[aucloudRR],
+     &    CHF_CONST_REAL[aucloudUR],
+     &    CHF_CONST_REAL[aucloudPR],
+     &    CHF_CONST_REAL[aucloudBYR],
+     &    CHF_CONST_REAL[aucloudBZR],
+     &    CHF_CONST_REAL[aucloudXS],
+     &    CHF_CONST_REAL[aucloudXC],
+     &    CHF_CONST_REAL[aucloudYC],
+     &    CHF_CONST_REAL[aucloudZC],
+     &    CHF_CONST_REAL[aucloudR0],
+     &    CHF_CONST_REAL[aucloudRho] )
+
+#include "cloudCommon.fh"
+#include "EosCommon.fh"
+
+        real_t r0,p0,umag
+
+        gamma      = augamma
+        hgamma     = gamma - 1.0D0
+        invhgamma  = one / hgamma
+
+        cloudRL    = aucloudRL
+        cloudUL    = aucloudUL
+        cloudVL    = aucloudVL
+        cloudWL    = aucloudWL
+        cloudPL    = aucloudPL
+        cloudBXL   = aucloudBXL
+        cloudBYL   = aucloudBYL
+        cloudBZL   = aucloudBZL
+        cloudRR    = aucloudRR
+        cloudUR    = aucloudUR
+        cloudPR    = aucloudPR
+        cloudBYR   = aucloudBYR
+        cloudBZR   = aucloudBZR
+        cloudXS    = aucloudXS
+        cloudXC    = aucloudXC
+        cloudYC    = aucloudYC
+        cloudZC    = aucloudZC
+        cloudR0    = aucloudR0
+        cloudRho   = aucloudRho
+
+        r0         = cloudRR
+        p0         = cloudPR
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+
+        return
+        end
+
+        subroutine CLOUDINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iCP],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t ke, b, r0, e0, r
+        integer CHF_DDECL[i;j;k]
+        real_t CHF_DDECL[x;y;z]
+
+#include "cloudCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          x      = (i + half)*dx;
+          if( x > cloudXS ) then
+            CHF_DTERM[
+            x      = (i + half)*dx - cloudXC;
+            y      = (j + half)*dx - cloudYC;
+            z      = (k + half)*dx - cloudZC]
+
+            r      = CHF_DTERM[x*x; + y*y; + z*z]
+            r      = sqrt( r )
+
+            if( r >= cloudR0 ) then
+              r0     = cloudRR
+            else
+              r0     = cloudRho
+            endif
+
+            b      = d_1_4PI*(cloudBXL*cloudBXL + cloudBYR*cloudBYR + cloudBZR*cloudBZR)
+            ke     =          cloudUR *cloudUR
+
+            e0     = cloudPR/hgamma + half*(r0*ke + b)
+
+            U(CHF_IX[i;j;k],URHO)  = r0
+
+            U(CHF_IX[i;j;k],UMOMX) = r0*cloudUR
+            U(CHF_IX[i;j;k],UMOMY) = zero
+            U(CHF_IX[i;j;k],UMOMZ) = zero
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+
+            U(CHF_IX[i;j;k],UBX )  = cloudBXL
+            U(CHF_IX[i;j;k],UBY )  = cloudBYR
+            U(CHF_IX[i;j;k],UBZ )  = cloudBZR
+          else
+            b      = d_1_4PI*(cloudBXL*cloudBXL + cloudBYL*cloudBYL + cloudBZL*cloudBZL)
+            ke     =          cloudUL *cloudUL  + cloudVL *cloudVL  + cloudWL *cloudWL
+
+            e0     = cloudPL/hgamma + half*(cloudRL*ke + b)
+
+            U(CHF_IX[i;j;k],URHO)  = cloudRL
+
+            U(CHF_IX[i;j;k],UMOMX) = cloudRL*cloudUL
+            U(CHF_IX[i;j;k],UMOMY) = cloudRL*cloudVL
+            U(CHF_IX[i;j;k],UMOMZ) = cloudRL*cloudWL
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+
+            U(CHF_IX[i;j;k],UBX )  = cloudBXL
+            U(CHF_IX[i;j;k],UBY )  = cloudBYL
+            U(CHF_IX[i;j;k],UBZ )  = cloudBZL
+          endif
+          
+          ! Dedner
+          if (iCP>0) then  
+            U(CHF_IX[i;j;k],iCP)  = zero          
+          endif
+
+        CHF_ENDDO
+
+        return
+        end
+
+c to be removed
+        subroutine CLOUDBC(
+     &    CHF_FRA[F],
+     &    CHF_FRA1[Bn],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_BOX[box])
+
+        real_t P, b, bu, ke, e, density, velx, vely, velz
+        real_t pressure, bx, by, bz
+        integer CHF_DDECL[i;j;k]
+
+#include "cloudCommon.fh"
+#include "EosCommon.fh"
+
+        if (dir .eq. 0) then
+          CHF_MULTIDO[box;i;j;k]
+            if( lohisign == 1 ) then
+              density  = W(CHF_IX[i;j;k],WRHO )
+
+              velx     = W(CHF_IX[i;j;k],WVELX)
+              vely     = W(CHF_IX[i;j;k],WVELY)
+              velz     = W(CHF_IX[i;j;k],WVELZ)
+
+              pressure = W(CHF_IX[i;j;k],WPRES)
+
+              Bx       = W(CHF_IX[i;j;k],WBX  )
+              By       = W(CHF_IX[i;j;k],WBY  )
+              Bz       = W(CHF_IX[i;j;k],WBZ  )
+
+              b        = d_1_8PI*(Bx  *Bx   + By  *By   + Bz  *Bz  )
+              ke       = density*(velx*velx + vely*vely + velz*velz)
+              bu       =          Bx  *velx + By  *vely + Bz  *velz
+
+              P        = pressure + b
+              e        = pressure/hgamma + half*ke + b 
+            else
+              density  = W(CHF_IX[i;j;k],WRHO )
+
+              velx     = W(CHF_IX[i;j;k],WVELX)
+              vely     = W(CHF_IX[i;j;k],WVELY)
+              velz     = W(CHF_IX[i;j;k],WVELZ)
+
+              pressure = W(CHF_IX[i;j;k],WPRES)
+
+              Bx       = W(CHF_IX[i;j;k],WBX  )
+              By       = W(CHF_IX[i;j;k],WBY  )
+              Bz       = W(CHF_IX[i;j;k],WBZ  )
+
+              b        = d_1_8PI*(Bx  *Bx   + By  *By   + Bz  *Bz  )
+              ke       = density*(velx*velx + vely*vely + velz*velz)
+              bu       =          Bx  *velx + By  *vely + Bz  *velz
+
+              P        = pressure + b
+              e        = pressure/hgamma + half*ke + b 
+            endif
+
+            F(CHF_IX[i;j;k],URHO ) = density*velx
+
+            F(CHF_IX[i;j;k],UMOMX) = density*velx*velx - d_1_4PI*Bx*Bx + p
+            F(CHF_IX[i;j;k],UMOMY) = density*velx*vely - d_1_4PI*Bx*By
+            F(CHF_IX[i;j;k],UMOMZ) = density*velx*velz - d_1_4PI*Bx*Bz
+
+            F(CHF_IX[i;j;k],UENG ) = velx*(e + P) - d_1_4PI*Bx*bu
+
+            F(CHF_IX[i;j;k],UBX)   = zero
+            F(CHF_IX[i;j;k],UBY)   = velx*By - vely*Bx
+            F(CHF_IX[i;j;k],UBZ)   = velx*Bz - velz*Bx
+
+            Bn(CHF_IX[i;j;k])  = Bx
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine CLOUDGS(
+     &    CHF_FRA[W],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iCP],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+#include "cloudCommon.fh"
+#include "EosCommon.fh"
+
+        if( dir .eq. 0 ) then
+          CHF_MULTIDO[box;i;j;k]
+            if( lohisign == 1 ) then
+              W(CHF_IX[i;j;k],WRHO ) = cloudRR
+
+              W(CHF_IX[i;j;k],WVELX) = cloudUR
+              W(CHF_IX[i;j;k],WVELY) = zero
+              W(CHF_IX[i;j;k],WVELZ) = zero
+
+              W(CHF_IX[i;j;k],WPRES) = cloudPR
+
+              W(CHF_IX[i;j;k],WBX  ) = cloudBXL
+              W(CHF_IX[i;j;k],WBY  ) = cloudBYR
+              W(CHF_IX[i;j;k],WBZ  ) = cloudBZR
+              if (iCP>0) then  
+                W(CHF_IX[i;j;k],iCP)  = zero          
+              endif
+            else
+              W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[iboxhi0+1;j;k],WRHO )
+
+              W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[iboxhi0+1;j;k],WVELX)
+              W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[iboxhi0+1;j;k],WVELY)
+              W(CHF_IX[i;j;k],WVELZ) = W(CHF_IX[iboxhi0+1;j;k],WVELZ)
+
+              W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[iboxhi0+1;j;k],WPRES)
+
+              W(CHF_IX[i;j;k],WBX  ) = W(CHF_IX[iboxhi0+1;j;k],WBX  )
+              W(CHF_IX[i;j;k],WBY  ) = W(CHF_IX[iboxhi0+1;j;k],WBY  )
+              W(CHF_IX[i;j;k],WBZ  ) = W(CHF_IX[iboxhi0+1;j;k],WBZ  )
+              if (iCP>0) then  
+                W(CHF_IX[i;j;k],iCP)  = W(CHF_IX[iboxhi0+1;j;k],iCP  )
+              endif
+            endif          
+          CHF_ENDDO
+        endif
+
+        return
+        end

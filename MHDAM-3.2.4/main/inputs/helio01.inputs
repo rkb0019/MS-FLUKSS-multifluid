@@ -1,0 +1,69 @@
+mhdam.problem = heliosph
+
+mhdam.gamma = 1.66666666666667
+
+mhdam.verbosity = 0
+
+mhdam.max_step = 1000000
+mhdam.max_time = 1000000.0
+
+mhdam.lismN    = 0.06
+mhdam.lismV    = 2640000.0
+mhdam.lismT    = 6527.0
+mhdam.lismB    = 0.0000030
+
+mhdam.XC         = 600.0
+mhdam.YC         = 500.0
+mhdam.ZC         = 500.0
+mhdam.R0         = 24.0
+mhdam.sunN       = 7.4
+mhdam.sunV       = 45000000.0
+mhdam.sunT       = 51100.0
+mhdam.initR      = 80.0
+
+mhdam.coord_sys  = 0
+
+mhdam.domain_length = 1500.0
+mhdam.num_cells =  96 64 64
+mhdam.is_periodic = 0 0 0
+mhdam.max_level = 2
+mhdam.ref_ratio = 2 2 2 2 2 2 2 2
+
+mhdam.regrid_interval = 10 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.25
+mhdam.refine_B_thresh = -1
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.limiter_RHO = 4
+mhdam.limiter_VX = 4
+mhdam.limiter_VY = 4
+mhdam.limiter_VZ = 4
+mhdam.limiter_P = 4
+mhdam.limiter_BX = 4
+mhdam.limiter_BY = 4
+mhdam.limiter_BZ = 4
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 25
+mhdam.plot_interval = 100
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = chk
+
+mhdam.cfl = 0.25
+mhdam.initial_cfl = 0.25
+
+mhdam.max_dt_growth = 1.02
+mhdam.dt_tolerance_factor = 1.02
+
+mhdam.restart_file = chk350.3d.hdf5

@@ -1,0 +1,528 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine CHARGE_EXCHANGE_2FPI_REG(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FIA1[REG],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoH],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho,  ux,  uy,  uz,  p, U2, U2H
+        real_t rhoH, uxH, uyH, uzH, pH, vT2H, vT2_UmPH, vT2_UmHP
+        real_t DUxDU, DUxUH, DUxUP, UdPH, UmPH, UmHP, UePH, UeHP
+        real_t sigmaPH, srrPH, MSX, MSY, MSZ, ES, MHX, MHY, MHZ, EH
+        real_t UdIH, UmIH, UmHI, UeIH, UeHI, sigmaIH, srrIH
+        real_t vT2P, vT2I, vT2_UmIH, vT2_UmHI
+        real_t rhoS, rhoI, pS, pI, duX, duY, duZ, HP, DH
+!                                                               c_11 =      4/PI
+        real_t, parameter :: C11   = 1.273239544735162686151070106980114896276D0
+!                                                               c_12 =      4/PI
+        real_t, parameter :: C12   = 1.273239544735162686151070106980114896276D0
+!                                                               c_21 =     16/PI
+        real_t, parameter :: C21   = 5.092958178940650744604280427920459585102D0
+!                                                               c_22 =    9*PI/4
+        real_t, parameter :: C22   = 7.068583470577034786540947612378881489443D0
+!                                                               c_31 =      4/PI
+        real_t, parameter :: C31   = 1.273239544735162686151070106980114896276D0
+!                                                               c_32 = 64/(9*PI)
+        real_t, parameter :: C32   = 2.263536968418066997601902412409093148934D0
+
+        integer iWVELXH, iWVELYH, iWVELZH, iWPRESH, iPressPIW
+        integer iUMOMXH, iUMOMYH, iUMOMZH, iUENGH,  iPressPIU
+! to make 4F like 2F
+        integer iWRHO2,iWVELX2,iWVELY2,iWVELZ2,iWPRES2
+        integer iURHO2,iUMOMX2,iUMOMY2,iUMOMZ2,iUENG2
+        integer iWRHO3,iWVELX3,iWVELY3,iWVELZ3,iWPRES3
+        integer iURHO3,iUMOMX3,iUMOMY3,iUMOMZ3,iUENG3
+! end
+        real_t UDS
+        real_t, parameter :: rhoPUIlimit = 1.0D-08
+        real_t, parameter :: presPUIlimit = 1.0D-05
+
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+
+        iWVELXH  = iRhoH + WVELX
+        iWVELYH  = iRhoH + WVELY
+        iWVELZH  = iRhoH + WVELZ
+        iWPRESH  = iRhoH + WPRES
+        iUMOMXH  = iRhoH + UMOMX
+        iUMOMYH  = iRhoH + UMOMY
+        iUMOMZH  = iRhoH + UMOMZ
+        iUENGH   = iRhoH + UENG
+
+        iPressPIW  = iRhoPIW + 1
+        iPressPIU  = iRhoPIU + 1
+
+! to make 4F like 2F
+!        iWRHO2  = iRhoH  + WNUM_E
+!        iWVELX2 = iWRHO2 + WVELX
+!        iWVELY2 = iWRHO2 + WVELY
+!        iWVELZ2 = iWRHO2 + WVELZ
+!        iWPRES2 = iWRHO2 + WPRES
+!        iURHO2  = iRhoH  + WNUM_E
+!        iUMOMX2 = iURHO2 + UMOMX
+!        iUMOMY2 = iURHO2 + UMOMY
+!        iUMOMZ2 = iURHO2 + UMOMZ
+!        iUENG2  = iURHO2 + UENG     
+!        iWRHO3  = iRhoH  + 2*WNUM_E
+!        iWVELX3 = iWRHO3 + WVELX
+!        iWVELY3 = iWRHO3 + WVELY
+!        iWVELZ3 = iWRHO3 + WVELZ
+!        iWPRES3 = iWRHO3 + WPRES
+!        iURHO3  = iRhoH  + 2*WNUM_E
+!        iUMOMX3 = iURHO3 + UMOMX
+!        iUMOMY3 = iURHO3 + UMOMY
+!        iUMOMZ3 = iURHO3 + UMOMZ
+!        iUENG3  = iURHO3 + UENG
+! end
+
+!         print *, "begin 2FPI_REG"
+!         flush(6)
+
+        CHF_MULTIDO[box;i;j;k]
+! to make 4F like 2F
+!          S(CHF_IX[i;j;k],iURHO2 )  = zero
+!          S(CHF_IX[i;j;k],iUMOMX2)  = zero
+!          S(CHF_IX[i;j;k],iUMOMY2)  = zero
+!          S(CHF_IX[i;j;k],iUMOMZ2)  = zero
+!          S(CHF_IX[i;j;k],iUENG2 )  = zero
+!          S(CHF_IX[i;j;k],iURHO3 )  = zero
+!          S(CHF_IX[i;j;k],iUMOMX3)  = zero
+!          S(CHF_IX[i;j;k],iUMOMY3)  = zero
+!          S(CHF_IX[i;j;k],iUMOMZ3)  = zero
+!          S(CHF_IX[i;j;k],iUENG3 )  = zero
+! end
+
+          rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+
+          rhoI   = W(CHF_IX[i;j;k],iRhoPIW)
+!          if(rhoI <= 0) then
+!              print *, "rhoI <= 0 at ",i,j,k,rhoI
+!          endif
+          pI     = W(CHF_IX[i;j;k],iPressPIW)
+!          if(pI <= 0) then
+!              print *, "pI <= 0 at ",i,j,k,pI
+!          endif
+          
+!         consider charge exchange only if PI pressure and density
+!         are greater than some limiting values
+          if ((rhoI < rhoPUIlimit) .or. (pI < presPUIlimit)) then
+            rhoS = rho
+            pS = p
+            vT2I = 0.0D0
+          else
+            rhoS   = rho - rhoI
+            pS     = max( p - pI, two*smallp )      
+            vT2I   = 2.0D0*pI/rhoI
+          endif
+
+           vT2P   =       pS/rhoS
+!-------------------------------------------------------------------------------
+!                                                                charge exchange
+!-------------------------------------------------------------------------------
+!                                                                     NEUTRALS 1
+          rhoH   = W(CHF_IX[i;j;k],iRhoH)
+
+          uxH    = W(CHF_IX[i;j;k],iWVELXH)
+          uyH    = W(CHF_IX[i;j;k],iWVELYH)
+          uzH    = W(CHF_IX[i;j;k],iWVELZH)
+
+          pH     = W(CHF_IX[i;j;k],iWPRESH)
+
+          U2H    = uxH*uxH + uyH*uyH + uzH*uzH
+
+          vT2H   = 2.0D0*pH/rhoH
+
+          duX    = ux - uxH 
+          duY    = uy - uyH 
+          duZ    = uz - uzH 
+
+          DUxDU  = duX*duX + duY*duY + duZ*duZ
+          DUxUH  = duX*uxH + duY*uyH + duZ*uzH
+          DUxUP  = duX*ux  + duY*uy  + duZ*uz
+!******************** REGION 1 *************************************
+          if( (REG(CHF_IX[i;j;k]) .eq. 1) .or. ( REG(CHF_IX[i;j;k]) .eq. 4 ) ) then
+  !                              proton + neutral(1) -> pickup proton + neutral(2)
+            UdPH   = sqrt( C11*vT2P + C12*vT2H +       DUxDU )
+            UmPH   = sqrt( C21*vT2P + C22*vT2H + 4.0D0*DUxDU )
+            UmHP   = sqrt( C21*vT2H + C22*vT2P + 4.0D0*DUxDU )
+            UePH   = sqrt( C31*vT2P + C32*vT2H +       DUxDU )
+            UeHP   = sqrt( C31*vT2H + C32*vT2P +       DUxDU )
+
+            sigmaPH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdPH )
+            sigmaPH  = ce_scaleSigmaFite*sigmaPH*sigmaPH
+
+!             UDS   = ce_scaleVel*UdPH
+!             SIGMAPH  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+!             SIGMAPH  = ce_scaleSigmaLindsay*SIGMAPH           
+  !                                                                   Pauls & Zank
+            srrPH  = sigmaPH*rhoH*rhoS
+
+            vT2_UmPH = vT2H/UmPH
+            vT2_UmHP = vT2P/UmHP
+
+            DH     = srrPH*UdPH
+
+            MSX    = srrPH*duX*(UdPH + vT2_UmPH + vT2_UmHP)
+            MSY    = srrPH*duY*(UdPH + vT2_UmPH + vT2_UmHP)
+            MSZ    = srrPH*duZ*(UdPH + vT2_UmPH + vT2_UmHP)
+!             unchanged H
+!             MHX    = srrPH*(UdPH*uxH - vT2_UmPH*duX)
+!             MHY    = srrPH*(UdPH*uyH - vT2_UmPH*duY)
+!             MHZ    = srrPH*(UdPH*uzH - vT2_UmPH*duZ)
+!             changed H
+            MHX    = -MSX
+            MHY    = -MSY
+            MHZ    = -MSZ
+
+            ES     = srrPH*(0.75D0*(UeHP*vT2P - UePH*vT2H)
+     &             +        0.5D0 *UdPH*(u2 - U2H)
+     &             +        vT2_UmPH*DUxUH + vT2_UmHP*DUxUP)
+!             unchanged H
+!             EH     = srrPH*(0.5D0*U2H*UdPH 
+!      &             +        vT2H*(0.75D0*UePH - DUxUH/UmPH))
+!             changed H
+            EH     = -ES
+!             PIs convect with flow in R1 - no exchange
+!             HP     = srrPH*(0.75D0*UePH*vT2H
+!      &             + DUxDU*(0.5D0*UdPH + vT2_UmPH))
+  !                 pickup proton(1) + neutral(1) -> pickup proton(2) + neutral(2)  
+            UdIH   = sqrt( C11*vT2I + C12*vT2H +       DUxDU )
+            UmIH   = sqrt( C21*vT2I + C22*vT2H + 4.0D0*DUxDU )
+            UmHI   = sqrt( C21*vT2H + C22*vT2I + 4.0D0*DUxDU )
+            UeIH   = sqrt( C31*vT2I + C32*vT2H +       DUxDU )
+            UeHI   = sqrt( C31*vT2H + C32*vT2I +       DUxDU )
+!     Fite is outdated - use Lindsay & Stebbings instead
+            sigmaIH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdIH )
+            sigmaIH  = ce_scaleSigmaFite*sigmaIH*sigmaIH
+
+!             UDS   = ce_scaleVel*UdIH
+!             SIGMAIH  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+!             SIGMAIH  = ce_scaleSigmaLindsay*SIGMAIH
+!                                                                   Pauls & Zank
+            srrIH    = sigmaIH*rhoH*rhoI
+
+            vT2_UmIH = vT2H/UmIH
+            vT2_UmHI = vT2I/UmHI
+
+
+!             DH     = DH + srrIH*UdIH
+!             unchanged p
+!             MSX    = MSX + srrIH*duX*(UdIH + vT2_UmIH + vT2_UmHI) 
+!             MSY    = MSY + srrIH*duY*(UdIH + vT2_UmIH + vT2_UmHI)
+!             MSZ    = MSZ + srrIH*duZ*(UdIH + vT2_UmIH + vT2_UmHI)
+!             changed p
+!             MSX    = MSX + srrIH*(UdIH*ux + duX*vT2_UmIH)
+!             MSY    = MSY + srrIH*(UdIH*uy + duY*vT2_UmIH)
+!             MSZ    = MSZ + srrIH*(UdIH*uz + duZ*vT2_UmIH)
+!             unchanged H
+!             MHX    = MHX + srrIH*(UdIH*uxH - vT2_UmIH*duX)
+!             MHY    = MHY + srrIH*(UdIH*uyH - vT2_UmIH*duY)
+!             MHZ    = MHZ + srrIH*(UdIH*uzH - vT2_UmIH*duZ)
+
+!             unchanged p
+!             ES     = ES  + srrIH*(0.75D0*(UeHI*vT2I - UeIH*vT2H)
+!      &           +              0.5D0 *UdIH*(u2 - U2H)
+!      &           +              vT2_UmIH*DUxUH + vT2_UmHI*DUxUP)
+!             unchanged H
+!             EH     = EH + srrIH*(0.5D0*U2H*UdIH 
+!      &           +             vT2H*(0.75D0*UeIH - DUxUH/UmIH))
+
+!             unchanged I
+!             PIs convect with flow in R1 - no exchange
+!             HP     = HP  + srrIH*(0.75D0*(UeIH*vT2H - UeHI*vT2I)
+!      &           +       DUxDU*(0.5D0*UdIH + vT2_UmIH))
+
+!             HP     = (gamma - 1.0D0)*HP
+
+            S(CHF_IX[i;j;k],URHO     ) = zero
+
+            S(CHF_IX[i;j;k],UMOMX    ) =-dt*MSX
+            S(CHF_IX[i;j;k],UMOMY    ) =-dt*MSY
+            S(CHF_IX[i;j;k],UMOMZ    ) =-dt*MSZ
+
+            S(CHF_IX[i;j;k],UENG     ) =-dt*ES
+
+            S(CHF_IX[i;j;k],UBX      ) = zero
+            S(CHF_IX[i;j;k],UBY      ) = zero
+            S(CHF_IX[i;j;k],UBZ      ) = zero
+
+!            S(CHF_IX[i;j;k],iRhoH    ) =-dt*DH
+            S(CHF_IX[i;j;k],iRhoH    ) = zero
+
+            S(CHF_IX[i;j;k],iUMOMXH  ) =-dt*MHX
+            S(CHF_IX[i;j;k],iUMOMYH  ) =-dt*MHY
+            S(CHF_IX[i;j;k],iUMOMZH  ) =-dt*MHZ
+
+            S(CHF_IX[i;j;k],iUENGH   ) =-dt*EH
+
+!             S(CHF_IX[i;j;k],iRhoPIU  ) = dt*srrPH*UdPH
+!             S(CHF_IX[i;j;k],iPressPIU) = dt*HP
+            S(CHF_IX[i;j;k],iRhoPIU  ) = zero
+            S(CHF_IX[i;j;k],iPressPIU) = zero
+!*************************  REGION 2 *******************************
+          else if( REG(CHF_IX[i;j;k]) .eq. 2 ) then
+  !                              proton + neutral(1) -> proton + neutral(2)
+            UdPH   = sqrt( C11*vT2P + C12*vT2H +       DUxDU )
+            UmPH   = sqrt( C21*vT2P + C22*vT2H + 4.0D0*DUxDU )
+            UmHP   = sqrt( C21*vT2H + C22*vT2P + 4.0D0*DUxDU )
+            UePH   = sqrt( C31*vT2P + C32*vT2H +       DUxDU )
+            UeHP   = sqrt( C31*vT2H + C32*vT2P +       DUxDU )
+
+            sigmaPH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdPH )
+            sigmaPH  = ce_scaleSigmaFite*sigmaPH*sigmaPH
+
+!             UDS   = ce_scaleVel*UdPH
+!             SIGMAPH  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+!             SIGMAPH  = ce_scaleSigmaLindsay*SIGMAPH           
+  !                                                                   Pauls & Zank
+            srrPH  = sigmaPH*rhoH*rhoS
+
+            vT2_UmPH = vT2H/UmPH
+            vT2_UmHP = vT2P/UmHP
+
+            DH     = srrPH*UdPH
+
+            MSX    = srrPH*duX*(UdPH + vT2_UmPH + vT2_UmHP)
+            MSY    = srrPH*duY*(UdPH + vT2_UmPH + vT2_UmHP)
+            MSZ    = srrPH*duZ*(UdPH + vT2_UmPH + vT2_UmHP)
+!             unchanged H
+            MHX    = srrPH*(UdPH*uxH - vT2_UmPH*duX)
+            MHY    = srrPH*(UdPH*uyH - vT2_UmPH*duY)
+            MHZ    = srrPH*(UdPH*uzH - vT2_UmPH*duZ)
+
+            ES     = srrPH*(0.75D0*(UeHP*vT2P - UePH*vT2H)
+     &             +        0.5D0 *UdPH*(u2 - U2H)
+     &             +        vT2_UmPH*DUxUH + vT2_UmHP*DUxUP)
+
+            EH     = srrPH*(0.5D0*U2H*UdPH 
+     &             +        vT2H*(0.75D0*UePH - DUxUH/UmPH))
+
+!         consider charge exchange only if PI pressure and density
+!         are greater than some limiting values
+            if ((rhoI >= rhoPUIlimit) .and. (pI >= presPUIlimit)) then
+
+
+
+!             PIs only destroyed in R2
+!             HP     = srrPH*(0.75D0*UePH*vT2H
+!      &             + DUxDU*(0.5D0*UdPH + vT2_UmPH))
+  !                 pickup proton(1) + neutral(1) -> proton(2) + neutral(2)
+            UdIH   = sqrt( C11*vT2I + C12*vT2H +       DUxDU )
+            UmIH   = sqrt( C21*vT2I + C22*vT2H + 4.0D0*DUxDU )
+            UmHI   = sqrt( C21*vT2H + C22*vT2I + 4.0D0*DUxDU )
+            UeIH   = sqrt( C31*vT2I + C32*vT2H +       DUxDU )
+            UeHI   = sqrt( C31*vT2H + C32*vT2I +       DUxDU )
+!             if(C31*vT2H + C32*vT2I + DUxDU < 1.0d-10) then
+!               print *, "UeHI NaN"
+!               flush(6)
+!             endif
+!             if(UdIH < 1.0d-10) then
+!               print *, "UdIH NaN"
+!               flush(6)
+!             endif
+
+            sigmaIH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdIH )
+            sigmaIH  = ce_scaleSigmaFite*sigmaIH*sigmaIH
+
+!             UDS   = ce_scaleVel*UdIH
+!             SIGMAIH  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+!             SIGMAIH  = ce_scaleSigmaLindsay*SIGMAIH
+  !                                                                   Pauls & Zank
+            srrIH    = sigmaIH*rhoH*rhoI
+
+            vT2_UmIH = vT2H/UmIH
+            vT2_UmHI = vT2I/UmHI
+
+            DH     = DH + srrIH*UdIH
+!             unchanged p
+            MSX    = MSX + srrIH*duX*(UdIH + vT2_UmIH + vT2_UmHI)
+            MSY    = MSY + srrIH*duY*(UdIH + vT2_UmIH + vT2_UmHI)
+            MSZ    = MSZ + srrIH*duZ*(UdIH + vT2_UmIH + vT2_UmHI)
+            
+!             unchanged H
+            MHX    = MHX + srrIH*(UdIH*uxH - vT2_UmIH*duX)
+            MHY    = MHY + srrIH*(UdIH*uyH - vT2_UmIH*duY)
+            MHZ    = MHZ + srrIH*(UdIH*uzH - vT2_UmIH*duZ)
+!             unchanged p
+            ES     = ES  + srrIH*(0.75D0*(UeHI*vT2I - UeIH*vT2H)
+     &           +              0.5D0 *UdIH*(u2 - U2H)
+     &           +              vT2_UmIH*DUxUH + vT2_UmHI*DUxUP)
+
+!             unchanged H
+            EH     = EH + srrIH*(0.5D0*U2H*UdIH 
+     &           +             vT2H*(0.75D0*UeIH - DUxUH/UmIH))
+
+!             unchanged I
+!             HP     = HP  + srrIH*(0.75D0*(UeIH*vT2H - UeHI*vT2I)
+!      &           +       DUxDU*(0.5D0*UdIH + vT2_UmIH))
+!             changed I - PIs only disappear in R2
+            HP     = srrIH*0.75D0*UeHI*vT2I
+!             HP     = srrIH*(0.75D0*UeIH*vT2H
+!      &           +       DUxDU*(0.5D0*UdIH + vT2_UmIH))
+
+            HP     = (gamma - 1.0D0)*HP
+
+!             if(HP /= HP) then
+!               print *, "HP NaN at ",i,j,k
+!               print *, srrIH, UeHI,vT2I,HP,rhoI,pI
+!               flush(6)
+!             endif
+            S(CHF_IX[i;j;k],iRhoPIU  ) = -dt*srrIH*UdIH
+            S(CHF_IX[i;j;k],iPressPIU) = -dt*HP   
+          endif
+            S(CHF_IX[i;j;k],URHO     ) = zero
+
+            S(CHF_IX[i;j;k],UMOMX    ) =-dt*MSX
+            S(CHF_IX[i;j;k],UMOMY    ) =-dt*MSY
+            S(CHF_IX[i;j;k],UMOMZ    ) =-dt*MSZ
+
+            S(CHF_IX[i;j;k],UENG     ) =-dt*ES
+
+            S(CHF_IX[i;j;k],UBX      ) = zero
+            S(CHF_IX[i;j;k],UBY      ) = zero
+            S(CHF_IX[i;j;k],UBZ      ) = zero
+
+            S(CHF_IX[i;j;k],iRhoH    ) =-dt*DH
+
+            S(CHF_IX[i;j;k],iUMOMXH  ) =-dt*MHX
+            S(CHF_IX[i;j;k],iUMOMYH  ) =-dt*MHY
+            S(CHF_IX[i;j;k],iUMOMZH  ) =-dt*MHZ
+
+            S(CHF_IX[i;j;k],iUENGH   ) =-dt*EH
+
+!             S(CHF_IX[i;j;k],iRhoPIU  ) = dt*srrPH*UdPH
+!             S(CHF_IX[i;j;k],iRhoPIU  ) = -dt*srrIH*UdIH
+!             S(CHF_IX[i;j;k],iPressPIU) = -dt*HP   
+!            if(dt*HP > pI) then
+!              print *, "HP>pI at ",i,j,k,dt
+!              print *, HP,pI,(pI-smallp)/HP
+!              flush(6)
+!            endif     
+!******************** REGION 3 *************************************
+          else if(REG(CHF_IX[i;j;k]) .eq. 3)  then
+  !                              proton + neutral(1) -> pickup proton + neutral(2)
+            UdPH   = sqrt( C11*vT2P + C12*vT2H +       DUxDU )
+            UmPH   = sqrt( C21*vT2P + C22*vT2H + 4.0D0*DUxDU )
+            UmHP   = sqrt( C21*vT2H + C22*vT2P + 4.0D0*DUxDU )
+            UePH   = sqrt( C31*vT2P + C32*vT2H +       DUxDU )
+            UeHP   = sqrt( C31*vT2H + C32*vT2P +       DUxDU )
+
+            sigmaPH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdPH )
+            sigmaPH  = ce_scaleSigmaFite*sigmaPH*sigmaPH
+
+!             UDS   = ce_scaleVel*UdPH
+!             SIGMAPH  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+!             SIGMAPH  = ce_scaleSigmaLindsay*SIGMAPH           
+  !                                                                   Pauls & Zank
+            srrPH  = sigmaPH*rhoH*rhoS
+
+            vT2_UmPH = vT2H/UmPH
+            vT2_UmHP = vT2P/UmHP
+
+            DH     = srrPH*UdPH
+
+            MSX    = srrPH*duX*(UdPH + vT2_UmPH + vT2_UmHP)
+            MSY    = srrPH*duY*(UdPH + vT2_UmPH + vT2_UmHP)
+            MSZ    = srrPH*duZ*(UdPH + vT2_UmPH + vT2_UmHP)
+
+            MHX    = srrPH*(UdPH*uxH - vT2_UmPH*duX)
+            MHY    = srrPH*(UdPH*uyH - vT2_UmPH*duY)
+            MHZ    = srrPH*(UdPH*uzH - vT2_UmPH*duZ)
+
+            ES     = srrPH*(0.75D0*(UeHP*vT2P - UePH*vT2H)
+     &             +        0.5D0 *UdPH*(u2 - U2H)
+     &             +        vT2_UmPH*DUxUH + vT2_UmHP*DUxUP)
+
+            EH     = srrPH*(0.5D0*U2H*UdPH 
+     &             +        vT2H*(0.75D0*UePH - DUxUH/UmPH))
+
+            HP     = srrPH*(0.75D0*UePH*vT2H
+     &             + DUxDU*(0.5D0*UdPH + vT2_UmPH))
+!             HP     = srrPH*0.75D0*vT2H*UePH
+  !                 pickup proton(1) + neutral(1) -> pickup proton(2) + neutral(2)
+            UdIH   = sqrt( C11*vT2I + C12*vT2H +       DUxDU )
+            UmIH   = sqrt( C21*vT2I + C22*vT2H + 4.0D0*DUxDU )
+            UmHI   = sqrt( C21*vT2H + C22*vT2I + 4.0D0*DUxDU )
+            UeIH   = sqrt( C31*vT2I + C32*vT2H +       DUxDU )
+            UeHI   = sqrt( C31*vT2H + C32*vT2I +       DUxDU )
+!     Fite is outdated - use Lindsay & Stebbings instead
+            sigmaIH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdIH )
+            sigmaIH  = ce_scaleSigmaFite*sigmaIH*sigmaIH
+
+!             UDS   = ce_scaleVel*UdIH
+!             SIGMAIH  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+!             SIGMAIH  = ce_scaleSigmaLindsay*SIGMAIH
+  !                                                                   Pauls & Zank
+            srrIH    = sigmaIH*rhoH*rhoI
+
+            vT2_UmIH = vT2H/UmIH
+            vT2_UmHI = vT2I/UmHI
+
+            DH     = DH + srrIH*UdIH
+
+            MSX    = MSX + srrIH*duX*(UdIH + vT2_UmIH + vT2_UmHI) 
+            MSY    = MSY + srrIH*duY*(UdIH + vT2_UmIH + vT2_UmHI)
+            MSZ    = MSZ + srrIH*duZ*(UdIH + vT2_UmIH + vT2_UmHI)
+
+            MHX    = MHX + srrIH*(UdIH*uxH - vT2_UmIH*duX)
+            MHY    = MHY + srrIH*(UdIH*uyH - vT2_UmIH*duY)
+            MHZ    = MHZ + srrIH*(UdIH*uzH - vT2_UmIH*duZ)
+
+            ES     = ES  + srrIH*(0.75D0*(UeHI*vT2I - UeIH*vT2H)
+     &             +              0.5D0 *UdIH*(u2 - U2H)
+     &             +              vT2_UmIH*DUxUH + vT2_UmHI*DUxUP)
+
+            EH     = EH + srrIH*(0.5D0*U2H*UdIH 
+     &             +             vT2H*(0.75D0*UeIH - DUxUH/UmIH))
+
+            HP     = HP  + srrIH*(0.75D0*(UeIH*vT2H - UeHI*vT2I)
+     &             +       DUxDU*(0.5D0*UdIH + vT2_UmIH))
+!             HP     = HP  + srrIH*0.75D0*(vT2H*UeIH - vT2I*UeHI)
+
+            HP     = (gamma - 1.0D0)*HP
+
+            S(CHF_IX[i;j;k],URHO     ) = zero
+
+            S(CHF_IX[i;j;k],UMOMX    ) =-dt*MSX
+            S(CHF_IX[i;j;k],UMOMY    ) =-dt*MSY
+            S(CHF_IX[i;j;k],UMOMZ    ) =-dt*MSZ
+
+            S(CHF_IX[i;j;k],UENG     ) =-dt*ES
+
+            S(CHF_IX[i;j;k],UBX      ) = zero
+            S(CHF_IX[i;j;k],UBY      ) = zero
+            S(CHF_IX[i;j;k],UBZ      ) = zero
+
+            S(CHF_IX[i;j;k],iRhoH    ) =-dt*DH
+
+            S(CHF_IX[i;j;k],iUMOMXH  ) =-dt*MHX
+            S(CHF_IX[i;j;k],iUMOMYH  ) =-dt*MHY
+            S(CHF_IX[i;j;k],iUMOMZH  ) =-dt*MHZ
+
+            S(CHF_IX[i;j;k],iUENGH   ) =-dt*EH
+
+            S(CHF_IX[i;j;k],iRhoPIU  ) = dt*srrPH*UdPH
+            S(CHF_IX[i;j;k],iPressPIU) = dt*HP
+
+          endif
+        CHF_ENDDO
+
+        return
+        end
+

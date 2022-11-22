@@ -1,0 +1,95 @@
+# fast switch on MHD shock wave
+
+mhdam.problem = riemann_MHDK
+
+mhdam.gamma = 1.666666666666667
+
+mhdam.verbosity = 1
+
+mhdam.numdenL    = 0.06
+mhdam.temperatureL = 6527.0
+mhdam.velxL      = 2640000.0
+mhdam.velyL      = 0.0
+mhdam.BxL        = 0.000002
+mhdam.ByL        = 0.0
+mhdam.netnumL    = 0.01
+
+mhdam.numdenR    = 0.13184326718594607955
+mhdam.temperatureR = 13076.664925904039990
+mhdam.velxR      = 1201426.5375917865070
+mhdam.velyR      = 346139.35525271925379
+mhdam.BxR        = 0.000002
+mhdam.ByR        = 5.7621393305751733766e-7
+
+mhdam.startX     = 120.0
+
+mhdam.max_step = 15010
+mhdam.max_time = 1000000000000.00
+
+mhdam.domain_length = 2560.0
+mhdam.num_cells =  1024 4 4
+mhdam.is_periodic = 0 1 0
+mhdam.max_level = 3
+mhdam.ref_ratio = 2 2 2 2 
+
+mhdam.regrid_interval = 2 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.05
+mhdam.refine_B_thresh = -1
+
+# Blocking factor. For each box B in the grids, this is the number Nref 
+# for which it is guaranteed to be true that refine(coarsen(B;Nref);Nref) == B. 
+# Default = 1. Note that this will also be the minimum possible box size.
+mhdam.block_factor = 4
+
+# Maximum length of a grid in any dimension. An input value of 0
+# means the maximum value will be infinity (no limit).
+mhdam.max_grid_size = 32
+
+# Overall grid efficiency to be generated. If this number is set
+# low, the grids will tend to be larger and less filled with tags. If this number
+# is set high, the grids will tend to be smaller and more filled with tags. This
+# controls the aggressiveness of agglomeration by box merging.
+mhdam.fill_ratio = 0.75
+
+# Proper nesting buffer size. This will be the minimum number
+# of level l cells between any level l+1 cell and a level l-1 cell.
+mhdam.grid_buffer_size = 4
+
+mhdam.limiter_RHO = 1
+mhdam.limiter_VX = 1
+mhdam.limiter_VY = 1
+mhdam.limiter_VZ = 1
+mhdam.limiter_P = 1
+mhdam.limiter_BX = 1
+mhdam.limiter_BY = 1
+mhdam.limiter_BZ = 1
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+mhdam.entropy_fix_coeff = 0.3
+
+mhdam.kinetic_runtime = 1             # Run time of kinetic code (in years)
+mhdam.kinetic_runtime_consistent = 1  # Set "1" to use MHD time step for kinetic code
+mhdam.total_neutrals = 8000000
+#mhdam.kinetic_restart_file = n010000.raw
+mhdam.kinetic_step_interval = 1
+mhdam.kinetic_time_interval = 1     # Run time of MHDAM code (in years) before launching kinetic code.
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 100
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = mhdk
+
+mhdam.cfl = 0.4
+mhdam.initial_cfl = 0.4
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1
+
+#mhdam.restart_file = mhdk10000.2d.hdf5

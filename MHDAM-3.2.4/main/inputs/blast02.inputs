@@ -1,0 +1,74 @@
+# version Balsara & Spicer jcp 149, 270 (1999)
+mhdam.problem = blast
+
+mhdam.gamma = 1.4
+
+mhdam.verbosity = -1
+
+mhdam.max_step = 10000
+mhdam.max_time = 0.01
+
+mhdam.Blastp0  = 0.1
+mhdam.Blastp1  = 1000
+mhdam.BlastXc  = 0.5
+mhdam.BlastYc  = 0.5
+mhdam.BlastZc  = 0
+mhdam.BlastBx  = 100.0
+mhdam.BlastBy  = 0.0
+mhdam.Blastr0  = 0.1
+
+mhdam.domain_length = 1.0
+mhdam.num_cells =  100 100 4
+mhdam.is_periodic = 1 1 1
+mhdam.max_level = 2
+mhdam.ref_ratio = 2 2 2 2 3 3
+
+mhdam.regrid_interval = 5 -1 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.15
+mhdam.refine_B_thresh = -1
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.char_reconstruction = 1
+mhdam.check_tvd = 1
+
+
+mhdam.limiter_RHO = 9
+mhdam.limiter_VX = 9
+mhdam.limiter_VY = 9
+mhdam.limiter_VZ = 9
+mhdam.limiter_P = 9
+mhdam.limiter_BX = 9
+mhdam.limiter_BY = 9
+mhdam.limiter_BZ = 9
+
+# Time approximation
+# 0 - first order
+# 1 - Hancock method
+# 2 - RK2
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+mhdam.8wave_use = 1
+
+
+mhdam.checkpoint_interval = 100000
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = bl02.p
+mhdam.chk_prefix = bl02.c
+mhdam.tecplot_interval = 100000
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1
+
+#mhdam.restart_file = chk500.2d.hdf5

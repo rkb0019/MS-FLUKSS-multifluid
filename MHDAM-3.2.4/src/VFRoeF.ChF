@@ -1,0 +1,658 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+      subroutine VFROE_STATES(
+     &  CHF_FRA[Wgdnv],
+     &  CHF_CONST_FRA[WLeft],
+     &  CHF_CONST_FRA[WRight],
+     &  CHF_CONST_INT[idir],
+     &  CHF_CONST_INT[iRho],
+     &  CHF_BOX[box])
+
+      integer CHF_DDECL[i; j; k]
+      integer inorm, itan1, itan2, inormB, itanB1, itanB2
+      real_t  PGasL, RhoL, UL, VL, WL, RUL, RVL, RWL, BXL, BYL, BZL
+      real_t  PGasR, RhoR, UR, VR, WR, RUR, RVR, RWR, BXR, BYR, BZR
+      real_t  PGas,  Rho,  U,  V,  W,                 BX,  BY,  BZ
+      real_t  PGasM, RhoM, UM, VM, WM,                BXM, BYM, BZM
+      real_t  BxBL, RUxUL, PL, EL, HL, coefRL
+      real_t  BxBR, RUxUR, PR, ER, HR, coefRR
+      real_t  BxBH,        P,           HAV, BXAV, DBX, DBY, DBZ
+
+      real_t  eigen1,  eigen2,  eigen3,  eigen4,  eigen5,  eigen6
+      real_t  eigen7,  eigen8
+
+      real_t  dP, dRho, dUn, dUt1, dUt2, dBn, dBt1, dBt2
+
+      real_t  aas, as, aaf, af, alphaF, alphaS, c, cc, dfs, X, kk
+      real_t  b, bb, BX2, BY2, BZ2, BYZ2, DN, HRho, HU, HB, siBX
+      real_t  betaY, hyz, betaZ, szb, h, h1, h2, h3, h4, betaYX, betaZX
+
+      real_t  alpha1, alpha2, alpha3, alpha4, alpha5, alpha6
+      real_t  alpha7, alpha8
+      real_t  alph3p4, alph5p6, alph7p8
+      real_t  alph3m4, alph5m6, alph7m8
+
+
+      integer spacedim, iVelX, iBX, iPres
+
+#include "EosCommon.fh"
+#include "RSCommon.fh"
+
+      spacedim = 3
+
+      iVelX  = iRho + 1
+      iPres  = iRho + 4
+      iBX    = iRho + 5
+
+      inorm  = iVelX +      idir
+      itan1  = iVelX + mod( idir + 1, spacedim )
+      itan2  = iVelX + mod( idir + 2, spacedim )
+
+      inormB = iBX   +      idir
+      itanB1 = iBX   + mod( idir + 1, spacedim )
+      itanB2 = iBX   + mod( idir + 2, spacedim )
+
+      CHF_MULTIDO[box;i;j;k]
+!                                                                     Left state
+        PGasL  = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+        RhoL   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+
+        UL     =              WLeft(CHF_IX[i;j;k],inorm)
+        VL     =              WLeft(CHF_IX[i;j;k],itan1)
+        WL     =              WLeft(CHF_IX[i;j;k],itan2)
+
+        BXL    =              WLeft(CHF_IX[i;j;k],inormB)
+        BYL    =              WLeft(CHF_IX[i;j;k],itanB1)
+        BZL    =              WLeft(CHF_IX[i;j;k],itanB2)
+
+        RUL    = RhoL*UL
+        RVL    = RhoL*VL
+        RWL    = RhoL*WL
+
+        BxBL   = d_1_8PI*(BXL*BXL + BYL*BYL + BZL*BZL)
+        RUxUL  = half   *(RUL*UL  + RVL*VL  + RWL*WL )
+
+        PL     = PGasL + BxBL
+        EL     = PGasL/hgamma + RUxUL + BxBL
+!                                                                    Right state
+        PGasR  = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+        RhoR   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+
+        UR     =              WRight(CHF_IX[i;j;k],inorm)
+        VR     =              WRight(CHF_IX[i;j;k],itan1)
+        WR     =              WRight(CHF_IX[i;j;k],itan2)
+
+        BXR    =              WRight(CHF_IX[i;j;k],inormB)
+        BYR    =              WRight(CHF_IX[i;j;k],itanB1)
+        BZR    =              WRight(CHF_IX[i;j;k],itanB2)
+
+        RUR    = RhoR*UR
+        RVR    = RhoR*VR
+        RWR    = RhoR*WR
+
+        BxBR   = d_1_8PI*(BXR*BXR + BYR*BYR + BZR*BZR)
+        RUxUR  = half   *(RUR*UR  + RVR*VR  + RWR*WR )
+
+        PR     = PGasR + BxBR
+        ER     = PGasR/hgamma + RUxUR + BxBR
+!                                                                  Average state
+        if( iAveraging == 1 ) then
+          HL     = (EL + PL)/RhoL
+          HR     = (ER + PR)/RhoR
+
+          coefRL = one/(one + sqrt( RhoR/RhoL ))
+          coefRR = one - coefRL
+
+          Rho    = RhoR*coefRL + RhoL*coefRR
+          U      = UL  *coefRL + UR  *coefRR
+          V      = VL  *coefRL + VR  *coefRR
+          W      = WL  *coefRL + WR  *coefRR
+          HAV    = HL  *coefRL + HR  *coefRR
+
+          BX     = BXR *coefRL + BXL *coefRR
+          BY     = BYR *coefRL + BYL *coefRR
+          BZ     = BZR *coefRL + BZL *coefRR
+
+          BXAV   = half*(BXL  + BXR )
+
+          BX2    = BXAV*BXAV
+          BY2    = BY  *BY
+          BZ2    = BZ  *BZ
+
+          BYZ2   = BY2 + BZ2
+          BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+          kk     = half*(U*U + V*V + W*W)
+
+          DBX    = BXR - BXL
+          DBY    = BYR - BYL
+          DBZ    = BZR - BZL
+
+          X      = d_1_8PI*(DBX*DBX + DBY*DBY + DBZ*DBZ)
+     &           * coefRL*coefRL/RhoL
+
+          cc     = hgamma*(HAV - kk - d_1_4PI*(BX*BXAV + BYZ2)/Rho)
+     &           + (two - gamma)*X
+        else
+          Rho    = half*(RhoL  + RhoR )
+          U      = half*(UL    + UR   )
+          V      = half*(VL    + VR   )
+          W      = half*(WL    + WR   )
+          BX     = half*(BXL   + BXR  )
+          BY     = half*(BYL   + BYR  )
+          BZ     = half*(BZL   + BZR  )
+          PGas   = half*(PGasL + PGasR)
+
+          BX2    = BX*BX
+          BY2    = BY*BY
+          BZ2    = BZ*BZ
+
+          BYZ2   = BY2 + BZ2
+          BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+          cc     = gamma*PGas/Rho
+        endif
+
+        bb     = d_1_4PI*BX2/Rho
+
+        szb    = cc + (BxBH + BxBH)/Rho
+        h      = sqrt( szb*szb - four*cc*bb )
+
+        aaf    = half*(szb + h)
+        aas    = cc*bb/aaf
+
+        b      = sqrt( bb )
+        c      = sqrt( cc )
+        af     = sqrt( aaf )
+        as     = sqrt( aas )
+!                                                                    Eigenvalues
+        eigen1 = U
+        eigen2 = U
+        eigen3 = U + b
+        eigen4 = U - b
+        eigen5 = U + af
+        eigen6 = U - af
+        eigen7 = U + as
+        eigen8 = U - as
+!                                                                         Alphas
+        dfs    = aaf - aas
+        if( dfs < 1.0D-12 ) then
+          alphaF  = one
+          alphaS  = zero
+        else if( (cc - aas) <= zero ) then
+          alphaF  = zero
+          alphaS  = one
+        else if( (aaf - cc) <= zero ) then
+          alphaF  = one
+          alphaS  = zero
+        else
+          alphaF  = sqrt( (cc  - aas)/dfs )
+          alphaS  = sqrt( (aaf - cc )/dfs )
+        endif
+
+        if( BYZ2 < smallB*smallB ) then
+          betaY  = d_SQRT_2
+          betaZ  = d_SQRT_2
+        else
+          hyz    = sqrt( BYZ2 )
+          betaY  = BY/hyz
+          betaZ  = BZ/hyz
+        endif
+
+        siBX   = sign( one, BX )
+
+        betaYX = betaY
+        betaZX = betaZ
+        if( BX < zero ) then
+          betaYX =-betaY
+          betaZX =-betaZ
+        endif
+
+        dP     = PGasR - PGasL
+        dRho   = RhoR  - RhoL
+        dUn    = UR    - UL
+        dUt1   = VR    - VL
+        dUt2   = WR    - WL
+        dBn    = BXR   - BXL
+        dBt1   = BYR   - BYL
+        dBt2   = BZR   - BZL
+
+        alpha1 = dRho - dP/cc
+        alpha2 = dBn
+
+        h1     = d_SQRT_2*(betaY*dUt2 - betaZ*dUt1)
+        h2     = siBX*(betaZ*dBt1 - betaY*dBt2)/(two*sqrt( two*d_PI*Rho ))
+
+        alpha3 = h1 + h2
+        alpha4 = h1 - h2
+
+        h1     = dP/(two*Rho*cc)
+        h2     = dUn/(two*cc)
+        h3     = (betaY*dBt1 + betaZ*dBt2)/(four*c*sqrt( d_PI*Rho ))
+        h4     = siBX*(betaY*dUt1 + betaZ*dUt2)/(two*cc)
+
+        alpha5 = alphaF*(h1 + af*h2) + alphaS*(h3 - as*h4)
+        alpha6 = alphaF*(h1 - af*h2) + alphaS*(h3 + as*h4)
+        alpha7 = alphaS*(h1 + as*h2) - alphaF*(h3 - af*h4)
+        alpha8 = alphaS*(h1 - as*h2) - alphaF*(h3 + af*h4)
+!                                                       Middle state calculation
+        if( eigen1 == zero ) then
+          alpha1 = zero
+        else
+          alpha1 = alpha1*sign( half, eigen1 )
+        endif
+
+        if( eigen2 == zero ) then
+          alpha2 = zero
+        else
+          alpha2 = alpha2*sign( half, eigen2 )
+        endif
+
+        if( eigen3 == zero ) then
+          alpha3 = zero
+        else
+          alpha3 = alpha3*sign( half, eigen3 )
+        endif
+
+        if( eigen4 == zero ) then
+          alpha4 = zero
+        else
+          alpha4 = alpha4*sign( half, eigen4 )
+        endif
+
+        if( eigen5 == zero ) then
+          alpha5 = zero
+        else
+          alpha5 = alpha5*sign( half, eigen5 )
+        endif
+
+        if( eigen6 == zero ) then
+          alpha6 = zero
+        else
+          alpha6 = alpha6*sign( half, eigen6 )
+        endif
+
+        if( eigen7 == zero ) then
+          alpha7 = zero
+        else
+          alpha7 = alpha7*sign( half, eigen7 )
+        endif
+
+        if( eigen8 == zero ) then
+          alpha8 = zero
+        else
+          alpha8 = alpha8*sign( half, eigen8 )
+        endif
+
+        alpha3   = d_SQRT_2*alpha3
+        alpha4   = d_SQRT_2*alpha4
+
+        alph3p4  = alpha3 + alpha4
+        alph3m4  = alpha3 - alpha4
+        alph5p6  = alpha5 + alpha6
+        alph5m6  = alpha5 - alpha6
+        alph7p8  = alpha7 + alpha8
+        alph7m8  = alpha7 - alpha8
+
+        DN     = two*sqrt( d_PI*Rho )
+
+        HRho   = Rho*(alphaF*   alph5p6 + alphaS*   alph7p8)
+        HU     =      alphaS*as*alph5m6 - alphaF*af*alph7m8
+        HB     = c  *(alphaS*   alph5p6 - alphaF*   alph7p8)
+
+        RhoM   = half*(RhoR  + RhoL ) - (alpha1 + HRho)
+        UM     = half*(UR    + UL   ) - (alphaF*af*alph5m6 + alphaS*as*alph7m8)
+        VM     = half*(VR    + VL   ) + (betaZ *alph3p4 + betaYX*HU)
+        WM     = half*(WR    + WL   ) - (betaY *alph3p4 - betaZX*HU)
+        PGasM  = half*(PGasR + PGasL) - cc*HRho
+        BXM    = half*(BXR   + BXL  )
+        BYM    = half*(BYR   + BYL  ) - DN*( betaZX*alph3m4 + betaY *HB)
+        BZM    = half*(BZR   + BZL  ) - DN*(-betaYX*alph3m4 + betaZ *HB)
+
+        Wgdnv(CHF_IX[i;j;k],iRho )  = RhoM
+        Wgdnv(CHF_IX[i;j;k],inorm)  = UM
+        Wgdnv(CHF_IX[i;j;k],itan1)  = VM
+        Wgdnv(CHF_IX[i;j;k],itan2)  = WM
+        Wgdnv(CHF_IX[i;j;k],iPres)  = PGasM
+        Wgdnv(CHF_IX[i;j;k],inormB) = BXM
+        Wgdnv(CHF_IX[i;j;k],itanB1) = BYM
+        Wgdnv(CHF_IX[i;j;k],itanB2) = BZM
+      CHF_ENDDO
+
+      return
+      end
+
+
+      subroutine VFROE_FLUXES(
+     &  CHF_FRA[Fgdnv],
+     &  CHF_CONST_FRA[WLeft],
+     &  CHF_CONST_FRA[WRight],
+     &  CHF_CONST_INT[idir],
+     &  CHF_CONST_INT[iRho],
+     &  CHF_BOX[box])
+
+      integer CHF_DDECL[i; j; k]
+      integer inorm, itan1, itan2, inormB, itanB1, itanB2
+      real_t  PGasL, RhoL, UL, VL, WL, RUL, RVL, RWL, BXL, BYL, BZL
+      real_t  PGasR, RhoR, UR, VR, WR, RUR, RVR, RWR, BXR, BYR, BZR
+      real_t  PGas,  Rho,  U,  V,  W,                 BX,  BY,  BZ
+      real_t  PGasM, RhoM, UM, VM, WM,                BXM, BYM, BZM
+      real_t  BxBL, RUxUL, PL, EL, HL, coefRL
+      real_t  BxBR, RUxUR, PR, ER, HR, coefRR
+      real_t  BxBH,        P,  E,       HAV, BXAV, DBX, DBY, DBZ
+
+      real_t  eigen1,  eigen2,  eigen3,  eigen4,  eigen5,  eigen6
+      real_t  eigen7,  eigen8
+
+      real_t  dP, dRho, dUn, dUt1, dUt2, dBn, dBt1, dBt2
+
+      real_t  aas, as, aaf, af, alphaF, alphaS, c, cc, dfs, X, kk
+      real_t  b, bb, BX2, BY2, BZ2, BYZ2, DN, HRho, HU, HB, siBX
+      real_t  betaY, hyz, betaZ, szb, h, h1, h2, h3, h4, betaYX, betaZX
+
+      real_t  alpha1, alpha2, alpha3, alpha4, alpha5, alpha6
+      real_t  alpha7, alpha8
+      real_t  alph3p4, alph5p6, alph7p8
+      real_t  alph3m4, alph5m6, alph7m8
+
+      real*8, dimension(8) :: auxL, auxR, auxM
+
+      integer spacedim, iVelX, iBX, iPres
+
+#include "EosCommon.fh"
+#include "RSCommon.fh"
+
+      spacedim = 3
+
+      iVelX  = iRho + 1
+      iPres  = iRho + 4
+      iBX    = iRho + 5
+
+      inorm  = iVelX +      idir
+      itan1  = iVelX + mod( idir + 1, spacedim )
+      itan2  = iVelX + mod( idir + 2, spacedim )
+
+      inormB = iBX   +      idir
+      itanB1 = iBX   + mod( idir + 1, spacedim )
+      itanB2 = iBX   + mod( idir + 2, spacedim )
+
+      CHF_MULTIDO[box;i;j;k]
+!                                                                     Left state
+        PGasL  = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+        RhoL   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+
+        UL     =              WLeft(CHF_IX[i;j;k],inorm)
+        VL     =              WLeft(CHF_IX[i;j;k],itan1)
+        WL     =              WLeft(CHF_IX[i;j;k],itan2)
+
+        BXL    =              WLeft(CHF_IX[i;j;k],inormB)
+        BYL    =              WLeft(CHF_IX[i;j;k],itanB1)
+        BZL    =              WLeft(CHF_IX[i;j;k],itanB2)
+
+        RUL    = RhoL*UL
+        RVL    = RhoL*VL
+        RWL    = RhoL*WL
+
+        BxBL   = d_1_8PI*(BXL*BXL + BYL*BYL + BZL*BZL)
+        RUxUL  = half   *(RUL*UL  + RVL*VL  + RWL*WL )
+
+        PL     = PGasL + BxBL
+        EL     = PGasL/hgamma + RUxUL + BxBL
+!                                                                    Right state
+        PGasR  = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+        RhoR   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+
+        UR     =              WRight(CHF_IX[i;j;k],inorm)
+        VR     =              WRight(CHF_IX[i;j;k],itan1)
+        WR     =              WRight(CHF_IX[i;j;k],itan2)
+
+        BXR    =              WRight(CHF_IX[i;j;k],inormB)
+        BYR    =              WRight(CHF_IX[i;j;k],itanB1)
+        BZR    =              WRight(CHF_IX[i;j;k],itanB2)
+
+        RUR    = RhoR*UR
+        RVR    = RhoR*VR
+        RWR    = RhoR*WR
+
+        BxBR   = d_1_8PI*(BXR*BXR + BYR*BYR + BZR*BZR)
+        RUxUR  = half   *(RUR*UR  + RVR*VR  + RWR*WR )
+
+        PR     = PGasR + BxBR
+        ER     = PGasR/hgamma + RUxUR + BxBR
+!                                                                  Average state
+        if( iAveraging == 1 ) then
+          HL     = (EL + PL)/RhoL
+          HR     = (ER + PR)/RhoR
+
+          coefRL = one/(one + sqrt( RhoR/RhoL ))
+          coefRR = one - coefRL
+
+          Rho    = RhoR*coefRL + RhoL*coefRR
+          U      = UL  *coefRL + UR  *coefRR
+          V      = VL  *coefRL + VR  *coefRR
+          W      = WL  *coefRL + WR  *coefRR
+          HAV    = HL  *coefRL + HR  *coefRR
+
+          BX     = BXR *coefRL + BXL *coefRR
+          BY     = BYR *coefRL + BYL *coefRR
+          BZ     = BZR *coefRL + BZL *coefRR
+
+          BXAV   = half*(BXL  + BXR )
+
+          BX2    = BXAV*BXAV
+          BY2    = BY  *BY
+          BZ2    = BZ  *BZ
+
+          BYZ2   = BY2 + BZ2
+          BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+          kk     = half*(U*U + V*V + W*W)
+
+          DBX    = BXR - BXL
+          DBY    = BYR - BYL
+          DBZ    = BZR - BZL
+
+          X      = d_1_8PI*(DBX*DBX + DBY*DBY + DBZ*DBZ)
+     &           * coefRL*coefRL/RhoL
+
+          cc     = hgamma*(HAV - kk - d_1_4PI*(BX*BXAV + BYZ2)/Rho)
+     &           + (two - gamma)*X
+        else
+          Rho    = half*(RhoL  + RhoR )
+          U      = half*(UL    + UR   )
+          V      = half*(VL    + VR   )
+          W      = half*(WL    + WR   )
+          BX     = half*(BXL   + BXR  )
+          BY     = half*(BYL   + BYR  )
+          BZ     = half*(BZL   + BZR  )
+          PGas   = half*(PGasL + PGasR)
+
+          BX2    = BX*BX
+          BY2    = BY*BY
+          BZ2    = BZ*BZ
+
+          BYZ2   = BY2 + BZ2
+          BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+          cc     = gamma*PGas/Rho
+        endif
+
+        bb     = d_1_4PI*BX2/Rho
+
+        szb    = cc + (BxBH + BxBH)/Rho
+        h      = sqrt( szb*szb - four*cc*bb )
+
+        aaf    = half*(szb + h)
+        aas    = cc*bb/aaf
+
+        b      = sqrt( bb )
+        c      = sqrt( cc )
+        af     = sqrt( aaf )
+        as     = sqrt( aas )
+!                                                                    Eigenvalues
+        eigen1 = U
+        eigen2 = U
+        eigen3 = U + b
+        eigen4 = U - b
+        eigen5 = U + af
+        eigen6 = U - af
+        eigen7 = U + as
+        eigen8 = U - as
+!                                                                         Alphas
+        dfs    = aaf - aas
+        if( dfs < 1.0D-12 ) then
+          alphaF  = one
+          alphaS  = zero
+        else if( (cc - aas) <= zero ) then
+          alphaF  = zero
+          alphaS  = one
+        else if( (aaf - cc) <= zero ) then
+          alphaF  = one
+          alphaS  = zero
+        else
+          alphaF  = sqrt( (cc  - aas)/dfs )
+          alphaS  = sqrt( (aaf - cc )/dfs )
+        endif
+
+        if( BYZ2 < smallB*smallB ) then
+          betaY  = d_SQRT_2
+          betaZ  = d_SQRT_2
+        else
+          hyz    = sqrt( BYZ2 )
+          betaY  = BY/hyz
+          betaZ  = BZ/hyz
+        endif
+
+        siBX   = sign( one, BX )
+
+        betaYX = betaY
+        betaZX = betaZ
+        if( BX < zero ) then
+          betaYX =-betaY
+          betaZX =-betaZ
+        endif
+
+        dP     = PGasR - PGasL
+        dRho   = RhoR  - RhoL
+        dUn    = UR    - UL
+        dUt1   = VR    - VL
+        dUt2   = WR    - WL
+        dBn    = BXR   - BXL
+        dBt1   = BYR   - BYL
+        dBt2   = BZR   - BZL
+
+        alpha1 = dRho - dP/cc
+        alpha2 = dBn
+
+        h1     = d_SQRT_2*(betaY*dUt2 - betaZ*dUt1)
+        h2     = siBX*(betaZ*dBt1 - betaY*dBt2)/(two*sqrt( two*d_PI*Rho ))
+
+        alpha3 = h1 + h2
+        alpha4 = h1 - h2
+
+        h1     = dP/(two*Rho*cc)
+        h2     = dUn/(two*cc)
+        h3     = (betaY*dBt1 + betaZ*dBt2)/(four*c*sqrt( d_PI*Rho ))
+        h4     = siBX*(betaY*dUt1 + betaZ*dUt2)/(two*cc)
+
+        alpha5 = alphaF*(h1 + af*h2) + alphaS*(h3 - as*h4)
+        alpha6 = alphaF*(h1 - af*h2) + alphaS*(h3 + as*h4)
+        alpha7 = alphaS*(h1 + as*h2) - alphaF*(h3 - af*h4)
+        alpha8 = alphaS*(h1 - as*h2) - alphaF*(h3 + af*h4)
+!                                                       Middle state calculation
+        if( eigen1 == zero ) then
+          alpha1 = zero
+        else
+          alpha1 = alpha1*sign( half, eigen1 )
+        endif
+
+        if( eigen2 == zero ) then
+          alpha2 = zero
+        else
+          alpha2 = alpha2*sign( half, eigen2 )
+        endif
+
+        if( eigen3 == zero ) then
+          alpha3 = zero
+        else
+          alpha3 = alpha3*sign( half, eigen3 )
+        endif
+
+        if( eigen4 == zero ) then
+          alpha4 = zero
+        else
+          alpha4 = alpha4*sign( half, eigen4 )
+        endif
+
+        if( eigen5 == zero ) then
+          alpha5 = zero
+        else
+          alpha5 = alpha5*sign( half, eigen5 )
+        endif
+
+        if( eigen6 == zero ) then
+          alpha6 = zero
+        else
+          alpha6 = alpha6*sign( half, eigen6 )
+        endif
+
+        if( eigen7 == zero ) then
+          alpha7 = zero
+        else
+          alpha7 = alpha7*sign( half, eigen7 )
+        endif
+
+        if( eigen8 == zero ) then
+          alpha8 = zero
+        else
+          alpha8 = alpha8*sign( half, eigen8 )
+        endif
+
+        alpha3   = d_SQRT_2*alpha3
+        alpha4   = d_SQRT_2*alpha4
+
+        alph3p4  = alpha3 + alpha4
+        alph3m4  = alpha3 - alpha4
+        alph5p6  = alpha5 + alpha6
+        alph5m6  = alpha5 - alpha6
+        alph7p8  = alpha7 + alpha8
+        alph7m8  = alpha7 - alpha8
+
+        DN     = two*sqrt( d_PI*Rho )
+
+        HRho   = Rho*(alphaF*   alph5p6 + alphaS*   alph7p8)
+        HU     =      alphaS*as*alph5m6 - alphaF*af*alph7m8
+        HB     = c  *(alphaS*   alph5p6 - alphaF*   alph7p8)
+
+        RhoM   = half*(RhoR  + RhoL ) - (alpha1 + HRho)
+        UM     = half*(UR    + UL   ) - (alphaF*af*alph5m6 + alphaS*as*alph7m8)
+        VM     = half*(VR    + VL   ) + (betaZ *alph3p4 + betaYX*HU)
+        WM     = half*(WR    + WL   ) - (betaY *alph3p4 - betaZX*HU)
+        PGasM  = half*(PGasR + PGasL) - cc*HRho
+        BXM    = half*(BXR   + BXL  )
+        BYM    = half*(BYR   + BYL  ) - DN*( betaZX*alph3m4 + betaY *HB)
+        BZM    = half*(BZR   + BZL  ) - DN*(-betaYX*alph3m4 + betaZ *HB)
+
+        BxBH   = d_1_8PI*(BXM*BXM + BYM*BYM + BZM*BZM)
+        kk     = half   *(UM *UM  + VM *VM  + WM *WM )
+
+        HU     =          BXM*UM  + BYM*VM  + BZM*WM
+
+        E      = PGasM/hgamma + RhoM*kk
+
+        P      = PGasM + BxBH
+        E      = E     + BxBH
+
+        Fgdnv(CHF_IX[i;j;k],iRho )  = RhoM*UM
+        Fgdnv(CHF_IX[i;j;k],inorm)  = RhoM*UM*UM + P - d_1_4PI*BXM*BXM
+        Fgdnv(CHF_IX[i;j;k],itan1)  = RhoM*UM*VM     - d_1_4PI*BXM*BYM
+        Fgdnv(CHF_IX[i;j;k],itan2)  = RhoM*UM*WM     - d_1_4PI*BXM*BZM
+        Fgdnv(CHF_IX[i;j;k],iPres)  = UM*(E + P)     - d_1_4PI*BXM*HU
+        Fgdnv(CHF_IX[i;j;k],inormB) = zero
+        Fgdnv(CHF_IX[i;j;k],itanB1) = UM*BYM - VM*BXM
+        Fgdnv(CHF_IX[i;j;k],itanB2) = UM*BZM - WM*BXM
+      CHF_ENDDO
+
+      return
+      end

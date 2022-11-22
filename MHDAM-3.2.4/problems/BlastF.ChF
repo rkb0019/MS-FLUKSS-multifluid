@@ -1,0 +1,107 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETBLAST(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auBlastp0],
+     &    CHF_CONST_REAL[auBlastp1],
+     &    CHF_CONST_REAL[auBlastXc],
+     &    CHF_CONST_REAL[auBlastYc],
+     &    CHF_CONST_REAL[auBlastZc],
+     &    CHF_CONST_REAL[auBlastBx],
+     &    CHF_CONST_REAL[auBlastBy],
+     &    CHF_CONST_REAL[auBlastr0] )
+
+#include "BlastCommon.fh"
+#include "EosCommon.fh"        
+
+        real_t r0,p0,umag 
+
+        gamma      = augamma
+        hgamma     = gamma - 1.0d0
+        invhgamma  = one / hgamma
+        
+        Blastp0  = auBlastp0
+        Blastp1  = auBlastp1
+        BlastXc  = auBlastXc
+        BlastYc  = auBlastYc
+        BlastZc  = auBlastZc
+        BlastBx  = auBlastBx
+        BlastBy  = auBlastBy
+        Blastr0  = auBlastr0  
+        
+        r0         = Blastp0
+        p0         = Blastr0
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag  
+        return
+        end
+
+        subroutine BLASTINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iCP],
+     &    CHF_CONST_REAL[dx],     
+     &    CHF_BOX[box])
+
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        integer CHF_DDECL[i;j;k]
+        real_t CHF_DDECL[x;y;z]
+
+#include "BlastCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - BlastXc;
+          y      = (j + half)*dx - BlastYc;
+          z      = (k + half)*dx - BlastZc]
+                    
+          ux     = zero
+          uy     = zero
+          uz     = zero
+          
+          Bx     = BlastBx
+          By     = BlastBy
+          Bz     = zero
+          
+          rho    = 1
+          
+          r      = CHF_DTERM[x*x; + y*y; + z*z]
+          r      = sqrt( r )
+
+          if( r > Blastr0 ) then            
+            p      = Blastp0
+          else 
+            p      = Blastp1
+          endif
+          
+          b      = d_1_4PI*(Bx*Bx + By*By + Bz*Bz)
+          ke     =          ux*ux + uy*uy + uz*uz          
+          e0     = p/hgamma + half*(ke + b)
+          
+          U(CHF_IX[i;j;k],URHO)  = rho
+
+          U(CHF_IX[i;j;k],UMOMX) = rho*ux
+          U(CHF_IX[i;j;k],UMOMY) = rho*uy
+          U(CHF_IX[i;j;k],UMOMZ) = zero
+
+          U(CHF_IX[i;j;k],UENG)  = e0
+
+          U(CHF_IX[i;j;k],UBX )  = Bx
+          U(CHF_IX[i;j;k],UBY )  = By
+          U(CHF_IX[i;j;k],UBZ )  = Bz              
+
+c Dedner
+          if (iCP>0) then  
+            U(CHF_IX[i;j;k],iCP)  = zero          
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+        

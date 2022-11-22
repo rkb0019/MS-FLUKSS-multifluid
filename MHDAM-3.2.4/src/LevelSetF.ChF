@@ -1,0 +1,543 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+
+
+!FF added to fix bug (missing LS flux definition in predictorHancock) 
+!Sep 2022
+
+        subroutine FLUXESHANCOCK_LS(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[Prim],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[ils],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        integer inorm
+        real_t u, surf
+
+#include "EosCommon.fh"
+
+        inorm  = WVELX + idir
+
+        CHF_MULTIDO[box;i;j;k]
+          u      =        Prim(CHF_IX[i;j;k],inorm)
+          surf  =         Prim(CHF_IX[i;j;k],ils)
+
+          F(CHF_IX[i;j;k],ils)   = surf*u
+        CHF_ENDDO
+
+        return
+        end
+
+
+
+
+        subroutine LEVELSETFLUX(
+     &    CHF_FRA[F],     
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[ils],
+     &    CHF_CONST_INT[ivf],
+     &    CHF_BOX[box])
+     
+        integer CHF_DDECL[i; j; k]
+        integer iRho  
+        real_t rhoL,rhoR,uL,uR,Uavg
+        real_t PGasL,PGasR,ut1,vR,vL,wR,wL
+        real_t FLUXRHO, FLUXRUX,  FLUXRUY, FLUXRUZ, FLUXE
+        
+        iRho = ivf - 1
+        
+        CHF_MULTIDO[box;i;j;k]            
+        
+        rhoL  = WLeft (CHF_IX[i;j;k],iRho)
+        PGasL = WLeft (CHF_IX[i;j;k],iRho+WPRES)
+        uL    = WLeft (CHF_IX[i;j;k],ivf+idir)
+        vL    = WLeft (CHF_IX[i;j;k],ivf+mod(idir+1, 3))
+        wL    = WLeft (CHF_IX[i;j;k],ivf+mod(idir+2, 3))
+
+        
+        rhoR  = WRight(CHF_IX[i;j;k],iRho)
+        PGasR = WRight(CHF_IX[i;j;k],iRho+WPRES)        
+        uR    = WRight(CHF_IX[i;j;k],ivf+idir)
+        vR    = WRight(CHF_IX[i;j;k],ivf+mod(idir+1, 3))
+        wR    = WRight(CHF_IX[i;j;k],ivf+mod(idir+2, 3))
+        
+c        call VANLEERRS(        
+c     &   PGasL, RhoL, UL,  VL,  WL,
+c     &   PGasR, RhoR, UR,  VR,  WR,
+c     &   FLUXRHO, FLUXRUX, FLUXRUY, FLUXRUZ, FLUXE)
+        
+        
+        Uavg = sqrt(rhoL)*uL+sqrt(rhoR)*uR
+c        if (F(CHF_IX[i;j;k],iRho)>zero) then
+c        if (FLUXRHO>zero) then
+        if (Uavg>zero) then
+          F(CHF_IX[i;j;k],ils) = WLeft( CHF_IX[i;j;k],ils)
+        else
+          F(CHF_IX[i;j;k],ils) = Wright(CHF_IX[i;j;k],ils)        
+        endif        
+        CHF_ENDDO
+
+c        CHF_MULTIDO[box;i;j;k]   
+c        vL = WLeft ( CHF_IX[i;j;k],ivf+idir)  
+c        vR = WRight( CHF_IX[i;j;k],ivf+idir)  
+c        if (vL*vR>zero) then
+c          if (vL>zero) then
+c            F(CHF_IX[i;j;k],ils) = WLeft (CHF_IX[i;j;k],ils)
+c          else
+c            F(CHF_IX[i;j;k],ils) = Wright(CHF_IX[i;j;k],ils)        
+c          endif        
+c        
+c        if (F(CHF_IX[i;j;k],iRho)>zero) then
+c         F(CHF_IX[i;j;k],ils) = WLeft( CHF_IX[i;j;k],ils)
+c        else
+c          F(CHF_IX[i;j;k],ils) = Wright(CHF_IX[i;j;k],ils)        
+c        endif        
+c        CHF_ENDDO
+
+        
+        
+        return
+        end
+        
+        subroutine MINDT_LSCARTESIAN(
+     &    CHF_FRA1[dt],
+     &    CHF_CONST_FRA[cons],               
+     &    CHF_CONST_INT[ivf], 
+     &    CHF_CONST_REAL[dx],    
+     &    CHF_BOX[box])
+          
+        integer CHF_DDECL[i;j;k]
+        integer iRho        
+        real_t  ru, rv, rw, rho, invrho
+        real_t  dtmin, smallU, maxU       
+                
+        iRho = ivf - 1
+        smallU = 1D-12        
+              
+        CHF_MULTIDO[box;i;j;k]                                                          
+          rho    = cons(CHF_IX[i;j;k],iRho)
+          invrho = one/rho
+
+          ru     = cons(CHF_IX[i;j;k],ivf)
+          rv     = cons(CHF_IX[i;j;k],ivf+1)
+          rw     = cons(CHF_IX[i;j;k],ivf+2)
+          
+          maxU   = max(abs(ru),abs(rv),abs(rw))*invrho + smallU
+                                            
+          dtmin  = dt(CHF_IX[i;j;k])
+
+          dtmin  = min(dx/maxU, dtmin )          
+                              
+          dt(CHF_IX[i;j;k]) = dtmin
+        CHF_ENDDO
+
+        return
+        end
+        
+        subroutine MINDT_LSSPHERICAL(
+     &    CHF_FRA1[dt],
+     &    CHF_CONST_FRA[cons],               
+     &    CHF_CONST_INT[ivf], 
+     &    CHF_CONST_INT[level],    
+     &    CHF_BOX[box],          
+     &    CHF_USE[SphericalData])
+     
+     
+        integer CHF_DDECL[i;j;k]
+        integer iRho
+        real_t  CHF_DDECL[ p;rdphi,dphi;rdtheta,dtheta]        
+        real_t  ru, rv, rw, rho, invrho
+        real_t  dtmin, smallU
+        real_t  ur, uphi, utheta
+                
+        iRho = ivf - 1
+        smallU = 1D-12
+              
+        CHF_MULTIDO[box;i;j;k]   
+          CHF_DTERM[ ;          
+            dphi   = m_dphi  (j/m_ref_factor(level))*m_inv_factor(level);
+            dtheta = m_dtheta(k,level) ]
+          CHF_DSELECT[ ;
+            rdphi   = m_rn(i,level)*dphi;
+            rdphi   = m_rn(i,level)*dphi*m_thetac(k,ISIN,level)
+            rdtheta = m_rn(i,level)*dtheta ]                      
+                              
+          rho    = cons(CHF_IX[i;j;k],iRho)
+          invrho = one/rho
+
+          ru     = cons(CHF_IX[i;j;k],ivf)
+          rv     = cons(CHF_IX[i;j;k],ivf+1)
+          rw     = cons(CHF_IX[i;j;k],ivf+2)
+
+          ur     = ru*invrho
+          uphi   = rv*invrho
+          utheta = rw*invrho                              
+          
+          dtmin  = dt(CHF_IX[i;j;k])
+
+          dtmin  = min(m_dr(i,level)/(abs( ur )+ smallU), dtmin )          
+
+          dtmin  = min(rdphi/(abs( uphi ) + smallU), dtmin )
+          
+#if CH_SPACEDIM == 3                              
+          dtmin  = min(rdtheta/(abs( utheta ) + smallU), dtmin )
+#endif          
+                    
+          dt(CHF_IX[i;j;k]) = dtmin
+        CHF_ENDDO
+
+        return
+        end
+
+
+                
+               
+        subroutine UPDATELEVELSET(
+     &    CHF_FRA[U],     
+     &    CHF_CONST_FRA[W],     
+     &    CHF_CONST_FRA[F],     
+     &    CHF_CONST_FRA1[dx],     
+     &    CHF_CONST_FRA1[g],          
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[idir],     
+     &    CHF_CONST_INT[ils],
+     &    CHF_CONST_INT[ivf],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer CHF_DDECL[ioff;joff;koff]        
+        real_t vel,du,gdir
+                
+        
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+                
+        CHF_MULTIDO[box;i;j;k]                
+          du   = dx(CHF_IX[i*ioff;j*joff;k*koff])
+          gdir = g(CHF_IX[i;j;k])                        
+          vel  = W(CHF_IX[i;j;k],ivf+idir)
+          
+          U(CHF_IX[i;j;k],ils) = U(CHF_IX[i;j;k],ils)
+     &    - dt/(du*gdir)*vel*(F(CHF_IX[i+ioff;j+joff;k+koff],ils)
+     &                      - F(CHF_IX[i     ;j     ;k     ],ils))          
+                   
+        CHF_ENDDO
+        
+        return
+        end
+        
+        subroutine UPDATELEVELSET2(
+     &    CHF_FRA[U],     
+     &    CHF_CONST_FRA[W],     
+     &    CHF_CONST_FRA[F],     
+     &    CHF_CONST_FRA1[dx],     
+     &    CHF_CONST_FRA1[g],          
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[idir],     
+     &    CHF_CONST_INT[ils],
+     &    CHF_CONST_INT[ivf],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k]
+        integer CHF_DDECL[ioff;joff;koff]        
+        real_t vel,du,gdir
+                
+        
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+                
+        CHF_MULTIDO[box;i;j;k]                
+          du   = dx(CHF_IX[i*ioff;j*joff;k*koff])
+          gdir = g(CHF_IX[i;j;k])                        
+          vel  = W(CHF_IX[i;j;k],ivf+idir)
+          
+          if (vel>0) then
+            du = half*(dx(CHF_IX[i*ioff;j*joff;k*koff])
+     &               + dx(CHF_IX[(i-1)*ioff;(j-1)*joff;(k-1)*koff]))         
+                      
+            U(CHF_IX[i;j;k],ils) = U(CHF_IX[i;j;k],ils)
+     &    - dt/(du*gdir)*vel*(W(CHF_IX[i     ;j     ;k     ],ils)
+     &                      - W(CHF_IX[i-ioff;j-joff;k-koff],ils))          
+
+          else 
+            du = half*(dx(CHF_IX[i*ioff;j*joff;k*koff])
+     &              +  dx(CHF_IX[(i+1)*ioff;(j+1)*joff;(k+1)*koff]))          
+                       
+            U(CHF_IX[i;j;k],ils) = U(CHF_IX[i;j;k],ils)
+     &    - dt/(du*gdir)*vel*(W(CHF_IX[i+ioff;j+joff;k+koff],ils)
+     &                      - W(CHF_IX[i     ;j     ;k     ],ils))          
+          
+          endif
+                   
+        CHF_ENDDO
+        
+        return
+        end
+        
+        
+        subroutine UPDATELEVELSET3(
+     &    CHF_FRA[U],     
+     &    CHF_CONST_FRA[W],     
+     &    CHF_CONST_FRA[F],     
+     &    CHF_CONST_FRA[WMinus],     
+     &    CHF_CONST_FRA[WPlus],     
+     &    CHF_CONST_FRA1[dx],     
+     &    CHF_CONST_FRA1[g],          
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[idir],     
+     &    CHF_CONST_INT[ils],
+     &    CHF_CONST_INT[ivf],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k]
+        integer CHF_DDECL[ioff;joff;koff]        
+        real_t vel,du,gdir
+        real_t vLw,vRw,vLe,vRe,FL
+                
+        
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+                
+        CHF_MULTIDO[box;i;j;k]                
+          du   = dx(CHF_IX[i*ioff;j*joff;k*koff])
+          gdir = g(CHF_IX[i;j;k])                        
+          vel  = W(CHF_IX[i;j;k],ivf+idir)
+          
+          vLw = WPlus (CHF_IX[i-ioff;j-joff;k-koff],ivf+idir)
+          vRw = WMinus(CHF_IX[i     ;j     ;k     ],ivf+idir)
+          
+          vLe = WPlus (CHF_IX[i    ;j     ;k      ],ivf+idir)
+          vRe = WMinus(CHF_IX[i+ioff;j+joff;k+koff],ivf+idir)
+          
+          FL = F(CHF_IX[i     ;j     ;k     ],ils)
+          
+c          U(CHF_IX[i;j;k],ils) = U(CHF_IX[i;j;k],ils)
+c     &    - dt/(du*gdir)*vel*(F(CHF_IX[i+ioff;j+joff;k+koff],ils)
+c     &                      - F(CHF_IX[i     ;j     ;k     ],ils))          
+
+          if (vel>0) then
+            du = half*(dx(CHF_IX[i*ioff;j*joff;k*koff])
+     &               + dx(CHF_IX[(i-1)*ioff;(j-1)*joff;(k-1)*koff]))         
+                      
+            U(CHF_IX[i;j;k],ils) = U(CHF_IX[i;j;k],ils)
+     &    - dt/(du*gdir)*vel*(W(CHF_IX[i     ;j     ;k     ],ils)
+     &                      - W(CHF_IX[i-ioff;j-joff;k-koff],ils))          
+
+          else 
+            du = half*(dx(CHF_IX[i*ioff;j*joff;k*koff])
+     &              +  dx(CHF_IX[(i+1)*ioff;(j+1)*joff;(k+1)*koff]))          
+                       
+            U(CHF_IX[i;j;k],ils) = U(CHF_IX[i;j;k],ils)
+     &    - dt/(du*gdir)*vel*(W(CHF_IX[i+ioff;j+joff;k+koff],ils)
+     &                      - W(CHF_IX[i     ;j     ;k     ],ils))          
+          
+          endif
+                   
+        CHF_ENDDO
+        
+        return
+        end
+        
+        subroutine UPDATELEVELSETHANCOCK(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FRA[FMinus],
+     &    CHF_CONST_FRA[FPlus],
+     &    CHF_CONST_FRA1[dx],     
+     &    CHF_CONST_FRA1[g],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[ils],
+     &    CHF_CONST_INT[ivf],
+     &    CHF_BOX[box])
+     
+        integer CHF_DDECL[i; j; k]
+        integer CHF_DDECL[ioff;joff;koff]        
+        real_t  vel,du,gdir        
+        
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+        
+        CHF_MULTIDO[box;i;j;k]
+          du   = dx(CHF_IX[i*ioff;j*joff;k*koff])
+          gdir = g(CHF_IX[i;j;k])        
+          vel  = W(CHF_IX[i;j;k],ivf+idir)
+          
+          U(CHF_IX[i;j;k],ils) = U(CHF_IX[i;j;k],ils)
+     &      - dt/(du*gdir)*vel*(FPlus (CHF_IX[i;j;k],ils)
+     &                        - FMinus(CHF_IX[i;j;k],ils))
+        CHF_ENDDO
+                
+        return
+        end
+
+!FF added for testing. The result should be identical to the above sub     
+        subroutine UPDATELEVELSETHANCOCK2(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FRA[FMinus],
+     &    CHF_CONST_FRA[FPlus],
+     &    CHF_CONST_INT[ils],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_FRA1[invvol],
+     &    CHF_CONST_FRA1[areas],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        integer CHF_DDECL[ioff;joff;koff]        
+        
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+        
+    
+
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],ils) = U(CHF_IX[i;j;k],ils)
+     &      - dt*invvol(CHF_IX[i;j;k]) *
+     &        (  areas(CHF_IX[i+ioff;j+joff;k+koff])*FPlus(CHF_IX[i;j;k],ils)
+     &         - areas(CHF_IX[i     ;j     ;k])     *FMinus(CHF_IX[i;j;k],ils))
+        CHF_ENDDO
+
+
+           
+        return
+        end
+        
+
+
+        subroutine POSTPROCESSING_LS(
+     &    CHF_FRA[U],       
+     &    CHF_CONST_FRA[Uold],        
+     &    CHF_CONST_INT[ils],
+     &    CHF_CONST_INT[nls],
+     &    CHF_BOX[box])
+     
+        integer CHF_DDECL[i; j; k]
+        integer iv, ii
+        real_t Umax,Umin,LS,abmax,abmin
+        
+        do iv = ils,ils+nls-1
+        CHF_MULTIDO[box;i;j;k]            
+          Umax = Uold(CHF_IX[i;j;k],iv)
+          Umin = Uold(CHF_IX[i;j;k],iv)         
+          
+          do ii = -1,1,2          
+            Umax = max(Umax,Uold(CHF_IX[i+ii;j;k],iv))
+            Umin = min(Umin,Uold(CHF_IX[i+ii;j;k],iv))
+            Umax = max(Umax,Uold(CHF_IX[i;j+ii;k],iv))
+            Umin = min(Umin,Uold(CHF_IX[i;j+ii;k],iv))
+#if CH_SPACEDIM == 3                              
+            Umax = max(Umax,Uold(CHF_IX[i;j;k+ii],iv))
+            Umin = min(Umin,Uold(CHF_IX[i;j;k+ii],iv))                   
+#endif                        
+          enddo
+          abmax  = abs(Umax)
+          abmin  = abs(Umin)
+          Umax   = max(Umax,abmin)
+          Umin   = min(Umin,-abmax)
+          
+          LS = U(CHF_IX[i;j;k],iv)
+          U(CHF_IX[i;j;k],iv) = min( LS,Umax)
+          U(CHF_IX[i;j;k],iv) = max( LS,Umin)
+                          
+        CHF_ENDDO
+        enddo        
+        
+        return
+        end
+        
+        subroutine LEVELSETBCOR(
+     &          CHF_FRA[W],                     
+     &          CHF_CONST_INT[ils],                
+     &          CHF_BOX[box])
+     
+     
+        integer CHF_DDECL[i; j; k]
+        
+        real_t signB
+        
+        CHF_MULTIDO[box;i;j;k]                    
+          signB  = sign( one, W(CHF_IX[i;j;k],ils) )          
+          signB  = sign( one, W(CHF_IX[i;j;k],ils) )          
+                        
+          W(CHF_IX[i;j;k],WBX) = signB*W(CHF_IX[i;j;k],WBX)
+          W(CHF_IX[i;j;k],WBY) = signB*W(CHF_IX[i;j;k],WBY)
+          W(CHF_IX[i;j;k],WBZ) = signB*W(CHF_IX[i;j;k],WBZ)                    
+        CHF_ENDDO        
+     
+     
+        return
+        end
+        
+        subroutine LEVELSETBCOR2(
+     &          CHF_FRA[W],                    
+     &          CHF_CONST_FRA1[HCS],                           
+     &          CHF_BOX[box])
+     
+     
+        integer CHF_DDECL[i; j; k]
+        
+        real_t signB
+        
+        CHF_MULTIDO[box;i;j;k]                    
+          signB  = sign( one, HCS(CHF_IX[i;j;k]) )          
+                        
+          W(CHF_IX[i;j;k],WBX) = signB*W(CHF_IX[i;j;k],WBX)
+          W(CHF_IX[i;j;k],WBY) = signB*W(CHF_IX[i;j;k],WBY)
+          W(CHF_IX[i;j;k],WBZ) = signB*W(CHF_IX[i;j;k],WBZ)                    
+        CHF_ENDDO        
+     
+     
+        return
+        end
+        
+        subroutine LSREINITIALIZE(
+     &    CHF_FRA[U],               
+     &    CHF_CONST_INT[ils],     
+     &    CHF_BOX[box])
+     
+        integer CHF_DDECL[i; j; k]                        
+        integer CHF_DDECL[ioff;joff;koff]
+        integer idir
+        real_t signL, signSum
+        
+        CHF_MULTIDO[box;i;j;k]                    
+          signL  = sign( one, U(CHF_IX[i;j;k],ils) )          
+          
+          signSum = zero
+          do idir = 0, CH_SPACEDIM-1            
+          CHF_DTERM[
+            ioff = CHF_ID(0,idir);
+            joff = CHF_ID(1,idir);
+            koff = CHF_ID(2,idir)]
+
+            signSum = signSum + sign(one, U(CHF_IX[i+ioff;j+joff;k+koff],ils))
+            signSum = signSum + sign(one, U(CHF_IX[i-ioff;j-joff;k-koff],ils))
+          enddo
+          
+          if (signL*signSum == 2*CH_SPACEDIM) then          
+            U(CHF_IX[i;j;k],ils) = signL          
+          endif
+          
+        CHF_ENDDO              
+        
+        return
+        end

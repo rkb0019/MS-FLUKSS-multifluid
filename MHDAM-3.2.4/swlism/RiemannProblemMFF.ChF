@@ -1,0 +1,490 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETRIEMANNMF(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auNumdenL],
+     &    CHF_CONST_REAL[auTemperatureL],
+     &    CHF_CONST_REAL[auVelxL],
+     &    CHF_CONST_REAL[auBxL],
+     &    CHF_CONST_REAL[auNetnumL],
+     &    CHF_CONST_REAL[auXs],
+     &    CHF_CONST_INT [auNInitDistr] )
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        real_t r0, p0, umag, p, pref
+        real_t pgamma, M2, numdenL
+        
+        NInitDistr = auNInitDistr
+
+        gamma      = augamma
+        hgamma     = gamma - one
+        invhgamma  = one / hgamma
+
+        numdenL    = auNumdenL
+        temperatureL = auTemperatureL
+        velxL      = auVelxL
+        BxL        = auBxL
+
+        startX     = auXs
+
+        densityL   = numdenL*eos_mp
+        pref       = densityL*velxL*velxL
+        p          = two*eos_k*numdenL*temperatureL
+
+        densityL   = one
+        pressureL  = p/pref
+        machL      = one/sqrt( gamma*pressureL )
+        BxL        = BxL/sqrt( pref )
+
+        netDenL    = auNetnumL/numdenL
+        p          = eos_k*auNetnumL*temperatureL
+        netpresL   = p/pref
+        netTemperatureL = temperatureL
+
+        pgamma     = gamma + one
+        M2         = machL*machL
+
+        pressureR  = (two - hgamma*pressureL)/pgamma
+        densityR   = pgamma*M2/(hgamma*M2 + two)
+        velxR      = one/densityR
+        BxR        = BxL
+
+        velxR      = one
+        velyL      = zero
+        velyR      = zero
+        velzL      = zero
+        velzR      = zero
+        ByL        = zero
+        ByR        = zero
+        BzL        = zero
+        BzR        = zero
+        
+        netVelx    = velxL
+        netVely    = velyL
+        netVelz    = velzL
+
+        r0         = min( densityL,  densityR  )
+        p0         = min( pressureL, pressureR )
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+
+        return
+        end
+        
+        
+        
+        subroutine SETRIEMANNLR(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auDensityL],
+     &    CHF_CONST_REAL[auDensityR],
+     &    CHF_CONST_REAL[auTemperatureL],
+     &    CHF_CONST_REAL[auTemperatureR],
+     &    CHF_CONST_REAL[auVelxL],
+     &    CHF_CONST_REAL[auVelxR],
+     &    CHF_CONST_REAL[auVelyL],
+     &    CHF_CONST_REAL[auVelyR],
+     &    CHF_CONST_REAL[auVelzL],
+     &    CHF_CONST_REAL[auVelzR],
+     &    CHF_CONST_REAL[auBxL],
+     &    CHF_CONST_REAL[auBxR],
+     &    CHF_CONST_REAL[auByL],
+     &    CHF_CONST_REAL[auByR],
+     &    CHF_CONST_REAL[auBzL],
+     &    CHF_CONST_REAL[auBzR],
+     &    CHF_CONST_REAL[auNetnumL],
+     &    CHF_CONST_REAL[auNetTempL],
+     &    CHF_CONST_REAL[aunetVelx],
+     &    CHF_CONST_REAL[aunetVely],
+     &    CHF_CONST_REAL[aunetVelz],
+     &    CHF_CONST_REAL[auXs],
+     &    CHF_CONST_INT [auNInitDistr],
+     &    CHF_CONST_REAL[auTMLIM])
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        real_t r0, p0, umag, p, pref
+        
+        gamma      = augamma
+        hgamma     = gamma - one
+        invhgamma  = one / hgamma
+        
+        TMLIM      = auTMLIM
+        
+        ref_N      = auDensityL 
+        ref_V      = sqrt(aunetVelx**2+aunetVely**2+aunetVelz**2)        
+                                                
+        temperatureL = auTemperatureL        
+        temperatureR = auTemperatureR
+                
+        pref       = auDensityL*eos_mp*ref_V*ref_V     
+
+        densityL   = auDensityL/auDensityL
+        pressureL  = two*eos_k*auDensityL*temperatureL/pref        
+        velxL      = auVelxL/ref_V
+        velyL      = auVelyL/ref_V
+        velzL      = auVelzL/ref_V       
+        BxL        = auBxL/sqrt( pref )
+        ByL        = auByL/sqrt( pref )
+        BzL        = auBzL/sqrt( pref )
+                        
+        machL      = one/sqrt( gamma*pressureL )
+                
+        densityR   = auDensityR/auDensityL
+        pressureR  = two*eos_k*auDensityR*temperatureR/pref        
+        velxR      = auVelxR/ref_V
+        velyR      = auVelyR/ref_V
+        velzR      = auVelzR/ref_V       
+        BxR        = auBxR/sqrt( pref )
+        ByR        = auByR/sqrt( pref )
+        BzR        = auBzR/sqrt( pref )
+        
+        ! temporarily
+        pressureR  = pressureL
+        
+        NInitDistr = auNInitDistr
+        netDenL    = auNetnumL/auDensityL
+        p          = eos_k*auNetnumL*auNetTempL
+        netpresL   = p/pref        
+        netVelx    = aunetVelx/ref_V
+        netVely    = aunetVely/ref_V
+        netVelz    = aunetVelz/ref_V
+        
+        startX     = auXs
+
+        
+        r0         = min( densityL,  densityR  )
+        p0         = min( pressureL, pressureR )
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+        
+        return
+        end
+
+        
+
+        subroutine RIEMANNINITMF(
+     &    CHF_FRA[U],     
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        real_t  CHF_DDECL[x;y;z]
+        real_t  ke, b, eL, eR, eN
+        integer shift
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+        
+
+        b    = d_1_4PI*(BxL*BxL + ByL*ByL + BzL*BzL  )
+        ke   =          velxL*velxL + velyL*velyL + velzL*velzL
+
+        eL   = pressureL/hgamma + half*(densityL*ke + b)
+
+        b    = d_1_4PI*(BxR  *BxR   + ByR  *ByR   + BzR  *BzR  )
+        ke   =          velxR*velxR + velyR*velyR + velzR*velzR
+
+        eR   = pressureR/hgamma + half*(densityR*ke + b)
+        
+        eN   = netpresL/hgamma + half*netDenL*(netVelx**2 + netVely**2 + netVelz**2)
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x = (i + half)*dx;
+          y = (j + half)*dx;
+          z = (k + half)*dx]
+
+          if( x < startX ) then
+            U(CHF_IX[i;j;k],URHO)  = densityL
+
+            U(CHF_IX[i;j;k],UMOMX) = densityL*velxL
+            U(CHF_IX[i;j;k],UMOMY) = densityL*velyL
+            U(CHF_IX[i;j;k],UMOMZ) = densityL*velzL
+
+            U(CHF_IX[i;j;k],UENG)  = eL
+
+            U(CHF_IX[i;j;k],UBX )  = BxL
+            U(CHF_IX[i;j;k],UBY )  = ByL
+            U(CHF_IX[i;j;k],UBZ )  = BzL
+            
+            if ((NInitDistr == 1).and.(fluids>1)) then
+              U(CHF_IX[i;j;k],iRhoN+URHO)   = netDenL
+              U(CHF_IX[i;j;k],iRhoN+UMOMX)  = netDenL*netVelx
+              U(CHF_IX[i;j;k],iRhoN+UMOMY)  = netDenL*netVely
+              U(CHF_IX[i;j;k],iRhoN+UMOMZ)  = netDenL*netVelz
+              U(CHF_IX[i;j;k],iRhoN+UENG)   = eN
+            endif
+            
+          else
+            U(CHF_IX[i;j;k],URHO)  = densityR
+
+            U(CHF_IX[i;j;k],UMOMX) = densityR*velxR
+            U(CHF_IX[i;j;k],UMOMY) = densityR*velyR
+            U(CHF_IX[i;j;k],UMOMZ) = densityR*velzR
+
+            U(CHF_IX[i;j;k],UENG)  = eR
+
+            U(CHF_IX[i;j;k],UBX )  = BxR
+            U(CHF_IX[i;j;k],UBY )  = ByR
+            U(CHF_IX[i;j;k],UBZ )  = BzR
+            
+            if ((NInitDistr == 1).and.(fluids>1)) then
+              U(CHF_IX[i;j;k],iRhoN+URHO)   = netFluid2Dens
+              U(CHF_IX[i;j;k],iRhoN+UMOMX)  = zero
+              U(CHF_IX[i;j;k],iRhoN+UMOMY)  = zero
+              U(CHF_IX[i;j;k],iRhoN+UMOMZ)  = zero
+              U(CHF_IX[i;j;k],iRhoN+UENG)   = netFluid2Dens/hgamma 
+            endif
+          endif
+
+          if (NInitDistr == 0) then
+            U(CHF_IX[i;j;k],iRhoN+URHO)   = netDenL
+            U(CHF_IX[i;j;k],iRhoN+UMOMX)  = netDenL*netVelx
+            U(CHF_IX[i;j;k],iRhoN+UMOMY)  = netDenL*netVely
+            U(CHF_IX[i;j;k],iRhoN+UMOMZ)  = netDenL*netVelz
+            U(CHF_IX[i;j;k],iRhoN+UENG)   = eN
+          else if (NInitDistr == 2) then
+            U(CHF_IX[i;j;k],iRhoN+URHO)   = netFluid2Dens
+            U(CHF_IX[i;j;k],iRhoN+UMOMX)  = zero
+            U(CHF_IX[i;j;k],iRhoN+UMOMY)  = zero
+            U(CHF_IX[i;j;k],iRhoN+UMOMZ)  = zero
+            U(CHF_IX[i;j;k],iRhoN+UENG)   = netFluid2Dens/hgamma 
+          endif
+          
+          if (fluids>2) then
+            shift = iRhoN+UNUM_E
+            U(CHF_IX[i;j;k],URHO +shift)  = netFluid3Dens
+            U(CHF_IX[i;j;k],UMOMX+shift)  = zero
+            U(CHF_IX[i;j;k],UMOMY+shift)  = zero
+            U(CHF_IX[i;j;k],UMOMZ+shift)  = zero
+            U(CHF_IX[i;j;k],UENG +shift)  = netFluid3Pres/hgamma
+          endif
+          
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine FLUXBCMF(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[W],     
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],
+     &    CHF_BOX[box])
+
+        real_t P, b, bu, ke, e, density, velx, vely, velz
+        real_t pressure, vxL, vyL, vzL, Bx, By, Bz
+        integer CHF_DDECL[i;j;k]
+        integer shift
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        vxL  = velxL
+        vyL  = velyL
+        vzL  = velzL
+
+        CHF_MULTIDO[box;i;j;k]
+          if( lohisign == 1 ) then
+ !                                                       outflow (right boundary)
+            density  = W(CHF_IX[i;j;k],WRHO )
+
+            velx     = W(CHF_IX[i;j;k],WVELX)
+            vely     = W(CHF_IX[i;j;k],WVELY)
+            velz     = W(CHF_IX[i;j;k],WVELZ)
+
+            pressure = W(CHF_IX[i;j;k],WPRES)
+
+            Bx       = W(CHF_IX[i;j;k],WBX  )
+            By       = W(CHF_IX[i;j;k],WBY  )
+            Bz       = W(CHF_IX[i;j;k],WBZ  )
+
+            b        = d_1_8PI*(Bx  *Bx   + By  *By   + Bz  *Bz  )
+            ke       = density*(velx*velx + vely*vely + velz*velz)
+            bu       =          Bx  *velx + By  *vely + Bz  *velz
+
+            P        = pressure + b
+            e        = pressure/hgamma + half*ke + b 
+
+            F(CHF_IX[i;j;k],URHO ) = density*velx
+
+            F(CHF_IX[i;j;k],UMOMX) = density*velx*velx - d_1_4PI*Bx*Bx + P
+            F(CHF_IX[i;j;k],UMOMY) = density*velx*vely - d_1_4PI*Bx*By
+            F(CHF_IX[i;j;k],UMOMZ) = density*velx*velz - d_1_4PI*Bx*Bz
+
+            F(CHF_IX[i;j;k],UENG ) = velx*(e + P) - d_1_4PI*Bx*bu
+
+            F(CHF_IX[i;j;k],UBX)   = zero
+            F(CHF_IX[i;j;k],UBY)   = velx*By - vely*Bx
+            F(CHF_IX[i;j;k],UBZ)   = velx*Bz - velz*Bx
+
+            if (fluids>1) then
+!                                                                     Neutrals 1
+              density  = W(CHF_IX[i;j;k],iRhoN+WRHO )
+              velx     = W(CHF_IX[i;j;k],iRhoN+WVELX)
+              vely     = W(CHF_IX[i;j;k],iRhoN+WVELY)
+              velz     = W(CHF_IX[i;j;k],iRhoN+WVELZ)
+              pressure = W(CHF_IX[i;j;k],iRhoN+WPRES)
+              ke       = density*(velx*velx + vely*vely + velz*velz)
+              e        = pressure/hgamma + half*ke
+              F(CHF_IX[i;j;k],iRhoN+URHO )  = density*velx
+              F(CHF_IX[i;j;k],iRhoN+UMOMX)  = density*velx*velx + pressure
+              F(CHF_IX[i;j;k],iRhoN+UMOMY)  = density*velx*vely
+              F(CHF_IX[i;j;k],iRhoN+UMOMZ)  = density*velx*velz
+              F(CHF_IX[i;j;k],iRhoN+UENG )  = velx*(e + pressure)
+            endif
+            
+            if (fluids>2) then            
+!                                                                     Neutrals 2
+              shift    = iRhoN+UNUM_E
+              
+              density  = W(CHF_IX[i;j;k],WRHO+shift )
+              velx     = W(CHF_IX[i;j;k],WVELX+shift)
+              vely     = W(CHF_IX[i;j;k],WVELY+shift)
+              velz     = W(CHF_IX[i;j;k],WVELZ+shift)
+              if( velx < zero ) velx   = zero
+              pressure = W(CHF_IX[i;j;k],WPRES+shift)
+              ke       = density*(velx*velx + vely*vely + velz*velz)
+              e        = pressure/hgamma + half*ke
+              F(CHF_IX[i;j;k],URHO+shift )  = density*velx
+              F(CHF_IX[i;j;k],UMOMX+shift)  = density*velx*velx + pressure
+              F(CHF_IX[i;j;k],UMOMY+shift)  = density*velx*vely
+              F(CHF_IX[i;j;k],UMOMZ+shift)  = density*velx*velz
+              F(CHF_IX[i;j;k],UENG+shift )  = velx*(e + pressure)
+            endif
+            
+          else
+ !                                                       inflow (left boundary)
+            b    = d_1_8PI *(BxL*BxL + ByL*ByL + BzL*BzL  )
+            ke   = densityL*(vxL*vxL + vyL*vyL + vzL*vzL)
+            bu   =           BxL*vxL + ByL*vyL + BzL*vzL
+
+            P    = pressureL + b
+            e    = pressureL/hgamma + half*ke + b 
+
+            F(CHF_IX[i;j;k],URHO ) = densityL*vxL
+
+            F(CHF_IX[i;j;k],UMOMX) = densityL*vxL*vxL - d_1_4PI*BxL*BxL + p
+            F(CHF_IX[i;j;k],UMOMY) = densityL*vxL*vyL - d_1_4PI*BxL*ByL
+            F(CHF_IX[i;j;k],UMOMZ) = densityL*vxL*vzL - d_1_4PI*BxL*BzL
+
+            F(CHF_IX[i;j;k],UENG ) = vxL*(e + P) - d_1_4PI*BxL*bu
+
+            F(CHF_IX[i;j;k],UBX)   = zero
+            F(CHF_IX[i;j;k],UBY)   = vxL*ByL - vyL*BxL
+            F(CHF_IX[i;j;k],UBZ)   = vxL*BzL - vzL*BxL
+            
+            if (fluids>1) then            
+!                                                                     Neutrals 1
+              density  = netDenL
+              velx     = netVelx
+              vely     = netVely
+              velz     = netVelz
+              pressure = netpresL
+              ke       = density*(velx*velx + vely*vely + velz*velz)
+              e        = pressure/hgamma + half*ke
+              F(CHF_IX[i;j;k],iRhoN+URHO )  = density*velx
+              F(CHF_IX[i;j;k],iRhoN+UMOMX)  = density*velx*velx + pressure
+              F(CHF_IX[i;j;k],iRhoN+UMOMY)  = density*velx*vely
+              F(CHF_IX[i;j;k],iRhoN+UMOMZ)  = density*velx*velz
+              F(CHF_IX[i;j;k],iRhoN+UENG )  = velx*(e + pressure)
+            endif
+            
+            if (fluids>2) then                                    
+!                                                                     Neutrals 2
+              shift    = iRhoN+UNUM_E
+              velx     = W(CHF_IX[i;j;k],WVELX+shift)
+              vely     = W(CHF_IX[i;j;k],WVELY+shift)
+              velz     = W(CHF_IX[i;j;k],WVELZ+shift)
+              if( velx > zero ) velx   = zero
+              density  = W(CHF_IX[i;j;k],WRHO+shift )
+              pressure = W(CHF_IX[i;j;k],WPRES+shift)
+              ke       = density*(velx*velx + vely*vely + velz*velz)
+              e        = pressure/hgamma + half*ke
+              F(CHF_IX[i;j;k],URHO+shift )  = density*velx
+              F(CHF_IX[i;j;k],UMOMX+shift)  = density*velx*velx + pressure
+              F(CHF_IX[i;j;k],UMOMY+shift)  = density*velx*vely
+              F(CHF_IX[i;j;k],UMOMZ+shift)  = density*velx*velz
+              F(CHF_IX[i;j;k],UENG+shift )  = velx*(e + pressure)
+            endif
+            
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine DEFINE_REGIONS_3F(
+     &    CHF_CONST_FRA[W],
+     &    CHF_FIA1[REG],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho, ux, uy, uz, p, U2, vxL, TEMP,coeff
+        real_t localUlim,localUlim2
+        
+        
+#include "EosCommon.fh"
+#include "RiemannCommon.fh"
+
+        if (abs(velxL - velxR) > 0.001) then
+          vxL  = velxL
+
+          localUlim = vxL - 0.3D0*(vxL - velxR)
+          localUlim2 = localUlim * localUlim
+
+          CHF_MULTIDO[box;i;j;k]
+            rho    = W(CHF_IX[i;j;k],WRHO)
+
+            ux     = W(CHF_IX[i;j;k],WVELX)
+            uy     = W(CHF_IX[i;j;k],WVELY)
+            uz     = W(CHF_IX[i;j;k],WVELZ)
+
+            p      = W(CHF_IX[i;j;k],WPRES)
+
+            U2     = ux*ux + uy*uy + uz*uz
+
+            if( U2 .ge. localUlim2 ) then
+              REG(CHF_IX[i;j;k]) = 1
+            else
+              REG(CHF_IX[i;j;k]) = 2            
+            endif
+          CHF_ENDDO
+        else
+        coeff  = gamma*machL*machL*temperatureL
+
+        CHF_MULTIDO[box;i;j;k]        
+          rho    = W(CHF_IX[i;j;k],WRHO)          
+          p      = W(CHF_IX[i;j;k],WPRES)                    
+          
+          TEMP   = coeff*p/rho
+                    
+          if( TEMP .ge. TMLIM ) then
+            REG(CHF_IX[i;j;k]) = 2
+          else
+            REG(CHF_IX[i;j;k]) = 1
+          endif          
+        CHF_ENDDO
+        endif
+        
+
+        return
+        end

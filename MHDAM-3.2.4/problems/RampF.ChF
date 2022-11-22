@@ -1,0 +1,430 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETRAMP(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[aualpha],
+     &    CHF_CONST_REAL[aums],
+     &    CHF_CONST_REAL[auxcorner])
+
+#include "RampCommon.fh"
+#include "EosCommon.fh"
+
+        real_t ke, r0, p0, p, uu, vv, ww, umag, r
+        real_t sinalpha, cosalpha, tanalpha
+
+        gamma      = augamma
+        hgamma     = gamma - 1.0d0
+        invhgamma  = one / hgamma
+
+        ramp_alpha = aualpha
+
+! alpha is input in degrees; conversion is done here to radians.
+        ramp_alpha = ramp_alpha*d_PI/(nine*twenty)
+
+        ramp_M     = aums
+        ramp_XCorner = auxcorner
+
+        cosalpha   = cos( ramp_alpha )
+        sinalpha   = sin( ramp_alpha )
+        tanalpha   = tan( ramp_alpha )
+
+        p0     = one
+        r0     = gamma
+
+        ww     = ramp_M*r0
+
+        p      = ((ramp_M**2 - one)*(two*gamma)/(gamma + one) + one)*p0
+        r      = one/(one/r0 - (p - p0)/ww**2)
+
+        umag   = (p - p0)/ww
+
+        uu     = umag*cosalpha
+        vv     =-umag*sinalpha
+        ww     = zero
+
+        ke     = half*(uu*uu + vv*vv + ww*ww)
+        smallr = small*r0
+        smallu = small*umag
+        smallp = small*r0*half*umag*umag
+
+        return
+        end
+
+        subroutine RAMPINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t  ke, r0, p0, p, uu, vv, ww, umag, r
+        real_t  sinalpha, cosalpha, tanalpha
+        integer CHF_DDECL[i;j;k]
+        real_t  CHF_DDECL[x;y;z]
+        real_t  xofy
+
+#include "RampCommon.fh"
+#include "EosCommon.fh"
+
+        cosalpha = cos( ramp_alpha )
+        sinalpha = sin( ramp_alpha )
+        tanalpha = tan( ramp_alpha )
+
+        p0     = one
+        r0     = gamma
+
+        ww     = ramp_M*r0
+
+        p      = ((ramp_M**2 - one)*(two*gamma)/(gamma + one) + one)*p0
+        r      = one/(one/r0 - (p - p0)/ww**2)
+
+        umag   = (p - p0)/ww
+
+        uu     = umag*cosalpha
+        vv     =-umag*sinalpha
+        ww     = zero
+
+        ke     = half*(uu*uu + vv*vv + ww*ww)
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x = (i + half)*dx;
+          y = (j + half)*dx;
+          z = (k + half)*dx]
+
+          xofy   = ramp_XCorner + y*tanalpha
+
+          if( x .ge. xofy ) then
+            U(CHF_IX[i;j;k],URHO ) = r0
+
+            U(CHF_IX[i;j;k],UMOMX) = zero
+            U(CHF_IX[i;j;k],UMOMY) = zero
+            U(CHF_IX[i;j;k],UMOMZ) = zero
+
+            U(CHF_IX[i;j;k],UENG ) = p0/hgamma
+          else
+            U(CHF_IX[i;j;k],URHO ) = r
+
+            U(CHF_IX[i;j;k],UMOMX) = uu*r
+            U(CHF_IX[i;j;k],UMOMY) = vv*r
+            U(CHF_IX[i;j;k],UMOMZ) = zero
+
+            U(CHF_IX[i;j;k],UENG ) = p/hgamma + r*ke
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine RAMPBC(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[time],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        real_t  CHF_DDECL[x;y;z]
+        real_t  ug, vg, wg
+        real_t  ke, r0, p0, umag, p, r
+        real_t  xofy, rg, pg, ws, uu, vv, ww
+        real_t  cosalpha, sinalpha, tanalpha
+
+#include "RampCommon.fh"
+#include "EosCommon.fh"
+
+        cosalpha = cos( ramp_alpha )
+        sinalpha = sin( ramp_alpha )
+        tanalpha = tan( ramp_alpha )
+
+        r0       = gamma
+        p0       = one
+        ws       = ramp_M*r0
+        p        = ((ramp_M**2-one)*two*gamma/(gamma + one) + one)*p0
+        umag     = (p - p0)/ws
+        r        = one/(one/r0 - (p - p0)/ws**2)
+
+        uu       = umag*cosalpha
+        vv       =-umag*sinalpha
+        ww       = zero
+
+        ke       = half*(uu*uu + vv*vv + ww*ww)
+
+        if( dir .eq. 1 ) then
+          CHF_MULTIDO[box;i;j;k]
+            CHF_DTERM[
+            x = (i + half)*dx;
+            y =  j        *dx;
+            z = (k + half)*dx]
+
+            if( lohisign == 1 ) then
+              xofy   = ramp_XCorner + y*tanalpha + ramp_M*time/cosalpha
+
+              if( x .ge. xofy ) then
+                F(CHF_IX[i;j;k],URHO ) = zero
+
+                F(CHF_IX[i;j;k],UMOMX) = zero
+                F(CHF_IX[i;j;k],UMOMY) = p0
+                F(CHF_IX[i;j;k],UMOMZ) = zero
+
+                F(CHF_IX[i;j;k],UENG ) = zero
+              else
+                F(CHF_IX[i;j;k],URHO ) = vv*r
+
+                F(CHF_IX[i;j;k],UMOMX) = uu*vv*r
+                F(CHF_IX[i;j;k],UMOMY) = vv*vv*r + p
+                F(CHF_IX[i;j;k],UMOMZ) = zero
+
+                F(CHF_IX[i;j;k],UENG ) = vv*(p/hgamma + r*ke + p)
+              endif
+            else
+              if( x .le. ramp_XCorner ) then
+                rg = W(CHF_IX[i;j;k],WRHO )
+
+                ug = W(CHF_IX[i;j;k],WVELX)
+                vg = W(CHF_IX[i;j;k],WVELY)
+                wg = W(CHF_IX[i;j;k],WVELZ)
+
+                pg = W(CHF_IX[i;j;k],WPRES)
+
+                ke = half*(CHF_DTERM[ug*ug; + vg*vg; + wg*wg])
+
+                F(CHF_IX[i;j;k],URHO ) = vg*rg
+
+                F(CHF_IX[i;j;k],UMOMX) = vg*ug*rg
+                F(CHF_IX[i;j;k],UMOMY) = vg*vg*rg + pg
+                F(CHF_IX[i;j;k],UMOMZ) = vg*wg*rg
+
+                F(CHF_IX[i;j;k],UENG ) = vg*(pg/hgamma + ke*rg + pg)
+              endif
+            endif
+          CHF_ENDDO
+        endif
+
+        if( dir .eq. 0 ) then
+          CHF_MULTIDO[box;i;j;k]
+            if( lohisign == -1 ) then
+              F(CHF_IX[i;j;k],URHO ) = r*uu
+
+              F(CHF_IX[i;j;k],UMOMX) = r*uu*uu + p
+              F(CHF_IX[i;j;k],UMOMY) = r*uu*vv
+              F(CHF_IX[i;j;k],UMOMZ) = r*uu*ww
+
+              F(CHF_IX[i;j;k],UENG ) = uu*(p/hgamma + ke*r + p)
+            else
+              F(CHF_IX[i;j;k],URHO ) = zero
+
+              F(CHF_IX[i;j;k],UMOMX) = p0
+              F(CHF_IX[i;j;k],UMOMY) = zero
+              F(CHF_IX[i;j;k],UMOMZ) = zero
+
+              F(CHF_IX[i;j;k],UENG ) = zero
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine RAMPSOLIDBC(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[Wextrap],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_BOX[box])
+
+        real_t p,rho,unorm,speed
+        integer CHF_DDECL[i;j;k]
+
+#include "RampCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          p = Wextrap(CHF_IX[i;j;k],WPRES)
+          rho = max(Wextrap(CHF_IX[i;j;k],WRHO),smallr)
+          unorm = Wextrap(CHF_IX[i;j;k],WVELX + dir)
+
+          speed = sqrt(gamma*p/rho)
+
+          F(CHF_IX[i;j;k],URHO) = zero
+
+          F(CHF_IX[i;j;k],UMOMX) = zero
+          F(CHF_IX[i;j;k],UMOMY) = zero
+          F(CHF_IX[i;j;k],UMOMZ) = zero
+
+          F(CHF_IX[i;j;k],UMOMX + dir) = p + lohisign * rho * unorm * speed
+          F(CHF_IX[i;j;k],UENG) = zero
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine RAMPSLOPEBCS(
+     &    CHF_FRA[dW],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_BOX[loBox],
+     &    CHF_CONST_INT[hasLo],
+     &    CHF_BOX[hiBox],
+     &    CHF_CONST_INT[hasHi])
+
+        integer CHF_DDECL[i;j;k],CHF_DDECL[ioff;joff;koff]
+        integer CHF_DDECL[inorm;itan1;itan2],spacedim
+        real_t dvhi,dvlo,dvmin,x
+
+#include "RampCommon.fh"
+
+        spacedim = CH_SPACEDIM
+
+        CHF_DTERM[
+        ioff = CHF_ID(0,dir);
+        joff = CHF_ID(1,dir);
+        koff = CHF_ID(2,dir)]
+
+        CHF_DTERM[
+        inorm = WVELX + dir;
+        itan1 = WVELX + mod(dir + 1,spacedim);
+        itan2 = WVELX + mod(dir + 2,spacedim)]
+
+        if ((dir .eq. 1) .and. (hasLo .eq. 1)) then
+          CHF_MULTIDO[loBox;i;j;k]
+            x = (i + half)*dx
+
+            if (x .ge. ramp_XCorner) then
+              dW(CHF_IX[i;j;k],WRHO) = zero
+              dW(CHF_IX[i;j;k],WPRES) = zero
+
+              dvhi = W(CHF_IX[i + ioff;j + joff;k + koff],inorm) -
+     &               W(CHF_IX[i       ;j       ;k       ],inorm)
+              dvlo = W(CHF_IX[i       ;j       ;k       ],inorm)*two
+
+              dvmin = min(two*abs(dvhi),abs(dvlo))*sign(one,dvlo)
+
+              if (dvlo*dvhi .lt. zero) dvmin = zero
+
+              CHF_DTERM[
+              dW(CHF_IX[i;j;k],inorm) = dvmin;
+              dW(CHF_IX[i;j;k],itan1) = zero;
+              dW(CHF_IX[i;j;k],itan2) = zero]
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine RAMPGS(
+     &    CHF_FRA[W],
+     &    CHF_CONST_REAL[time],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k], jj
+        real_t  CHF_DDECL[x;y;z]
+        real_t  ug, vg, wg
+        real_t  ke, r0, p0, umag, p, r
+        real_t  xofy, rg, pg, ws, uu, vv, ww
+        real_t  cosalpha, sinalpha, tanalpha
+
+#include "RampCommon.fh"
+#include "EosCommon.fh"
+
+        cosalpha = cos( ramp_alpha )
+        sinalpha = sin( ramp_alpha )
+        tanalpha = tan( ramp_alpha )
+
+        r0       = gamma
+        p0       = one
+        ws       = ramp_M*r0
+        p        = ((ramp_M**2-one)*two*gamma/(gamma + one) + one)*p0
+        umag     = (p - p0)/ws
+        r        = one/(one/r0 - (p - p0)/ws**2)
+
+        uu       = umag*cosalpha
+        vv       =-umag*sinalpha
+        ww       = zero
+
+        ke       = half*(uu*uu + vv*vv + ww*ww)
+
+        if( dir .eq. 0 ) then
+          CHF_MULTIDO[box;i;j;k]
+            if( lohisign == 1 ) then
+!                                                                 Right boundary
+              W(CHF_IX[i;j;k],WRHO ) = r0
+
+              W(CHF_IX[i;j;k],WVELX) = zero
+              W(CHF_IX[i;j;k],WVELY) = zero
+              W(CHF_IX[i;j;k],WVELZ) = zero
+
+              W(CHF_IX[i;j;k],WPRES) = p0
+            else
+!                                                                  Left boundary
+              W(CHF_IX[i;j;k],WRHO ) = r
+
+              W(CHF_IX[i;j;k],WVELX) = uu
+              W(CHF_IX[i;j;k],WVELY) = vv
+              W(CHF_IX[i;j;k],WVELZ) = zero
+
+              W(CHF_IX[i;j;k],WPRES) = p
+            endif
+          CHF_ENDDO
+        else
+          CHF_MULTIDO[box;i;j;k]
+            CHF_DTERM[
+            x = (i + half)*dx;
+            y =  j        *dx;
+            z = (k + half)*dx]
+
+            if( lohisign == 1 ) then
+!                                                                   Top boundary
+              xofy   = ramp_XCorner + y*tanalpha + ramp_M*time/cosalpha
+
+              if( x .ge. xofy ) then
+                W(CHF_IX[i;j;k],WRHO ) = r0
+
+                W(CHF_IX[i;j;k],WVELX) = zero
+                W(CHF_IX[i;j;k],WVELY) = zero
+                W(CHF_IX[i;j;k],WVELZ) = zero
+
+                W(CHF_IX[i;j;k],WPRES) = p0
+              else
+                W(CHF_IX[i;j;k],WRHO ) = r
+
+                W(CHF_IX[i;j;k],WVELX) = uu
+                W(CHF_IX[i;j;k],WVELY) = vv
+                W(CHF_IX[i;j;k],WVELZ) = zero
+
+                W(CHF_IX[i;j;k],WPRES) = p
+              endif
+            else
+!                                                                Bottom boundary
+              if( x .le. ramp_XCorner ) then
+                W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[i;iboxhi1+1;k],WRHO )
+
+                W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[i;iboxhi1+1;k],WVELX)
+                W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[i;iboxhi1+1;k],WVELY)
+                W(CHF_IX[i;j;k],WVELZ) = W(CHF_IX[i;iboxhi1+1;k],WVELZ)
+
+                W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[i;iboxhi1+1;k],WPRES)
+              else
+                jj     = iboxhi1 + 1 + iboxhi1 - j
+
+                W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[i;jj;k],WRHO )
+
+                W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[i;jj;k],WVELX)
+                W(CHF_IX[i;j;k],WVELY) =-W(CHF_IX[i;jj;k],WVELY)
+                W(CHF_IX[i;j;k],WVELZ) = W(CHF_IX[i;jj;k],WVELZ)
+
+                W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[i;jj;k],WPRES)
+              endif
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end

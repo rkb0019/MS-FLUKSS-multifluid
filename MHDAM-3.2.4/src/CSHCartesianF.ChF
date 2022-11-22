@@ -1,0 +1,47 @@
+        subroutine TRANSFLUXES_CYL_UPDSTATE(
+     &    CHF_FRA[F],     
+     &    CHF_CONST_REAL[dy],     
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]        
+        integer iv
+        real_t y                                
+                       
+        if (idir == 0) then  
+        CHF_MULTIDO[box;i;j;k]
+          y      = (j+half)*dy          
+          do iv = 0,CHF_NCOMP[F] - 1
+            F(CHF_IX[i;j;k],iv) = y*F(CHF_IX[i;j;k],iv)          
+          enddo
+        CHF_ENDDO        
+        endif
+        
+        if (idir == 1) then  
+        CHF_MULTIDO[box;i;j;k]
+          y      = j*dy          
+          do iv = 0,CHF_NCOMP[F] - 1
+            F(CHF_IX[i;j;k],iv) = y*F(CHF_IX[i;j;k],iv)          
+          enddo
+        CHF_ENDDO        
+        endif
+
+        return
+        end
+        
+        subroutine SCALINGFACTOR_CYL(
+     &    CHF_FRA1[scalef],         
+     &    CHF_CONST_REAL[dx],          
+     &    CHF_BOX[box])
+     
+        integer CHF_DDECL[i;j;k]                
+        real_t y
+        
+        CHF_MULTIDO[box;i;j;k]
+          y    = (j+half)*dx          
+          scalef(CHF_IX[i;j;k]) = one/(dx*y)          
+        CHF_ENDDO                
+                
+        return
+        end
+

@@ -1,0 +1,60 @@
+# unstable fast MHD shock wave
+
+mhdam.problem = fastshock
+
+mhdam.gamma = 1.666666666666667
+
+mhdam.verbosity = 0
+
+mhdam.VelModule  = 1.0
+mhdam.VelAngle   = 0.0
+mhdam.MagModule  = 1.0
+mhdam.MagAngle   = 60.0
+mhdam.PressRatio = 1.147
+mhdam.FastMach   = 0.567
+mhdam.startX     = 0.5
+mhdam.AlfvenMag  = 0.0
+mhdam.AlfvenK    = 1
+
+mhdam.max_step = 1000
+mhdam.max_time = 100.0
+
+mhdam.domain_length = 1.0
+mhdam.num_cells =  64 32 4
+mhdam.is_periodic = 0 1 0
+mhdam.max_level = 2
+mhdam.ref_ratio = 2 2 2 2 2 2 2 2
+
+mhdam.regrid_interval = 2 2 2 2 2 2
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.05
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.limiter_RHO = 4
+mhdam.limiter_VX = 4
+mhdam.limiter_VY = 4
+mhdam.limiter_VZ = 4
+mhdam.limiter_P = 1
+mhdam.limiter_BX = 4
+mhdam.limiter_BY = 4
+mhdam.limiter_BZ = 4
+
+mhdam.time_approximation = 2
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = -1
+mhdam.plot_interval = 200
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = chk
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1

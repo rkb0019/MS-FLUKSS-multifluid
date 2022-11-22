@@ -1,0 +1,220 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETSHEARFLOW(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auN1],
+     &    CHF_CONST_REAL[auV1],
+     &    CHF_CONST_REAL[auT1],
+     &    CHF_CONST_REAL[auN2],
+     &    CHF_CONST_REAL[auV2],
+     &    CHF_CONST_REAL[auT2],
+     &    CHF_CONST_REAL[aufs_a])
+     
+
+#include "ShearFlowCommon.fh"
+#include "EosCommon.fh"
+
+        real_t pref,umag
+
+        gamma      = augamma
+        hgamma     = gamma - 1.0D0
+        invhgamma  = one / hgamma
+                
+        pref       = (auN1*eos_mp)*auV1*auV1        
+        
+        sfRho1 = one
+        sfV1   = one
+        sfP1   = two*eos_k*auN1*auT1/pref
+        
+        sfRho2 = auN2/auN1
+        sfV2   = auV2/auV1
+        sfP2   = two*eos_k*auN2*auT2/pref
+        
+c        sfP2 = sfP1
+
+        umag       = sqrt(gamma*sfP1/sfRho1)
+
+        smallr     = small*sfRho1
+        smallu     = small*umag
+        smallp     = small*sfRho1*half*umag*umag
+        
+        if( smallr < 1.0D-12 ) smallr  = 1.0D-12
+        if( smallp < 1.0D-12 ) smallp  = 1.0D-12
+        
+        fs_a = aufs_a
+
+        return
+        end
+
+
+      function slowfastinterp_sf(slow,fast,ang,a,b)
+      implicit none
+      real_t slowfastinterp_sf
+      real_t slow,fast,ang,a,b
+      real_t m,p,q,res,x
+            
+      x = dabs(ang) - b 
+      if (x > half*a) then
+        slowfastinterp_sf = fast
+        return
+      endif
+      if (x < -half*a) then
+        slowfastinterp_sf = slow
+        return
+      endif
+        
+      m = two*(slow-fast)/(a*a*a)
+      q = -1.5D0*(slow-fast)/a
+      p = half*(slow+fast)
+      
+      res = m*x*x*x+q*x+p       
+                              
+        
+      slowfastinterp_sf = res
+                  
+      return      
+      end
+
+
+        subroutine SHEARFLOWINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[jmiddle],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t e1, e2,dp1,dp2
+        integer CHF_DDECL[i;j;k]
+        real_t CHF_DDECL[x;y;z]
+        real_t vel,p,dp,rho
+        
+        real_t slowfastinterp_sf
+
+#include "ShearFlowCommon.fh"
+#include "EosCommon.fh"
+
+        e1     = sfP1*invhgamma + half*(sfRho1*sfV1*sfV1)
+        e2     = sfP2*invhgamma + half*(sfRho2*sfV2*sfV2)
+        
+        dp1 = sfRho1*sfV1*sfV1
+        dp2 = sfRho2*sfV2*sfV2
+                
+        CHF_MULTIDO[box;i;j;k]
+        
+        if (fs_a>0) then
+          y   = j*dx
+          vel = slowfastinterp_sf(sfV1,sfV2,y,fs_a,jmiddle*dx)
+          p   = slowfastinterp_sf(sfP1,sfP2,y,fs_a,jmiddle*dx)
+          dp  = slowfastinterp_sf(dp1, dp2 ,y,fs_a,jmiddle*dx)
+          rho = dp/(vel*vel)
+          
+          U(CHF_IX[i;j;k],URHO)  = rho
+          U(CHF_IX[i;j;k],UMOMX) = rho*vel
+          U(CHF_IX[i;j;k],UMOMY) = zero
+          U(CHF_IX[i;j;k],UMOMZ) = zero
+          U(CHF_IX[i;j;k],UENG)  = p*invhgamma + half*(rho*vel*vel)
+        else
+          if (j<jmiddle) then
+            U(CHF_IX[i;j;k],URHO)  = sfRho1
+            U(CHF_IX[i;j;k],UMOMX) = sfRho1*sfV1
+            U(CHF_IX[i;j;k],UMOMY) = zero
+            U(CHF_IX[i;j;k],UMOMZ) = zero
+            U(CHF_IX[i;j;k],UENG)  = e1
+          else
+            U(CHF_IX[i;j;k],URHO)  = sfRho2
+            U(CHF_IX[i;j;k],UMOMX) = sfRho2*sfV2
+            U(CHF_IX[i;j;k],UMOMY) = zero
+            U(CHF_IX[i;j;k],UMOMZ) = zero
+            U(CHF_IX[i;j;k],UENG)  = e2
+          endif
+        endif
+        
+        if (CHF_NCOMP[U]>UBX) then
+          U(CHF_IX[i;j;k],UBX )  = zero
+          U(CHF_IX[i;j;k],UBY )  = zero
+          U(CHF_IX[i;j;k],UBZ )  = zero
+        endif
+        CHF_ENDDO
+
+        return
+        end
+
+
+        subroutine SHEARFLOWGS(
+     &    CHF_FRA[W],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[jmiddle],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+#include "ShearFlowCommon.fh"
+#include "EosCommon.fh"
+
+        if( dir .eq. 0 ) then
+          CHF_MULTIDO[box;i;j;k]
+          if( lohisign == -1 ) then
+            if (j<jmiddle) then
+              W(CHF_IX[i;j;k],WRHO ) = sfRho1
+              W(CHF_IX[i;j;k],WVELX) = sfV1
+              W(CHF_IX[i;j;k],WVELY) = zero
+              W(CHF_IX[i;j;k],WVELZ) = zero
+              W(CHF_IX[i;j;k],WPRES) = sfP1
+            else 
+              W(CHF_IX[i;j;k],WRHO ) = sfRho2
+              W(CHF_IX[i;j;k],WVELX) = sfV2
+              W(CHF_IX[i;j;k],WVELY) = zero
+              W(CHF_IX[i;j;k],WVELZ) = zero
+              W(CHF_IX[i;j;k],WPRES) = sfP2
+            endif
+            if (CHF_NCOMP[W]>WBX) then
+              W(CHF_IX[i;j;k],WBX  ) = zero
+              W(CHF_IX[i;j;k],WBY  ) = zero
+              W(CHF_IX[i;j;k],WBZ  ) = zero
+            endif              
+          else
+            W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[iboxlo0-1;j;k],WRHO )
+            W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[iboxlo0-1;j;k],WVELX)
+            W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[iboxlo0-1;j;k],WVELY)
+            W(CHF_IX[i;j;k],WVELZ) = W(CHF_IX[iboxlo0-1;j;k],WVELZ)
+            W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[iboxlo0-1;j;k],WPRES)
+            if (CHF_NCOMP[W]>WBX)  then
+              W(CHF_IX[i;j;k],WBX  ) = W(CHF_IX[iboxlo0-1;j;k],WBX  )
+              W(CHF_IX[i;j;k],WBY  ) = W(CHF_IX[iboxlo0-1;j;k],WBY  )
+              W(CHF_IX[i;j;k],WBZ  ) = W(CHF_IX[iboxlo0-1;j;k],WBZ  )
+            endif
+          endif
+          CHF_ENDDO
+        endif
+        
+        if( dir .eq. 1 ) then
+          CHF_MULTIDO[box;i;j;k]
+          if( lohisign == -1 ) then
+            W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[i;iboxhi1+1;k],WRHO )
+            W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[i;iboxhi1+1;k],WVELX)
+            W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[i;iboxhi1+1;k],WVELY)
+            W(CHF_IX[i;j;k],WVELZ) = W(CHF_IX[i;iboxhi1+1;k],WVELZ)
+            W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[i;iboxhi1+1;k],WPRES)
+            if (CHF_NCOMP[W]>WBX) then
+              W(CHF_IX[i;j;k],WBX  ) = W(CHF_IX[i;iboxhi1+1;k],WBX  )
+              W(CHF_IX[i;j;k],WBY  ) = W(CHF_IX[i;iboxhi1+1;k],WBY  )
+              W(CHF_IX[i;j;k],WBZ  ) = W(CHF_IX[i;iboxhi1+1;k],WBZ  )
+            endif
+          else
+            W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[i;iboxlo1-1;k],WRHO )
+            W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[i;iboxlo1-1;k],WVELX)
+            W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[i;iboxlo1-1;k],WVELY)
+            W(CHF_IX[i;j;k],WVELZ) = W(CHF_IX[i;iboxlo1-1;k],WVELZ)
+            W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[i;iboxlo1-1;k],WPRES)
+            if (CHF_NCOMP[W]>WBX) then   
+              W(CHF_IX[i;j;k],WBX  ) = W(CHF_IX[i;iboxlo1-1;k],WBX  )
+              W(CHF_IX[i;j;k],WBY  ) = W(CHF_IX[i;iboxlo1-1;k],WBY  )
+              W(CHF_IX[i;j;k],WBZ  ) = W(CHF_IX[i;iboxlo1-1;k],WBZ  )
+            endif
+          endif
+          CHF_ENDDO
+        endif
+
+        return
+        end

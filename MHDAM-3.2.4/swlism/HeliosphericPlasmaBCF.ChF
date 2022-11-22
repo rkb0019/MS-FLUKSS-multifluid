@@ -1,0 +1,1865 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+#include "HeliosphericProblem.H"
+
+! Subproblems:
+! 0: default
+! 1: first
+! 2: Suess_min_first
+! 3: Suess_min_third
+! 4: third
+! 5: cir
+! 6: pizzo
+       
+      subroutine HELIOINITPLASMASPHERICAL(
+     &    CHF_FRA[U],          
+     &    CHF_CONST_INT[subproblem],
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iHCSb],
+     &    CHF_CONST_INT[iRegTr],     
+     &    CHF_CONST_INT[level],     
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3
+
+      real_t t      
+      real_t W(iUlo0:iUhi0,iUlo1:iUhi1,iUlo2:iUhi2,0:nUcomp-1)
+      real_t rur,rup,rut,br,bp,bt,rux,ruy,ruz,bx,by,bz,tmp
+      real_t sinF,cosF,sinT,cosT
+      
+      integer CHF_DDECL[i;j;k]
+      
+      if (subproblem >= 0 .and. subproblem <= 6) then  
+c    Initialization by calling ghost cell subroutine      
+
+      t = zero
+      
+      W(iUlo0:iUhi0,iUlo1:iUhi1,iUlo2:iUhi2,WRHO) = -one
+
+      call HELIOGSPLASMASPHERICAL(
+     & W
+     & ,iUlo0,iUlo1,iUlo2
+     & ,iUhi0,iUhi1,iUhi2
+     & ,nUcomp
+     & ,U
+     & ,iUlo0,iUlo1,iUlo2
+     & ,iUhi0,iUhi1,iUhi2
+     & ,nUcomp
+     & ,subproblem     
+     & ,iHCS
+     & ,iHCSb
+     & ,iRegTr
+     & ,level
+     & ,t
+     & ,iboxlo0,iboxlo1,iboxlo2
+     & ,iboxhi0,iboxhi1,iboxhi2
+     & )
+     
+                   
+c
+      CHF_MULTIDO[box;i;j;k]                          
+        if (W(CHF_IX[i;j;k],WRHO) > zero) then
+            
+        call PRIMTOCONS(
+     & U
+     & ,iUlo0,iUlo1,iUlo2
+     & ,iUhi0,iUhi1,iUhi2
+     & ,nUcomp
+     & ,W
+     & ,iUlo0,iUlo1,iUlo2
+     & ,iUhi0,iUhi1,iUhi2
+     & ,nUcomp
+     & ,i,j,k
+     & ,i,j,k
+     & )
+     
+        cosF   = m_phic(j,ICOS,level)
+        sinF   = m_phic(j,ISIN,level)
+         
+        cosT   = m_thetac(k,ICOS,level)
+        sinT   = m_thetac(k,ISIN,level)
+                
+        rur    = U(CHF_IX[i;j;k],UMOMX) 
+        rup    = U(CHF_IX[i;j;k],UMOMY) 
+        rut    = U(CHF_IX[i;j;k],UMOMZ)         
+        br     = U(CHF_IX[i;j;k],UBX) 
+        bp     = U(CHF_IX[i;j;k],UBY) 
+        bt     = U(CHF_IX[i;j;k],UBZ) 
+        
+        tmp = rur*sinT + rut*cosT                  
+        rux  = tmp*cosF - rup*sinF
+        ruy  = tmp*sinF + rup*cosF
+        ruz  = rur*cosT  - rut*sinT                              
+                                      
+        tmp = br*sinT + bt*cosT                  
+        bx  = tmp*cosF - bp*sinF
+        by  = tmp*sinF + bp*cosF
+        bz  = br*cosT  - bt*sinT   
+        
+        U(CHF_IX[i;j;k],UMOMX) = rux                        
+        U(CHF_IX[i;j;k],UMOMY) = ruy
+        U(CHF_IX[i;j;k],UMOMZ) = ruz        
+        U(CHF_IX[i;j;k],UBX)   = Bx
+        U(CHF_IX[i;j;k],UBY)   = By
+        U(CHF_IX[i;j;k],UBZ)   = Bz                                        
+      
+        if (iHCS >= 0) then                    
+          U(CHF_IX[i;j;k],iHCS) = W(CHF_IX[i;j;k],iHCS)            
+        endif
+        if (iHCSb >= 0) then                    
+          U(CHF_IX[i;j;k],iHCSb) = W(CHF_IX[i;j;k],iHCSb)            
+        endif        
+        if (iRegTr>0) then
+          U(CHF_IX[i;j;k],iRegTr )  = -one
+        endif
+        
+        endif        
+      CHF_ENDDO
+      
+      else
+     
+     
+c        if (subproblem == 0) then
+c          call helioinitplasmasphdefault(
+c     &           U
+c     &           ,iUlo0,iUlo1,iUlo2
+c     &           ,iUhi0,iUhi1,iUhi2
+c     &           ,nUcomp     
+c     &           ,iHCS
+c     &           ,level     
+c     &           ,iboxlo0,iboxlo1,iboxlo2
+c     &           ,iboxhi0,iboxhi1,iboxhi2
+c     &           )                         
+c       endif
+
+      endif
+                
+        
+#endif
+        
+        return
+        end
+        
+        subroutine HELIOGSPLASMASPHERICAL(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[subproblem],     
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iHCSb],
+     &    CHF_CONST_INT[iRegTr],     
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3
+
+        integer CHF_DDECL[i;j;k]
+
+        if (iRegTr>0) then
+        CHF_MULTIDO[box;i;j;k]                          
+          W(CHF_IX[i;j;k],iRegTr )  = -one
+        CHF_ENDDO
+        endif
+        
+        
+
+        if (subproblem == HPBC_DEFAULT) then
+          call heliogsplasmasphdefault(
+     &           W
+     &           ,iWlo0,iWlo1,iWlo2
+     &           ,iWhi0,iWhi1,iWhi2
+     &           ,nWcomp     
+     &           ,iHCS
+     &           ,iHCSb
+     &           ,level
+     &           ,t
+     &           ,iboxlo0,iboxlo1,iboxlo2
+     &           ,iboxhi0,iboxhi1,iboxhi2
+     &           )
+        endif
+        
+        if (subproblem == HPBC_FIRST) then
+          call heliogsFirst(
+     &           W
+     &           ,iWlo0,iWlo1,iWlo2
+     &           ,iWhi0,iWhi1,iWhi2
+     &           ,nWcomp
+     &           ,U
+     &           ,iUlo0,iUlo1,iUlo2
+     &           ,iUhi0,iUhi1,iUhi2
+     &           ,nUcomp          
+     &           ,iHCS
+     &           ,level
+     &           ,t
+     &           ,iboxlo0,iboxlo1,iboxlo2
+     &           ,iboxhi0,iboxhi1,iboxhi2
+     &           )
+        endif
+        
+        if (subproblem == HPBC_SUESS_MIN_FIRST) then
+          call heliogsSuess_min_first(
+     &           W
+     &           ,iWlo0,iWlo1,iWlo2
+     &           ,iWhi0,iWhi1,iWhi2
+     &           ,nWcomp
+     &           ,U
+     &           ,iUlo0,iUlo1,iUlo2
+     &           ,iUhi0,iUhi1,iUhi2
+     &           ,nUcomp          
+     &           ,iHCS
+     &           ,level
+     &           ,t
+     &           ,iboxlo0,iboxlo1,iboxlo2
+     &           ,iboxhi0,iboxhi1,iboxhi2
+     &           )
+        endif
+        
+        if (subproblem == HPBC_SUESS_MIN_THIRD) then
+          call heliogsSuess_min_third(
+     &           W
+     &           ,iWlo0,iWlo1,iWlo2
+     &           ,iWhi0,iWhi1,iWhi2
+     &           ,nWcomp
+     &           ,U
+     &           ,iUlo0,iUlo1,iUlo2
+     &           ,iUhi0,iUhi1,iUhi2
+     &           ,nUcomp          
+     &           ,iHCS
+     &           ,level
+     &           ,t
+     &           ,iboxlo0,iboxlo1,iboxlo2
+     &           ,iboxhi0,iboxhi1,iboxhi2
+     &           )
+        endif
+        
+        if (subproblem == HPBC_THIRD) then
+          call heliogsThird(
+     &           W
+     &           ,iWlo0,iWlo1,iWlo2
+     &           ,iWhi0,iWhi1,iWhi2
+     &           ,nWcomp
+     &           ,U
+     &           ,iUlo0,iUlo1,iUlo2
+     &           ,iUhi0,iUhi1,iUhi2
+     &           ,nUcomp          
+     &           ,iHCS
+     &           ,level
+     &           ,t
+     &           ,iboxlo0,iboxlo1,iboxlo2
+     &           ,iboxhi0,iboxhi1,iboxhi2
+     &           )
+        endif
+        
+        if (subproblem == HPBC_CIR) then
+          call heliogscir(
+     &           W
+     &           ,iWlo0,iWlo1,iWlo2
+     &           ,iWhi0,iWhi1,iWhi2
+     &           ,nWcomp
+     &           ,U
+     &           ,iUlo0,iUlo1,iUlo2
+     &           ,iUhi0,iUhi1,iUhi2
+     &           ,nUcomp          
+     &           ,iHCS
+     &           ,level
+     &           ,t
+     &           ,iboxlo0,iboxlo1,iboxlo2
+     &           ,iboxhi0,iboxhi1,iboxhi2
+     &           )
+        endif
+        if (subproblem == HPBC_PIZZO) then
+          call heliogspizzo(
+     &           W
+     &           ,iWlo0,iWlo1,iWlo2
+     &           ,iWhi0,iWhi1,iWhi2
+     &           ,nWcomp
+     &           ,U
+     &           ,iUlo0,iUlo1,iUlo2
+     &           ,iUhi0,iUhi1,iUhi2
+     &           ,nUcomp          
+     &           ,iHCS
+     &           ,level
+     &           ,t
+     &           ,iboxlo0,iboxlo1,iboxlo2
+     &           ,iboxhi0,iboxhi1,iboxhi2
+     &           )
+
+        endif
+
+#endif
+      return      
+      end
+
+c Default subroutines...
+        
+      subroutine helioinitplasmasphdefault(
+     &    CHF_FRA[U],               
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iHCSb],
+     &    CHF_CONST_INT[level],     
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3     
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr, sunBeta        
+        real_t up,ur,ut,rur,invrho,rut,rup 
+               
+        integer CHF_DDECL[i;j;k]
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+        sunBeta  = Omega*eos_AU/(sunV*lismV)
+
+        CHF_MULTIDO[box;i;j;k]                    
+          r      = m_rc(i,level)
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                                    
+          if( r <= initR ) then
+            rr     = r/sunIntBCRadius
+            theta  = acos( cosT )
+
+            cosBr  = cos( sunBeta*r )
+            sinBr  = sin( sunBeta*r )
+
+            sinB   = sinF*cosBr + cosF*sinBr
+            cosB   = cosF*cosBr - sinF*sinBr
+
+            thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+            thetaS = asin( thetaS ) + d_PI_2
+
+            rho    = sunRho/(rr*rr)
+
+            ux     = sunV*sinT*cosF
+            uy     = sunV*sinT*sinF
+            uz     = sunV*cosT            
+                                
+            p      = sunP/rr**(two*gamma)                                    
+            
+            b      = dirBrN*sunB/(rr*rr)
+
+            Bx     = b*(sinT*cosF + sunBeta*r*sinT*sinF)
+            By     = b*(sinT*sinF - sunBeta*r*sinT*cosF)
+            Bz     = b* cosT
+            
+            b      = Bx*Bx + By*By + Bz*Bz
+
+            e0     = p/hgamma + half*(rho*sunV*sunV + d_1_4PI*b)
+
+            U(CHF_IX[i;j;k],URHO)  = rho
+
+            U(CHF_IX[i;j;k],UMOMX) = rho*ux
+            U(CHF_IX[i;j;k],UMOMY) = rho*uy
+            U(CHF_IX[i;j;k],UMOMZ) = rho*uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+            
+            
+            if (sunBmonopolar == 1) then 
+              U(CHF_IX[i;j;k],UBX )  = Bx
+              U(CHF_IX[i;j;k],UBY )  = By
+              U(CHF_IX[i;j;k],UBZ )  = Bz
+            else
+              if( theta < thetaS ) then
+                U(CHF_IX[i;j;k],UBX )  = Bx
+                U(CHF_IX[i;j;k],UBY )  = By
+                U(CHF_IX[i;j;k],UBZ )  = Bz
+              else
+                U(CHF_IX[i;j;k],UBX )  =-Bx
+                U(CHF_IX[i;j;k],UBY )  =-By
+                U(CHF_IX[i;j;k],UBZ )  =-Bz
+              endif
+            endif       
+            
+            if (iHCSb >= 0) then                                                
+              if (abs(d_PI_2 - theta)<sunTILT) then
+                U(CHF_IX[i;j;k],iHCSb) =-one
+              else 
+                U(CHF_IX[i;j;k],iHCSb) = one
+              endif
+            endif
+            
+            if (iHCS >= 0) then                           
+              U(CHF_IX[i;j;k],UBX )  = Bx
+              U(CHF_IX[i;j;k],UBY )  = By
+              U(CHF_IX[i;j;k],UBZ )  = Bz
+              if( theta < thetaS ) then
+                U(CHF_IX[i;j;k],iHCS) = one
+              else
+                U(CHF_IX[i;j;k],iHCS) =-one
+              endif   
+            endif
+
+                                       
+          endif
+        CHF_ENDDO
+#endif        
+        return
+        end
+
+      !added
+      subroutine heliogsplasmasphdefault(
+     &    CHF_FRA[W],     
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iHCSb],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3     
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr, sunBeta        
+        real_t up,ur,ut,rur,invrho,rut,rup, br,bp,bt
+               
+        integer CHF_DDECL[i;j;k]
+                     
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+        sunBeta  = Omega*eos_AU/(sunV*lismV)
+
+        CHF_MULTIDO[box;i;j;k]                    
+        r      = m_rc(i,level)
+        if( r <= initR ) then
+          rr     = r/sunIntBCRadius
+                    
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                                        
+          cosBr  = cos( sunBeta*(r - sunV*t) )
+          sinBr  = sin( sunBeta*(r - sunV*t) )
+
+          sinB   = sinF*cosBr + cosF*sinBr
+          cosB   = cosF*cosBr - sinF*sinBr
+
+          thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+          thetaS = asin( thetaS ) + d_PI_2
+
+          rho    = sunRho/(rr*rr)
+
+          ux     = sunV*sinT*cosF
+          uy     = sunV*sinT*sinF
+          uz     = sunV*cosT
+
+!          p      = sunP/rr**(two*gamma)
+          p      = sunP/rr**(two*1.4225)
+          
+          b      = dirBrN*sunB/(rr*rr)
+
+          Bx     = b*(sinT*cosF + sunBeta*r*sinT*sinF)
+          By     = b*(sinT*sinF - sunBeta*r*sinT*cosF)
+          Bz     = b* cosT
+          
+          b      = Bx*Bx + By*By + Bz*Bz
+          
+          W(CHF_IX[i;j;k],WRHO)  = rho
+
+          W(CHF_IX[i;j;k],WVELR) = sunV
+          W(CHF_IX[i;j;k],WVELP) = zero
+          W(CHF_IX[i;j;k],WVELT) = zero
+          W(CHF_IX[i;j;k],WPRES) = p
+                              
+          br = (Bx*cosF + By*sinF)*sinT + Bz*cosT
+          bp = -Bx*sinF + By*cosF
+          bt = (Bx*cosF + By*sinF)*cosT - Bz*sinT
+          
+          theta  = acos(cosT)
+          
+          
+          if (iHCSb >= 0) then
+            if (abs(d_PI_2 - theta)<sunTILT) then
+              W(CHF_IX[i;j;k],iHCSb) =-one
+            else 
+              W(CHF_IX[i;j;k],iHCSb) = one
+            endif
+          endif    
+
+          if (sunBmonopolar == 1) then 
+            W(CHF_IX[i;j;k],WBR )  = br
+            W(CHF_IX[i;j;k],WBP )  = bp
+            W(CHF_IX[i;j;k],WBT )  = bt
+          else 
+            if( theta < thetaS ) then
+              W(CHF_IX[i;j;k],WBR )  = br
+              W(CHF_IX[i;j;k],WBP )  = bp
+              W(CHF_IX[i;j;k],WBT )  = bt
+            else
+              W(CHF_IX[i;j;k],WBR )  =-Br
+              W(CHF_IX[i;j;k],WBP )  =-Bp
+              W(CHF_IX[i;j;k],WBT )  =-Bt
+            endif 
+          endif
+          
+          if (iHCS >= 0) then                         
+            W(CHF_IX[i;j;k],WBR )  = br
+            W(CHF_IX[i;j;k],WBP )  = bp
+            W(CHF_IX[i;j;k],WBT )  = bt
+            if( theta < thetaS ) then
+              W(CHF_IX[i;j;k],iHCS) = one
+            else
+              W(CHF_IX[i;j;k],iHCS) =-one
+            endif          
+          endif              
+          
+        endif
+        CHF_ENDDO
+#endif     
+      return      
+      end
+
+c =======================================================================      
+c                           Pogorelov's first      
+c =======================================================================
+      
+      
+      subroutine heliogsfirst(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],     
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3     
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr        
+        real_t up,ur,ut,rur,invrho,rut,rup, br,bp,bt
+        
+        real_t tet,tet_lim_rad,uo_fast,ro_fast,po_fast,tear_f,bor_fast,
+     ,  bot_fast,bon_fast,uo_slow,ro_slow,po_slow,tear_s,bor_slow,
+     ,  bot_slow,bon_slow,AK_s,AK_f,BETA_slow,BETA_fast,X1,X2,X3,Y1,Y2,
+     ,  Y3,Z1,Z3,sqeninf,AME2_slow,AME2_fast
+
+               
+        integer CHF_DDECL[i;j;k]
+                     
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+
+        CHF_MULTIDO[box;i;j;k]                    
+        r      = m_rc(i,level)
+        if( r <= initR ) then
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                    
+          
+          theta  = acos(cosT)     
+          
+          sqeninf=sqrt(lismN)
+          tet=abs(90.d0-theta*180/d_pi)
+          tet_lim_rad=8.d0*d_pi/18.d0
+          uo_fast=r**0.003*(706.+0.94*tet)*1.D5
+          ro_fast=r**(-1.92)*(3.07-0.0109*tet)
+          tear_f=r**(-1.02)*(2.58D5+220.*tet)
+    !      bor_fast=r**(-1.68)*(27.9-0.07*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bot_fast=r**(-1.09)*(19.1-0.097*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bon_fast=r**(-1.16)*(12.3+3.d-3*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      if(tet.ge.80.) then
+    !      bot_fast=bot_fast*sin(theta)/sin(d_pi/18.)
+    !      endif
+          uo_slow=r**0.048*(389.-0.12*tet)*1.D5
+          ro_slow=r**(-1.93)*(7.209+0.035*tet)
+          tear_s=r**(-0.68)*(0.67D5-260.*tet)
+    !      bor_slow=r**(-1.43)*(24.8+0.02*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bot_slow=r**(-1.07)*(31.3-0.18*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bon_slow=r**(-1.14)*(16.+4.d-2*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+          AME2_slow=uo_slow**2*.7269D-8/(2.D0*TEAR_s)
+          AME2_fast=uo_fast**2*.7269D-8/(2.D0*TEAR_f)
+          AK_s=ro_slow*uo_slow**2/(lismN*lismV**2)
+          AK_f=ro_fast*uo_fast**2/(lismN*lismV**2)
+          po_slow=AK_s/(GAMMA*AME2_slow)
+          po_fast=AK_f/(GAMMA*AME2_fast)
+          uo_fast=uo_fast/lismV
+          ro_fast=ro_fast/lismN
+          uo_slow=uo_slow/lismV
+          ro_slow=ro_slow/lismN
+          BETA_slow=1.5D0*2.693D7/(uo_slow*lismV)
+          BETA_fast=1.5D0*2.693D7/(uo_fast*lismV)
+          bor_slow=sunB/r**2
+          bot_slow=-sunB*beta_slow*sinT/r
+          bon_slow=0.d0
+          bor_fast=sunB/r**2
+          bot_fast=-sunB*beta_fast*sinT/r
+          bon_fast=0.d0
+          X1=sinT*cosF
+          X2=-sinF
+          X3=cosF*cosT
+          Y1=sinT*sinF
+          Y2=cosF
+          Y3=cosT*sinF
+          Z1=cosT
+          Z3=-sinT
+      
+          cosBr  = cos( BETA_slow*(r-uo_slow*T))
+          sinBr  = sin( BETA_slow*(r-uo_slow*T))
+
+          sinB   = sinF*cosBr + cosF*sinBr
+          cosB   = cosF*cosBr - sinF*sinBr
+
+          thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+          thetaS = asin( thetaS ) + d_PI_2
+
+c         IF(THETA.GT.0.9425.AND.THETA.LT.2.199) then
+          IF(THETA.GT.1.1624.AND.THETA.LT.1.9792) then
+            rho    = RO_slow
+            ur     = UO_slow
+            p      = PO_slow
+            
+            Br=bor_slow
+            Bp=bot_slow
+            Bt=bon_slow
+          else
+            rho    = RO_fast
+            ur     = UO_fast
+            p      = PO_fast
+            
+            Br=bor_fast
+            Bp=bot_fast
+            Bt=bon_fast
+          endif       
+          
+          W(CHF_IX[i;j;k],WRHO)  = rho
+
+          W(CHF_IX[i;j;k],WVELR) = ur
+          W(CHF_IX[i;j;k],WVELP) = zero
+          W(CHF_IX[i;j;k],WVELT) = zero
+          W(CHF_IX[i;j;k],WPRES) = p
+                              
+            
+          if( theta < thetaS ) then
+            W(CHF_IX[i;j;k],WBR )  = br
+            W(CHF_IX[i;j;k],WBP )  = bp
+            W(CHF_IX[i;j;k],WBT )  = bt
+          else
+            W(CHF_IX[i;j;k],UBX )  =-Br
+            W(CHF_IX[i;j;k],UBY )  =-Bp
+            W(CHF_IX[i;j;k],UBZ )  =-Bt
+          endif 
+
+        endif              
+        CHF_ENDDO
+        
+        
+#endif     
+      return      
+      end
+      
+      
+c =======================================================================      
+c                        Suess_min_first
+c =======================================================================
+
+      subroutine heliogsSuess_min_first(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],     
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3     
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr        
+        real_t up,ur,ut,rur,invrho,rut,rup, br,bp,bt
+        real_t tet,tet_lim_rad,uo_fast,ro_fast,tear_f,
+     ,  uo_smooth,ro_smooth,tear_smooth,po_smooth,bor_smooth,
+     ,  bot_smooth,bon_smooth,uo_slow,ro_slow,tear_s,
+     ,  AK_smooth,BETA_smooth,X1,X2,X3,Y1,Y2,
+     ,  Y3,Z1,Z3,sqeninf,AME2_smooth
+
+               
+        integer CHF_DDECL[i;j;k]
+                     
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+
+        CHF_MULTIDO[box;i;j;k]                    
+        r      = m_rc(i,level)
+        if( r <= initR ) then
+        
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                    
+          
+          theta  = acos( cosT )
+          sqeninf=sqrt(lismN)
+          tet=abs(90.d0-theta*180/d_pi)
+          tet_lim_rad=8.d0*d_pi/18.d0
+          uo_fast=r**0.003*(706.+0.94*90.)*1.D5
+          ro_fast=r**(-1.92)*(3.07-0.0109*90.)
+          tear_f=r**(-1.02)*(2.58D5+220.*90.)
+    !      bor_fast=r**(-1.68)*(27.9-0.07*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bot_fast=r**(-1.09)*(19.1-0.097*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bon_fast=r**(-1.16)*(12.3+3.d-3*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      if(tet.ge.80.) then
+    !      bot_fast=bot_fast*sin(theta)/sin(d_pi/18.)
+    !      endif
+    !      bor_slow=r**(-1.43)*(24.8+0.02*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+          uo_slow=r**0.048*389.*1.D5
+          ro_slow=r**(-1.93)*7.209
+          tear_s=r**(-0.68)*0.67D5
+    !      bot_slow=r**(-1.07)*(31.3-0.18*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bon_slow=r**(-1.14)*(16.+4.d-2*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+          uo_smooth=(uo_fast*exp(abs(tet)-30.)+uo_slow)/(exp(abs(tet)-30.)+1)
+          ro_smooth=(ro_fast*exp(abs(tet)-30.)+ro_slow)/(exp(abs(tet)-30.)+1)
+          tear_smooth=(tear_f*exp(abs(tet)-30.)+tear_s)/(exp(abs(tet)-30.)+1)
+          AME2_smooth=uo_smooth**2*.7269D-8/(2.D0*TEAR_SMOOTH)
+          AK_smooth=ro_smooth*uo_smooth**2/(lismN*lismV**2)
+          po_smooth=AK_smooth/(GAMMA*AME2_smooth)
+          uo_smooth=uo_smooth/lismV
+          ro_smooth=ro_smooth/lismN
+          BETA_smooth=1.5D0*2.693D7/(uo_smooth*lismV)
+          bor_smooth=sunB/r**2
+          bot_smooth=-sunB*beta_smooth*sinT/r
+          bon_smooth=0.d0
+          X1=sinT*cosF
+          X2=-sinF
+          X3=cosF*cosT
+          Y1=sinT*sinF
+          Y2=cosF
+          Y3=cosT*sinF
+          Z1=cosT
+          Z3=-sinT
+
+          cosBr  = cos( BETA_smooth*r )
+          sinBr  = sin( BETA_smooth*r )
+
+          sinB   = sinF*cosBr + cosF*sinBr
+          cosB   = cosF*cosBr - sinF*sinBr
+
+          thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+          thetaS = asin( thetaS ) + d_PI_2
+
+          rho    = RO_smooth
+          ur     = UO_smooth
+          p      = PO_smooth
+            
+          BR=bor_smooth
+          BP=bot_smooth
+          BT=bon_smooth
+          
+          W(CHF_IX[i;j;k],WRHO)  = rho
+
+          W(CHF_IX[i;j;k],WVELR) = ur
+          W(CHF_IX[i;j;k],WVELP) = zero
+          W(CHF_IX[i;j;k],WVELT) = zero
+          W(CHF_IX[i;j;k],WPRES) = p
+                                          
+          if( theta < thetaS ) then
+            W(CHF_IX[i;j;k],WBR )  = br
+            W(CHF_IX[i;j;k],WBP )  = bp
+            W(CHF_IX[i;j;k],WBT )  = bt
+          else
+            W(CHF_IX[i;j;k],UBX )  =-Br
+            W(CHF_IX[i;j;k],UBY )  =-Bp
+            W(CHF_IX[i;j;k],UBZ )  =-Bt
+          endif 
+                  
+        endif              
+        CHF_ENDDO
+#endif     
+      return      
+      end
+
+
+
+c =======================================================================      
+c                        Suess_min_third
+c =======================================================================
+
+      subroutine heliogsSuess_min_third(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],     
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3     
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr        
+        real_t up,ur,ut,rur,invrho,rut,rup, br,bp,bt
+        real_t tet,tet_lim_rad,uo_fast,ro_fast,tear_f,
+     ,  uo_smooth,ro_smooth,tear_smooth,po_smooth,bor_smooth,
+     ,  bot_smooth,bon_smooth,uo_slow,ro_slow,tear_s,
+     ,  AK_smooth,BETA_smooth,X1,X2,X3,Y1,Y2,
+     ,  Y3,Z1,Z3,sqeninf,AME2_smooth
+
+               
+        integer CHF_DDECL[i;j;k]
+                     
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+
+        CHF_MULTIDO[box;i;j;k]                    
+        r      = m_rc(i,level)
+        if( r <= initR ) then
+        
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                             
+          theta  = acos( cosT )
+          
+          sqeninf=sqrt(lismN)
+          tet=abs(90.d0-theta*180/d_pi)
+          tet_lim_rad=8.d0*d_pi/18.d0
+          uo_fast=r**0.01*(668.+1.29*90.)*1.D5
+          ro_fast=r**(-1.68)*(2.27-0.011*90.)
+          tear_f=r**(-.95)*(2.21D5+30.*90)
+    !      bor_fast=r**(-1.68)*(27.9-0.07*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bot_fast=r**(-1.09)*(19.1-0.097*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bon_fast=r**(-1.16)*(12.3+3.d-3*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      if(tet.ge.80.) then
+    !      bot_fast=bot_fast*sin(theta)/sin(d_pi/18.)
+    !      endif
+    !      bor_slow=r**(-1.43)*(24.8+0.02*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+          uo_slow=r**0.048*388.*1.D5
+          ro_slow=r**(-1.93)*6.372
+          tear_s=r**(-0.68)*0.8D5
+    !      bot_slow=r**(-1.07)*(31.3-0.18*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bon_slow=r**(-1.14)*(16.+4.d-2*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+          uo_smooth=(uo_fast*exp(abs(tet)-30.)+uo_slow)/(exp(abs(tet)-30.)+1)
+          ro_smooth=(ro_fast*exp(abs(tet)-30.)+ro_slow)/(exp(abs(tet)-30.)+1)
+          tear_smooth=(tear_f*exp(abs(tet)-30.)+tear_s)/(exp(abs(tet)-30.)+1)
+          AME2_smooth=uo_smooth**2*.7269D-8/(2.D0*TEAR_SMOOTH)
+          AK_smooth=ro_smooth*uo_smooth**2/(lismN*lismV**2)
+          po_smooth=AK_smooth/(GAMMA*AME2_smooth)
+          uo_smooth=uo_smooth/lismV
+          ro_smooth=ro_smooth/lismN
+          BETA_smooth=1.5D0*2.693D7/(uo_smooth*lismV)
+          bor_smooth=sunB/r**2
+          bot_smooth=-sunB*beta_smooth*sinT/r
+          bon_smooth=0.d0
+          X1=sinT*cosF
+          X2=-sinF
+          X3=cosF*cosT
+          Y1=sinT*sinF
+          Y2=cosF
+          Y3=cosT*sinF
+          Z1=cosT
+          Z3=-sinT
+
+          cosBr  = cos( BETA_smooth*r )
+          sinBr  = sin( BETA_smooth*r )
+
+          sinB   = sinF*cosBr + cosF*sinBr
+          cosB   = cosF*cosBr - sinF*sinBr
+
+          thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+          thetaS = asin( thetaS ) + d_PI_2
+
+          rho    = RO_smooth
+          ur     = UO_smooth
+          p      = PO_smooth
+            
+          BR=bor_smooth
+          BP=bot_smooth
+          BT=bon_smooth  
+          
+          W(CHF_IX[i;j;k],WRHO)  = rho
+
+          W(CHF_IX[i;j;k],WVELR) = ur
+          W(CHF_IX[i;j;k],WVELP) = zero
+          W(CHF_IX[i;j;k],WVELT) = zero
+          W(CHF_IX[i;j;k],WPRES) = p
+                                          
+          if( theta < thetaS ) then
+            W(CHF_IX[i;j;k],WBR )  = br
+            W(CHF_IX[i;j;k],WBP )  = bp
+            W(CHF_IX[i;j;k],WBT )  = bt
+          else
+            W(CHF_IX[i;j;k],UBX )  =-Br
+            W(CHF_IX[i;j;k],UBY )  =-Bp
+            W(CHF_IX[i;j;k],UBZ )  =-Bt
+          endif         
+                  
+        endif              
+        CHF_ENDDO
+#endif     
+      return      
+      end
+
+
+c =======================================================================      
+c                      Pogorelov's   third
+c =======================================================================
+
+      subroutine heliogsthird(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],     
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3     
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr        
+        real_t up,ur,ut,rur,invrho,rut,rup, br,bp,bt
+        real_t tet,tet_lim_rad,uo_fast,ro_fast,po_fast,tear_f,bor_fast,
+     ,  bot_fast,bon_fast,uo_slow,ro_slow,po_slow,tear_s,bor_slow,
+     ,  bot_slow,bon_slow,AK_s,AK_f,BETA_slow,BETA_fast,X1,X2,X3,Y1,Y2,
+     ,  Y3,Z1,Z3,sqeninf,AME2_slow,AME2_fast
+
+               
+        integer CHF_DDECL[i;j;k]
+                     
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+
+        CHF_MULTIDO[box;i;j;k]                    
+        r      = m_rc(i,level)
+        if( r <= initR ) then
+        
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                    
+          
+          theta  = acos(cosT)     
+          
+          sqeninf=sqrt(lismN)
+          tet=abs(90.d0-theta*180/d_pi)
+          tet_lim_rad=8.d0*d_pi/18.d0
+          uo_fast=r**0.01*(668.+1.29*tet)*1.D5
+          ro_fast=r**(-1.68)*(2.27-0.011*tet)
+          tear_f=r**(-0.95)*(2.21D5+30.*tet)
+    !      bor_fast=r**(-1.68)*(27.9-0.07*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bot_fast=r**(-1.09)*(19.1-0.097*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bon_fast=r**(-1.16)*(12.3+3.d-3*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      if(tet.ge.80.) then
+    !      bot_fast=bot_fast*sin(theta)/sin(d_pi/18.)
+    !      endif
+          uo_slow=r**0.048*(388.-0.12*tet)*1.D5
+          ro_slow=r**(-1.93)*(6.372+0.035*tet)
+          tear_s=r**(-0.68)*(0.8D5-260.*tet)
+    !      bor_slow=r**(-1.43)*(24.8+0.02*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bot_slow=r**(-1.07)*(31.3-0.18*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+    !      bon_slow=r**(-1.14)*(16.+4.d-2*tet)/
+    !     /(lismV*sqeninf*1.2923D-6)
+          AME2_slow=uo_slow**2*.7269D-8/(2.D0*TEAR_s)
+          AME2_fast=uo_fast**2*.7269D-8/(2.D0*TEAR_f)
+          AK_s=ro_slow*uo_slow**2/(lismN*lismV**2)
+          AK_f=ro_fast*uo_fast**2/(lismN*lismV**2)
+          po_slow=AK_s/(GAMMA*AME2_slow)
+          po_fast=AK_f/(GAMMA*AME2_fast)
+          uo_fast=uo_fast/lismV
+          ro_fast=ro_fast/lismN
+          uo_slow=uo_slow/lismV
+          ro_slow=ro_slow/lismN
+          BETA_slow=1.5D0*2.693D7/(uo_slow*lismV)
+          BETA_fast=1.5D0*2.693D7/(uo_fast*lismV)
+          bor_slow=sunB/r**2
+          bot_slow=-sunB*beta_slow*sinT/r
+          bon_slow=0.d0
+          bor_fast=sunB/r**2
+          bot_fast=-sunB*beta_fast*sinT/r
+          bon_fast=0.d0
+          X1=sinT*cosF
+          X2=-sinF
+          X3=cosF*cosT
+          Y1=sinT*sinF
+          Y2=cosF
+          Y3=cosT*sinF
+          Z1=cosT
+          Z3=-sinT
+      
+          cosBr  = cos( BETA_slow*(r-uo_slow*T))
+          sinBr  = sin( BETA_slow*(r-uo_slow*T))
+
+          sinB   = sinF*cosBr + cosF*sinBr
+          cosB   = cosF*cosBr - sinF*sinBr
+
+          thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+          thetaS = asin( thetaS ) + d_PI_2
+
+c      IF(THETA.GT.0.9425.AND.THETA.LT.2.199) then
+          IF(THETA.GT.0.9250.AND.THETA.LT.2.0420) then
+            rho    = RO_slow            
+            ur     = UO_slow
+            p      = PO_slow
+            
+            Br=bor_slow
+            Bp=bot_slow
+            Bt=bon_slow
+          else
+            rho    = RO_fast
+            ur     = UO_fast
+            p      = PO_fast
+            
+            Br=bor_fast
+            Bp=bot_fast
+            Bt=bon_fast
+          endif    
+          
+          W(CHF_IX[i;j;k],WRHO)  = rho
+
+          W(CHF_IX[i;j;k],WVELR) = ur
+          W(CHF_IX[i;j;k],WVELP) = zero
+          W(CHF_IX[i;j;k],WVELT) = zero
+          W(CHF_IX[i;j;k],WPRES) = p
+                              
+            
+          if( theta < thetaS ) then
+            W(CHF_IX[i;j;k],WBR )  = br
+            W(CHF_IX[i;j;k],WBP )  = bp
+            W(CHF_IX[i;j;k],WBT )  = bt
+          else
+            W(CHF_IX[i;j;k],UBX )  =-Br
+            W(CHF_IX[i;j;k],UBY )  =-Bp
+            W(CHF_IX[i;j;k],UBZ )  =-Bt
+          endif 
+                  
+        endif              
+        CHF_ENDDO
+#endif     
+      return      
+      end
+      
+      function slowfastinterp_pure(slow,fast,ang,a,b)
+      implicit none
+      real_t slowfastinterp_pure
+      real_t slow,fast,ang,a,b            
+      real_t s,f,x,res
+      real_t m,n,p,q
+      
+      if (ang>0) then      
+        s = slow
+        f = fast
+      else
+        s = fast
+        f = slow
+      endif
+            
+      x = dabs(ang) - b 
+      if (x > half*a) then
+        slowfastinterp_pure = fast
+        return
+      endif
+      if (x < -half*a) then
+        slowfastinterp_pure = slow
+        return
+      endif
+        
+      m = two*(slow-fast)/(a*a*a)
+      q = -1.5D0*(slow-fast)/a
+      p = half*(slow+fast)
+      
+      res = m*x*x*x+q*x+p       
+        
+      slowfastinterp_pure = res
+                  
+      return      
+      end
+      
+      function slowfastinterp(slow,fast,x,half_a,m,q,p)
+      implicit none
+      real_t slowfastinterp
+      real_t slow,fast,ang,half_a,res,x            
+      real_t m,p,q
+                        
+      
+      if (x > half_a) then
+        slowfastinterp = fast
+        return
+      endif
+      if (x < -half_a) then
+        slowfastinterp = slow
+        return
+      endif
+                    
+      res = m*x*x*x+q*x+p       
+        
+      slowfastinterp = res
+                  
+      return      
+      end
+      
+      
+      subroutine heliogscir(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],     
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3     
+        real_t b, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr        
+        real_t up,ur,ut,rur,invrho,rut,rup, br,bp,bt
+        real_t timeRef,OmegaD,PhiR, sunBeta
+        real_t dpfast,dpslow, dp
+        real_t x,y,z,z_cir,t_cir,r,r0,rr0
+                
+        real_t slowfastinterp
+        real_t slowfastinterp_pure
+        
+        real_t m_vel,q_vel,p_vel,m_p,q_p,p_p,m_dp,q_dp,p_dp,half_a,ang
+        
+               
+        integer CHF_DDECL[i;j;k]
+                     
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+        
+        timeRef    = eos_AU/lismV         
+        OmegaD     = Omega*timeRef ! Dimensionless omega
+        PhiR       = OmegaD*t                
+                                                
+c        pref  = lismN*eos_mp*lismV*lismV               
+c        pfast = two*eos_k*(Nfast*lismN)*Tfast/pref
+c        pslow = two*eos_k*(Nslow*lismN)*Tslow/pref
+
+        dpfast = nfast*Vfast*Vfast
+        dpslow = nslow*Vslow*Vslow
+        
+        
+        m_vel = two*(vslow-vfast)/(fs_a*fs_a*fs_a)
+        q_vel = -1.5D0*(vslow-vfast)/fs_a
+        p_vel = half*(vslow+vfast)
+        
+        
+        m_p = two*(pslow-pfast)/(fs_a*fs_a*fs_a)
+        q_p = -1.5D0*(pslow-pfast)/fs_a
+        p_p = half*(pslow+pfast)
+        
+        m_dp = two*(dpslow-dpfast)/(fs_a*fs_a*fs_a)
+        q_dp = -1.5D0*(dpslow-dpfast)/fs_a
+        p_dp = half*(dpslow+dpfast)
+
+        half_a = half*fs_a
+
+        r0 = m_rn(0,level)
+
+        CHF_MULTIDO[box;i;j;k]                    
+        r      = m_rc(i,level)
+        rr0    = r/r0
+        if( r <= initR ) then
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+          
+          x      = sinT*cosF
+          y      = sinT*sinF
+          z      = cosT
+                    
+          z_cir = sin(sunTILT)*sin(PhiR)*x-sin(sunTILT)*cos(PhiR)*y+cos(sunTILT)*z                    
+          t_cir = acos(z_cir)*180D0/d_PI
+          t_cir = 90D0 - t_cir
+                    
+          x   = t_cir
+          
+c          vel = (Vfast*exp(abs(x/fs_a)-fs_b/fs_a)+Vslow)/(exp(abs(x/fs_a)-fs_b/fs_a)+1)
+c          DP  = (DPfast*exp(abs(x/fs_a)-fs_b/fs_a)+DPslow)/(exp(abs(x/fs_a)-fs_b/fs_a)+1)
+c          rho = (nfast*exp(abs(x/fs_a)-fs_b/fs_a)+nslow)/(exp(abs(x/fs_a)-fs_b/fs_a)+1)                  
+c          p   = (pfast*exp(abs(x/fs_a)-fs_b/fs_a)+pslow)/(exp(abs(x/fs_a)-fs_b/fs_a)+1) 
+          
+c          p   = pfast
+c          vel = Vfast
+c          DP  = DPfast          
+c          if ((t_cir<fs_b) .and. (t_cir>-fs_b)) then
+c            vel = Vslow
+c            DP  = DPslow
+c          endif
+          
+          ang = dabs(x) - fs_b
+c          if (x>zero) then
+c            vel = slowfastinterp(vslow,vfast,ang,half_a,m_vel,q_vel,p_vel)
+c            p   = slowfastinterp(pslow,pfast,ang,half_a,m_p,q_p,p_p)
+c            dp  = slowfastinterp(dpslow,dpfast,ang,half_a,m_dp,q_dp,p_dp)          
+c          else 
+c            vel = slowfastinterp(vfast,vslow,ang,half_a,-m_vel,-q_vel,p_vel)
+c            p   = slowfastinterp(pfast,pslow,ang,half_a,-m_p,-q_p,p_p)
+c            dp  = slowfastinterp(dpfast,dpslow,ang,half_a,-m_dp,-q_dp,p_dp)          
+c          endif
+          
+          vel = slowfastinterp(vslow,vfast,ang,half_a,m_vel,q_vel,p_vel)
+          p   = slowfastinterp(pslow,pfast,ang,half_a,m_p,q_p,p_p)
+          dp  = slowfastinterp(dpslow,dpfast,ang,half_a,m_dp,q_dp,p_dp)          
+          
+c          vel = slowfastinterp_pure(vslow,vfast,x,fs_a,fs_b)
+c          p   = slowfastinterp_pure(pslow,pfast,x,fs_a,fs_b)
+c          dp  = slowfastinterp_pure(dpslow,dpfast,x,fs_a,fs_b)
+          
+
+          rho = DP/(vel*vel)
+                                        
+          sunBeta  = Omega*eos_AU/(vel*lismV)          
+                                        
+          cosBr  = cos( sunBeta*(r - vel*t) )
+          sinBr  = sin( sunBeta*(r - vel*t) )
+
+          sinB   = sinF*cosBr + cosF*sinBr
+          cosB   = cosF*cosBr - sinF*sinBr
+
+          thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+          thetaS = asin( thetaS ) + d_PI_2
+                                                                      
+          br      = dirBrN*sunB/(r*r)          
+          Bp      = -sunBeta*Br*r*sinT                    
+          Bt      = zero       
+                              
+          W(CHF_IX[i;j;k],WRHO)  = rho/(rr0*rr0)
+
+          W(CHF_IX[i;j;k],WVELR) = vel
+          W(CHF_IX[i;j;k],WVELP) = zero
+          W(CHF_IX[i;j;k],WVELT) = zero
+          W(CHF_IX[i;j;k],WPRES) = p/rr0**(two*gamma)
+                                                  
+          theta  = acos(cosT)
+                                        
+          if (iHCS >= 0) then
+            W(CHF_IX[i;j;k],WBR )  = -br
+            W(CHF_IX[i;j;k],WBP )  = -bp
+            W(CHF_IX[i;j;k],WBT )  = -bt
+            
+            if( theta < thetaS ) then
+              W(CHF_IX[i;j;k],iHCS) = one
+            else
+              W(CHF_IX[i;j;k],iHCS) =-one
+            endif
+            
+            
+c tracking streaming interface             
+            if (ang < 0.0) then
+              W(CHF_IX[i;j;k],iHCS) = one
+            else
+              W(CHF_IX[i;j;k],iHCS) = -one
+            endif
+            
+            if( theta < thetaS ) then
+              W(CHF_IX[i;j;k],WBR )  = br
+              W(CHF_IX[i;j;k],WBP )  = bp
+              W(CHF_IX[i;j;k],WBT )  = bt
+            else
+              W(CHF_IX[i;j;k],WBR )  =-Br
+              W(CHF_IX[i;j;k],WBP )  =-Bp
+              W(CHF_IX[i;j;k],WBT )  =-Bt
+            endif 
+                                  
+            
+          else                                      
+            if( theta < thetaS ) then
+              W(CHF_IX[i;j;k],WBR )  = br
+              W(CHF_IX[i;j;k],WBP )  = bp
+              W(CHF_IX[i;j;k],WBT )  = bt
+            else
+              W(CHF_IX[i;j;k],WBR )  =-Br
+              W(CHF_IX[i;j;k],WBP )  =-Bp
+              W(CHF_IX[i;j;k],WBT )  =-Bt
+            endif 
+          endif                                   
+        
+        endif              
+        CHF_ENDDO
+#endif     
+      return      
+      end
+      
+      subroutine heliogspizzo(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],     
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3     
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr        
+        real_t up,ur,ut,rur,invrho,rut,rup, pref
+        real_t timeRef,OmegaD,PhiR, sunBeta
+c        real_t pfast,pslow
+        real_t x,y,z,z_cir,t_cir
+        real_t r0,rho0,T0,p0,Ufast,Uslow,L,Lmax,phi0,PC,TC
+               
+        integer CHF_DDECL[i;j;k]
+                     
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+        
+        timeRef    = eos_AU/lismV         
+        OmegaD     = Omega*timeRef ! Dimensionless omega
+        PhiR       = OmegaD*t                
+                                                
+        pref  = lismN*eos_mp*lismV*lismV        
+        
+        r0   = 0.16D0
+        rho0 = 370D0
+        T0   = 1.12D6
+        p0   = two*eos_k*rho0*T0
+                
+        rho0   = rho0/lismN
+        p0     = p0/pref
+        Ufast  = 580D5/lismV
+        Uslow  = 290D5/lismV
+        
+        
+        phi0 = zero
+        t0   = d_PI_2
+        
+        Lmax = d_PI/6D0
+        
+        PC     = phi0 + PhiR
+        TC     = t0
+                
+        
+
+        CHF_MULTIDO[box;i;j;k]                    
+          r      = m_rc(i,level)        
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+          
+          L = acos(sinT*sin(TC)*(cosF*cos(PC)+sinF*sin(PC))+cosT*cos(TC))
+          L = L/Lmax
+          
+          if (abs(L)>one) then
+            vel = uslow
+          else if (abs(L)<1D-12) then
+            vel = ufast
+          else
+            vel = uslow + (ufast-uslow)*(sin(d_PI*L)/(d_PI*L))**2
+          endif
+                    
+          W(CHF_IX[i;j;k],WRHO)  = rho0/((r/r0)**2)
+
+          W(CHF_IX[i;j;k],WVELR) = vel
+          W(CHF_IX[i;j;k],WVELP) = zero
+          W(CHF_IX[i;j;k],WVELT) = zero
+          W(CHF_IX[i;j;k],WPRES) = p0/((r/r0)**(two*gamma))                                                            
+                                                  
+          W(CHF_IX[i;j;k],WBR )  = zero
+          W(CHF_IX[i;j;k],WBP )  = zero
+          W(CHF_IX[i;j;k],WBT )  = zero
+          
+                
+        CHF_ENDDO
+#endif     
+      return      
+      end
+      
+
+      
+      subroutine HELIOREINIT_DEFAULT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_REAL[t],
+     &    CHF_CONST_REAL[Rinit],
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],     
+     &    CHF_BOX[box])
+
+        real_t e0, r, r2, rr, ux, uy, uz, p, rho, sunR2
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB
+        real_t sinTILT, cosTILT, theta, thetaS
+        integer CHF_DDECL[i;j;k]
+        real_t x, y, z, Bx, By, Bz, br, bp, b, cosBr, sinBr, sunBeta        
+
+        real_t CHF_DDECL[xl;yl;zl]
+        real_t CHF_DDECL[xh;yh;zh]
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+
+        CHF_DTERM[
+        xl = CHF_LBOUND[U;0]*dx - sunXC;
+        yl = CHF_LBOUND[U;1]*dx - sunYC;
+        zl = CHF_LBOUND[U;2]*dx - sunZC]
+
+        CHF_DTERM[
+        xh = (CHF_UBOUND[U;0]+1)*dx - sunXC;
+        yh = (CHF_UBOUND[U;1]+1)*dx - sunYC;
+        zh = (CHF_UBOUND[U;2]+1)*dx - sunZC]
+
+        if( CHF_DTERM[(xl > Rinit); .or. (yl > Rinit); .or. (zl > Rinit)] ) then
+          return
+        endif
+
+        if( CHF_DTERM[(xh <-Rinit); .or. (yh <-Rinit); .or. (zh <-Rinit)] ) then
+          return
+        endif
+
+        sunR2 = Rinit*Rinit
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+        sunBeta  = Omega*eos_AU/(sunV*lismV)
+
+        z      = zero
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r2      = CHF_DTERM[x*x; + y*y; + z*z]
+
+          if( r2 <= sunR2 ) then
+            r      = sqrt( r2 )
+            rr     = r/sunIntBCRadius
+
+            xy     = sqrt( x*x + y*y )
+
+            cosT   = z/r
+            sinT   = sqrt( one - cosT*cosT )
+
+            cosF   = x/xy
+            sinF   = y/xy
+
+            theta  = acos( cosT )
+
+            cosBr  = cos( sunBeta*(r - sunV*t) )
+            sinBr  = sin( sunBeta*(r - sunV*t) )
+
+            sinB   = sinF*cosBr + cosF*sinBr
+            cosB   = cosF*cosBr - sinF*sinBr
+
+            thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+            thetaS = asin( thetaS ) + d_PI_2
+
+            rho    = sunRho/(rr*rr)
+
+            ux     = sunV*sinT*cosF
+            uy     = sunV*sinT*sinF
+            uz     = sunV*cosT
+
+            p      = sunP/rr**(two*gamma)
+                        
+
+            !Bx     = br*(sinT*cosF + sunBeta*r*sinT*sinF)
+            !By     = br*(sinT*sinF - sunBeta*r*sinT*cosF)
+            
+            br     = dirBrN*sunB/(rr*rr)
+            bp     = -sunBeta*br*r*sinT ! should be r, not rr
+
+            bx = br*sinT*cosF - bp*sinF
+            by = br*sinT*sinF + bp*cosF
+            bz = br*cosT
+
+            
+            
+            
+            b      = Bx*Bx + By*By + Bz*Bz
+
+            e0     = p/hgamma + half*(rho*sunV*sunV + d_1_4PI*b)
+
+            U(CHF_IX[i;j;k],URHO)  = rho
+
+            U(CHF_IX[i;j;k],UMOMX) = rho*ux
+            U(CHF_IX[i;j;k],UMOMY) = rho*uy
+            U(CHF_IX[i;j;k],UMOMZ) = rho*uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+            
+            if (sunBmonopolar == 1) then
+              U(CHF_IX[i;j;k],UBX )  = Bx
+              U(CHF_IX[i;j;k],UBY )  = By
+              U(CHF_IX[i;j;k],UBZ )  = Bz
+            else
+              if( theta < thetaS ) then
+                U(CHF_IX[i;j;k],UBX )  = Bx
+                U(CHF_IX[i;j;k],UBY )  = By
+                U(CHF_IX[i;j;k],UBZ )  = Bz
+              else
+                U(CHF_IX[i;j;k],UBX )  =-Bx
+                U(CHF_IX[i;j;k],UBY )  =-By
+                U(CHF_IX[i;j;k],UBZ )  =-Bz
+              endif
+              if (iHCS >= 0) then
+              if( theta < thetaS ) then
+                U(CHF_IX[i;j;k],iHCS) = 1
+              else
+                U(CHF_IX[i;j;k],iHCS) =-1 
+              endif
+              endif     
+            endif
+            
+                        
+        endif
+        CHF_ENDDO
+
+        return
+        end        
+        
+        
+        subroutine HELIOREINIT_CYCLE(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_REAL[t],
+     &    CHF_CONST_REAL[Rinit],
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],     
+     &    CHF_BOX[box])
+
+        real_t e0, r, r2, rr, ux, uy, uz, p, rho, sunR2
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, vel
+        real_t sinTILT, cosTILT, theta, thetaS
+        integer CHF_DDECL[i;j;k]
+        real_t x, y, z, dirBr, Bx, By, Bz, br, bp, b, cosBr, sinBr, sunBeta        
+
+        real_t CHF_DDECL[xl;yl;zl]
+        real_t CHF_DDECL[xh;yh;zh]
+        
+        real_t C_PERIOD, timeRef, tilt,slow_ex
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+        
+
+
+        CHF_DTERM[
+        xl = CHF_LBOUND[U;0]*dx - sunXC;
+        yl = CHF_LBOUND[U;1]*dx - sunYC;
+        zl = CHF_LBOUND[U;2]*dx - sunZC]
+
+        CHF_DTERM[
+        xh = (CHF_UBOUND[U;0]+1)*dx - sunXC;
+        yh = (CHF_UBOUND[U;1]+1)*dx - sunYC;
+        zh = (CHF_UBOUND[U;2]+1)*dx - sunZC]
+
+        if( CHF_DTERM[(xl > Rinit); .or. (yl > Rinit); .or. (zl > Rinit)] ) then
+          return
+        endif
+
+        if( CHF_DTERM[(xh <-Rinit); .or. (yh <-Rinit); .or. (zh <-Rinit)] ) then
+          return
+        endif
+        
+        timeRef  = eos_AU/lismV         
+        C_PERIOD = 11.0*365.0*24.0*3600.0/timeRef
+        
+        tilt     = half*(       (tilt_min+tilt_max) - (tilt_min-tilt_max)*cos(d_2PI*t/C_PERIOD))
+        slow_ex  = half*(d_PI - (slow_min+slow_max) + (slow_min-slow_max)*cos(d_2PI*t/C_PERIOD))
+        dirBr    = (-1)**INT(T/C_PERIOD)
+                
+        sunR2 = Rinit*Rinit
+
+        sinTILT  = sin( tilt )
+        cosTILT  = cos( tilt )        
+
+        z      = zero
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r2      = CHF_DTERM[x*x; + y*y; + z*z]
+
+          if( r2 <= sunR2 ) then
+            r      = sqrt( r2 )
+            rr     = r/sunIntBCRadius
+
+            xy     = sqrt( x*x + y*y )
+
+            cosT   = z/r
+            sinT   = sqrt( one - cosT*cosT )
+
+            cosF   = x/xy
+            sinF   = y/xy
+
+            theta  = acos( cosT )
+            
+            if ((theta >= slow_ex).and.(theta <= d_PI - slow_ex)) then
+              rho = Nslow
+              vel = Vslow
+              p   = Pslow
+            else
+              rho = Nfast
+              vel = Vfast
+              p   = Pfast
+            endif
+            
+            
+            sunBeta  = Omega*eos_AU/(vel*lismV)
+            
+            cosBr  = cos( sunBeta*(r - vel*t) )
+            sinBr  = sin( sunBeta*(r - vel*t) )
+
+            sinB   = sinF*cosBr + cosF*sinBr
+            cosB   = cosF*cosBr - sinF*sinBr
+                        
+
+            thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+            thetaS = asin( thetaS ) + d_PI_2
+
+            rho    = rho/(rr*rr)
+
+            ux     = vel*sinT*cosF
+            uy     = vel*sinT*sinF
+            uz     = vel*cosT
+
+            p      = p/rr**(two*gamma)
+                        
+                        
+            br     = dirBr*sunB/(rr*rr)
+            bp     = -sunBeta*br*r*sinT ! should be r, not rr
+
+            bx = br*sinT*cosF - bp*sinF
+            by = br*sinT*sinF + bp*cosF
+            bz = br*cosT
+            
+                        
+            b      = Bx*Bx + By*By + Bz*Bz
+
+            e0     = p/hgamma + half*(rho*vel*vel + d_1_4PI*b)
+
+            U(CHF_IX[i;j;k],URHO)  = rho
+
+            U(CHF_IX[i;j;k],UMOMX) = rho*ux
+            U(CHF_IX[i;j;k],UMOMY) = rho*uy
+            U(CHF_IX[i;j;k],UMOMZ) = rho*uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+                       
+            if( theta < thetaS ) then
+              U(CHF_IX[i;j;k],UBX )  = Bx
+              U(CHF_IX[i;j;k],UBY )  = By
+              U(CHF_IX[i;j;k],UBZ )  = Bz
+            else
+              U(CHF_IX[i;j;k],UBX )  =-Bx
+              U(CHF_IX[i;j;k],UBY )  =-By
+              U(CHF_IX[i;j;k],UBZ )  =-Bz
+            endif
+            if (iHCS >= 0) then
+            if( theta < thetaS ) then
+              U(CHF_IX[i;j;k],iHCS) = 1
+            else
+              U(CHF_IX[i;j;k],iHCS) =-1 
+            endif
+            endif                 
+            
+                        
+        endif
+        CHF_ENDDO
+
+        return
+        end        
+
+        subroutine HELIOREINIT_CYCLE_SPHERICAL(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[t],
+     &    CHF_CONST_REAL[Rinit],
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],     
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        real_t e0, r, r2, rr, ux, uy, uz, p, rho, sunR2
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, vel
+        real_t sinTILT, cosTILT, theta, thetaS
+        real_t dirBr, Bx, By, Bz, br, bp, b, cosBr, sinBr, sunBeta        
+        real_t rl
+        real_t C_PERIOD, timeRef, tilt,slow_ex
+
+        integer CHF_DDECL[i;j;k]
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        rl = CHF_LBOUND[U;0]
+        
+        if( rl .gt. Rinit ) then
+          return
+        endif
+
+        timeRef  = eos_AU/lismV         
+        C_PERIOD = 11.0*365.0*24.0*3600.0/timeRef
+        
+        tilt     = half*(       (tilt_min+tilt_max) - (tilt_min-tilt_max)*cos(d_2PI*t/C_PERIOD))
+        slow_ex  = half*(d_PI - (slow_min+slow_max) + (slow_min-slow_max)*cos(d_2PI*t/C_PERIOD))
+        dirBr    = (-1)**INT(T/C_PERIOD)
+                
+        sunR2 = Rinit*Rinit
+
+        sinTILT  = sin( tilt )
+        cosTILT  = cos( tilt )        
+
+        CHF_MULTIDO[box;i;j;k]
+          
+          r       = m_rc(i,level)
+
+          if( r <= Rinit ) then
+            r2      = r*r
+            rr     = r/sunIntBCRadius
+
+            cosF   = m_phic(j,ICOS,level)
+            sinF   = m_phic(j,ISIN,level)
+
+            cosT   = m_thetac(k,ICOS,level)
+            sinT   = m_thetac(k,ISIN,level)
+
+            theta  = acos( cosT )
+            
+            if ((theta >= slow_ex).and.(theta <= d_PI - slow_ex)) then
+              rho = Nslow
+              vel = Vslow
+              p   = Pslow
+            else
+              rho = Nfast
+              vel = Vfast
+              p   = Pfast
+            endif
+            
+            
+            sunBeta  = Omega*eos_AU/(vel*lismV)
+            
+            cosBr  = cos( sunBeta*(r - vel*t) )
+            sinBr  = sin( sunBeta*(r - vel*t) )
+
+            sinB   = sinF*cosBr + cosF*sinBr
+            cosB   = cosF*cosBr - sinF*sinBr
+                        
+
+            thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+            thetaS = asin( thetaS ) + d_PI_2
+
+            rho    = rho/(rr*rr)
+
+            ux     = vel*sinT*cosF
+            uy     = vel*sinT*sinF
+            uz     = vel*cosT
+
+            p      = p/rr**(two*gamma)
+                        
+                        
+            br     = dirBr*sunB/(rr*rr)
+            bp     = -sunBeta*br*r*sinT ! should be r, not rr
+
+            bx = br*sinT*cosF - bp*sinF
+            by = br*sinT*sinF + bp*cosF
+            bz = br*cosT
+            
+                        
+            b      = Bx*Bx + By*By + Bz*Bz
+
+            e0     = p/hgamma + half*(rho*vel*vel + d_1_4PI*b)
+
+            U(CHF_IX[i;j;k],URHO)  = rho
+
+            U(CHF_IX[i;j;k],UMOMX) = rho*ux
+            U(CHF_IX[i;j;k],UMOMY) = rho*uy
+            U(CHF_IX[i;j;k],UMOMZ) = rho*uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+                       
+            if( theta < thetaS ) then
+              U(CHF_IX[i;j;k],UBX )  = Bx
+              U(CHF_IX[i;j;k],UBY )  = By
+              U(CHF_IX[i;j;k],UBZ )  = Bz
+            else
+              U(CHF_IX[i;j;k],UBX )  =-Bx
+              U(CHF_IX[i;j;k],UBY )  =-By
+              U(CHF_IX[i;j;k],UBZ )  =-Bz
+            endif
+            if (iHCS >= 0) then
+            if( theta < thetaS ) then
+              U(CHF_IX[i;j;k],iHCS) = 1
+            else
+              U(CHF_IX[i;j;k],iHCS) =-1 
+            endif
+            endif                 
+            
+                        
+        endif
+        CHF_ENDDO
+
+        return
+        end        

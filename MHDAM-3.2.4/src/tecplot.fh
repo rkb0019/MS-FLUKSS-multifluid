@@ -1,0 +1,2 @@
+      integer iUnit
+      common /tecplot/ iUnit

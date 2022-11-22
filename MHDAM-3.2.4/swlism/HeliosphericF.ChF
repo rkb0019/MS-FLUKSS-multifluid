@@ -1,0 +1,2947 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+
+        subroutine SETHELIOS(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[aulismN],
+     &    CHF_CONST_REAL[aulismV],
+     &    CHF_CONST_REAL[aulismUX],
+     &    CHF_CONST_REAL[aulismUY],
+     &    CHF_CONST_REAL[aulismUZ],
+     &    CHF_CONST_REAL[aulismT],
+     &    CHF_CONST_REAL[aulismB],
+     &    CHF_CONST_REAL[aulismBX],
+     &    CHF_CONST_REAL[aulismBY],
+     &    CHF_CONST_REAL[aulismBZ],
+     &    CHF_CONST_REAL[ausunXC],
+     &    CHF_CONST_REAL[ausunYC],
+     &    CHF_CONST_REAL[ausunZC],
+     &    CHF_CONST_REAL[ausunR],
+     &    CHF_CONST_REAL[ausunN],
+     &    CHF_CONST_REAL[ausunV],
+     &    CHF_CONST_REAL[ausunT],
+     &    CHF_CONST_REAL[ausunB],
+     &    CHF_CONST_REAL[ausunTILT],
+     &    CHF_CONST_REAL[ausunIntBCRadius],
+     &    CHF_CONST_REAL[auinitR],
+     &    CHF_CONST_REAL[aunetN],
+     &    CHF_CONST_REAL[audirBrN],
+     &    CHF_CONST_REAL[auTMLIM],
+     &    CHF_CONST_REAL[auRegSafeZTop],
+     &    CHF_CONST_REAL[auRegSafeZBot],
+     &    CHF_CONST_INT[ausunBmonopolar] )
+
+        real_t r0, p0, umag, rho, p, pref, b, lismAU
+
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        gamma      = augamma
+        hgamma     = gamma - one
+        invhgamma  = one/hgamma
+
+        lismN      = aulismN        
+        lismT      = aulismT
+        
+        lismB      = aulismB
+        lismBX     = aulismBX
+        lismBY     = aulismBY
+        lismBZ     = aulismBZ        
+        
+        lismV      = aulismV
+        lismUX     = aulismUX
+        lismUY     = aulismUY
+        lismUZ     = aulismUZ                
+        
+        sunXC      = ausunXC
+        sunYC      = ausunYC
+        sunZC      = ausunZC
+        sunR       = ausunR
+        sunN       = ausunN
+        sunV       = ausunV
+        sunT       = ausunT
+        sunB       = ausunB        
+        sunTILT    = ausunTILT*d_PI_180
+        dirBrN     = audirBrN
+        initR      = auinitR
+        netN       = aunetN
+        sunIntBCRadius = ausunIntBCRadius
+        sunBmonopolar  = ausunBmonopolar
+
+        Omega      = d_2PI/(25.38D0*24D0*3600D0)
+c        Omega      = d_2PI/(27D0*24D0*3600D0)    
+
+            
+c        sunBeta    = Omega*eos_AU/sunV
+        
+
+        rho        = lismN*eos_mp
+        pref       = rho*lismV*lismV
+        p          = two*eos_k*lismN*lismT
+
+        lismP      = p/pref
+        lismM      = one/sqrt( gamma*lismP )
+
+        b          = lismB/sqrt( pref )
+        lismBX     = b*lismBX
+        lismBY     = b*lismBY
+        lismBZ     = b*lismBZ
+        
+c        lismUX     = -one*cos(lismAU)
+c        lismUY     = zero
+c        lismUZ     = -one*sin(lismAU)        
+c        lismUX     = -one
+c        lismUY     = zero
+c        lismUZ     = zero
+
+
+        sunRho     = sunN/lismN
+        p          = two*eos_k*sunN*sunT
+
+        sunP       = p/pref
+        sunV       = sunV/lismV
+
+        sunB       = sunB/sqrt( pref )
+
+        if (netN > zero) then
+          netRho     = netN/lismN
+          p          = eos_k*netN*lismT
+          netP       = p/pref
+        endif
+
+        r0         = one
+        p0         = one/(gamma*lismM*lismM)
+
+        umag       = sqrt( gamma*p0/r0 )
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+
+        if( smallr < 1.0D-12 ) smallr  = 1.0D-12
+        if( smallp < 1.0D-12 ) smallp  = 1.0D-12
+        
+        TMLIM = auTMLIM
+        RegSafeZBot = auRegSafeZBot
+        RegSafeZTop = auRegSafeZTop
+
+        return
+        end
+        
+        subroutine setfastslowsw(
+     &  CHF_CONST_REAL[aur],
+     &  CHF_CONST_REAL[auVfast],
+     &  CHF_CONST_REAL[auVslow],
+     &  CHF_CONST_REAL[auTfast],
+     &  CHF_CONST_REAL[auTslow],
+     &  CHF_CONST_REAL[auNfast],
+     &  CHF_CONST_REAL[auNslow],
+     &  CHF_CONST_REAL[aufs_a],
+     &  CHF_CONST_REAL[aufs_b],
+     &  CHF_CONST_REAL[autilt_min],
+     &  CHF_CONST_REAL[autilt_max],
+     &  CHF_CONST_REAL[auslow_min],
+     &  CHF_CONST_REAL[auslow_max])     
+
+        external fcn
+        
+        real_t xx(3),fvec(3),fjac(3,3),tol,waa(25)
+        integer nsw,ldfjac,lwa
+        integer info
+        real_t pref
+        
+        real*8 VELE,RHOE,PRESE,rfcn
+        common /fcnsw/ VELE,RHOE,PRESE,rfcn
+
+      
+     
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        rfcn  = aur   
+        nsw   = 3
+        ldfjac = 3
+        lwa = 25        
+        tol = 1d-12
+        
+        pref  = lismN*eos_mp*lismV*lismV
+        
+        RHOE  = auNslow/lismN
+        VELE  = auVslow/lismV
+        PRESE = 2.D0*auNslow*eos_k*auTslow/pref
+        
+
+        xx(1)=RHOE/rfcn**2
+        xx(2)=VELE
+        xx(3)=PRESE/rfcn**hgamma
+                  
+        call hybrj1(fcn,nsw,xx,fvec,fjac,ldfjac,tol,info,waa,lwa)
+        
+        Nslow = xx(1)
+        Vslow = xx(2)
+        Pslow = xx(3)
+        Tslow = Pslow*pref/(2.0*Nslow*lismN*eos_k) 
+        
+c        print *,'Nslow=',Nslow*lismN,'Vslow=',Vslow*lismV/1D+5,'Tslow=',Tslow
+
+        RHOE  = auNfast/lismN
+        VELE  = auVfast/lismV
+        PRESE = 2.D0*auNfast*eos_k*auTfast/pref        
+        
+        xx(1)=RHOE/rfcn**2
+        xx(2)=VELE
+        xx(3)=PRESE/rfcn**hgamma
+        
+        call hybrj1(fcn,nsw,xx,fvec,fjac,ldfjac,tol,info,waa,lwa)
+        
+        Nfast = xx(1)
+        Vfast = xx(2)
+        Pfast = xx(3)
+        Tfast = Pfast*pref/(2.0*Nfast*lismN*eos_k) 
+        
+c        print *,'Nfast=',Nfast*lismN,'Vfast=',Vfast*lismV/1D+5,'Tfast=',Tfast
+
+        ! degress
+        fs_a  = aufs_a
+        fs_b  = aufs_b     
+             
+             
+        ! radians
+        tilt_min = d_PI_180*autilt_min
+        tilt_max = d_PI_180*autilt_max
+        slow_min = d_PI_180*auslow_min
+        slow_max = d_PI_180*auslow_max        
+                          
+        return
+        end
+        
+
+        subroutine HELIOBC(
+     &    CHF_FRA[F],
+     &    CHF_FRA1[Bn],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],
+     &    CHF_BOX[box])
+
+        real_t P, b, bu, Bx, By, Bz, ke, e
+        real_t density, velx, vely, velz, pressure
+        real_t rhoL, vnL, vt1L, vt2L, pL, BnL, Bt1L, Bt2L
+        real_t rhoR, vnR, vt1R, vt2R, pR, BnR, Bt1R, Bt2R
+        real_t FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2
+        real_t FLUXE,   FLUXBNORM,  FLUXBTAN1,  FLUXBTAN2
+        real_t BnValue
+        real_t  x, y, z
+        real_t rho_in, vn_in, vt1_in, vt2_in, p_in
+        real_t rho_out, vn_out, vt1_out, vt2_out, p_out        
+        integer inorm,  itan1,  itan2
+        integer inormB, itanB1, itanB2
+        integer iURHO,iWRHO,iWPRES,iUENG
+        integer iFluid, irho, ipres
+        integer CHF_DDECL[i;j;k]
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        inorm  = WVELX + dir
+        itan1  = WVELX + mod(dir + 1,3)
+        itan2  = WVELX + mod(dir + 2,3)
+
+        inormB = WBX   + dir
+        itanB1 = WBX   + mod(dir + 1,3)
+        itanB2 = WBX   + mod(dir + 2,3)
+
+        if( dir .eq. 0 ) then
+          if( lohisign == -1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Left boundary (exit boundary)
+            CHF_MULTIDO[box;i;j;k]
+              rhoR   = WLeft(CHF_IX[i;j;k],WRHO )
+              vnR    =-WLeft(CHF_IX[i;j;k],inorm)
+              vt1R   =-WLeft(CHF_IX[i;j;k],itan1)
+              vt2R   =-WLeft(CHF_IX[i;j;k],itan2)
+              pR     = WLeft(CHF_IX[i;j;k],WPRES)
+              BnR    =-WLeft(CHF_IX[i;j;k],inormB)
+              Bt1R   =-WLeft(CHF_IX[i;j;k],itanB1)
+              Bt2R   =-WLeft(CHF_IX[i;j;k],itanB2)
+
+              rhoR   = max( smallr, rhoR )
+              pR     = max( smallp, pR   )
+
+              rhoL   = WRight(CHF_IX[i;j;k],WRHO )
+              vnL    =-WRight(CHF_IX[i;j;k],inorm)
+              vt1L   =-WRight(CHF_IX[i;j;k],itan1)
+              vt2L   =-WRight(CHF_IX[i;j;k],itan2)
+              pL     = WRight(CHF_IX[i;j;k],WPRES)
+              BnL    =-WRight(CHF_IX[i;j;k],inormB)
+              Bt1L   =-WRight(CHF_IX[i;j;k],itanB1)
+              Bt2L   =-WRight(CHF_IX[i;j;k],itanB2)
+
+              rhoL   = max( smallr, rhoL )
+              pL     = max( smallp, pL   )
+
+              CHF_DTERM[
+              x      = - ((i + half)*dx - sunXC);
+              y      = - ((j + half)*dx - sunYC);
+              z      = - ((k + half)*dx - sunZC)]
+
+              call   BFLUXR( rhoL, vnL, vt1L, vt2L, pL,
+     .                       BnL, Bt1L, Bt2L,
+     .                       rhoR, vnR, vt1R, vt2R, pR,
+     .                       BnR, Bt1R, Bt2R,
+     .                       x, y, z,
+     .                       FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2,
+     .                       FLUXE,   FLUXBNORM,  FLUXBTAN1,  FLUXBTAN2,
+     .                       BnValue )
+
+              F(CHF_IX[i;j;k],URHO )   =-FLUXRHO
+
+              F(CHF_IX[i;j;k],inorm)   = FLUXRUNORM
+              F(CHF_IX[i;j;k],itan1)   = FLUXRUTAN1
+              F(CHF_IX[i;j;k],itan2)   = FLUXRUTAN2
+
+              F(CHF_IX[i;j;k],UENG )   =-FLUXE
+
+              F(CHF_IX[i;j;k],inormB)  = FLUXBNORM
+              F(CHF_IX[i;j;k],itanB1)  = FLUXBTAN1
+              F(CHF_IX[i;j;k],itanB2)  = FLUXBTAN2
+
+              Bn(CHF_IX[i;j;k])  =-BnValue
+            CHF_ENDDO
+          else
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Right boundary (inflow boundary)
+            CHF_MULTIDO[box;i;j;k]
+              density  = one
+
+              velx     = lismUX
+              vely     = lismUY
+              velz     = lismUZ
+
+              pressure = lismP
+
+              Bx       = lismBX
+              By       = lismBY
+              Bz       = lismBZ
+
+              b        = d_1_8PI*(Bx  *Bx   + By  *By   + Bz  *Bz  )
+              ke       = density*(velx*velx + vely*vely + velz*velz)
+              bu       =          Bx  *velx + By  *vely + Bz  *velz
+
+              P        = pressure + b
+              e        = pressure/hgamma + half*ke + b
+
+              F(CHF_IX[i;j;k],URHO ) = density*velx
+
+              F(CHF_IX[i;j;k],UMOMX) = density*velx*velx - d_1_4PI*Bx*Bx + p
+              F(CHF_IX[i;j;k],UMOMY) = density*velx*vely - d_1_4PI*Bx*By
+              F(CHF_IX[i;j;k],UMOMZ) = density*velx*velz - d_1_4PI*Bx*Bz
+
+              F(CHF_IX[i;j;k],UENG ) = velx*(e + P) - d_1_4PI*Bx*bu
+
+              F(CHF_IX[i;j;k],UBX)   = zero
+              F(CHF_IX[i;j;k],UBY)   = velx*By - vely*Bx
+              F(CHF_IX[i;j;k],UBZ)   = velx*Bz - velz*Bx
+
+              Bn(CHF_IX[i;j;k])  = Bx
+            CHF_ENDDO
+          endif
+        else
+          if( lohisign == -1 ) then
+            CHF_MULTIDO[box;i;j;k]
+              rhoR   = WLeft(CHF_IX[i;j;k],WRHO )
+              vnR    =-WLeft(CHF_IX[i;j;k],inorm)
+              vt1R   =-WLeft(CHF_IX[i;j;k],itan1)
+              vt2R   =-WLeft(CHF_IX[i;j;k],itan2)
+              pR     = WLeft(CHF_IX[i;j;k],WPRES)
+              BnR    =-WLeft(CHF_IX[i;j;k],inormB)
+              Bt1R   =-WLeft(CHF_IX[i;j;k],itanB1)
+              Bt2R   =-WLeft(CHF_IX[i;j;k],itanB2)
+
+              rhoR   = max( smallr, rhoR )
+              pR     = max( smallp, pR   )
+
+              rhoL   = WRight(CHF_IX[i;j;k],WRHO )
+              vnL    =-WRight(CHF_IX[i;j;k],inorm)
+              vt1L   =-WRight(CHF_IX[i;j;k],itan1)
+              vt2L   =-WRight(CHF_IX[i;j;k],itan2)
+              pL     = WRight(CHF_IX[i;j;k],WPRES)
+              BnL    =-WRight(CHF_IX[i;j;k],inormB)
+              Bt1L   =-WRight(CHF_IX[i;j;k],itanB1)
+              Bt2L   =-WRight(CHF_IX[i;j;k],itanB2)
+
+              rhoL   = max( smallr, rhoL )
+              pL     = max( smallp, pL   )
+
+              call   BFLUX( rhoL, vnL, vt1L, vt2L, pL,
+     .                      BnL, Bt1L, Bt2L,
+     .                      rhoR, vnR, vt1R, vt2R, pR,
+     .                      BnR, Bt1R, Bt2R,
+     .                      FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2,
+     .                      FLUXE,   FLUXBNORM,  FLUXBTAN1,  FLUXBTAN2,
+     .                      BnValue )
+
+              F(CHF_IX[i;j;k],URHO )   =-FLUXRHO
+
+              F(CHF_IX[i;j;k],inorm)   = FLUXRUNORM
+              F(CHF_IX[i;j;k],itan1)   = FLUXRUTAN1
+              F(CHF_IX[i;j;k],itan2)   = FLUXRUTAN2
+
+              F(CHF_IX[i;j;k],UENG )   =-FLUXE
+
+              F(CHF_IX[i;j;k],inormB)  = FLUXBNORM
+              F(CHF_IX[i;j;k],itanB1)  = FLUXBTAN1
+              F(CHF_IX[i;j;k],itanB2)  = FLUXBTAN2
+
+              Bn(CHF_IX[i;j;k])  =-BnValue
+            CHF_ENDDO
+          else
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WLeft(CHF_IX[i;j;k],WRHO )
+              vnL    = WLeft(CHF_IX[i;j;k],inorm)
+              vt1L   = WLeft(CHF_IX[i;j;k],itan1)
+              vt2L   = WLeft(CHF_IX[i;j;k],itan2)
+              pL     = WLeft(CHF_IX[i;j;k],WPRES)
+              BnL    = WLeft(CHF_IX[i;j;k],inormB)
+              Bt1L   = WLeft(CHF_IX[i;j;k],itanB1)
+              Bt2L   = WLeft(CHF_IX[i;j;k],itanB2)
+
+              rhoL   = max( smallr, rhoL )
+              pL     = max( smallp, pL   )
+
+              rhoR   = WRight(CHF_IX[i;j;k],WRHO )
+              vnR    = WRight(CHF_IX[i;j;k],inorm)
+              vt1R   = WRight(CHF_IX[i;j;k],itan1)
+              vt2R   = WRight(CHF_IX[i;j;k],itan2)
+              pR     = WRight(CHF_IX[i;j;k],WPRES)
+              BnR    = WRight(CHF_IX[i;j;k],inormB)
+              Bt1R   = WRight(CHF_IX[i;j;k],itanB1)
+              Bt2R   = WRight(CHF_IX[i;j;k],itanB2)
+
+              rhoR   = max( smallr, rhoR )
+              pR     = max( smallp, pR   )
+
+              call   BFLUX( rhoL, vnL, vt1L, vt2L, pL,
+     .                      BnL, Bt1L, Bt2L,
+     .                      rhoR, vnR, vt1R, vt2R, pR,
+     .                      BnR, Bt1R, Bt2R,
+     .                      FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2,
+     .                      FLUXE,   FLUXBNORM,  FLUXBTAN1,  FLUXBTAN2,
+     .                      BnValue )
+
+              F(CHF_IX[i;j;k],URHO )   = FLUXRHO
+
+              F(CHF_IX[i;j;k],inorm)   = FLUXRUNORM
+              F(CHF_IX[i;j;k],itan1)   = FLUXRUTAN1
+              F(CHF_IX[i;j;k],itan2)   = FLUXRUTAN2
+
+              F(CHF_IX[i;j;k],UENG )   = FLUXE
+
+              F(CHF_IX[i;j;k],inormB)  = FLUXBNORM
+              F(CHF_IX[i;j;k],itanB1)  = FLUXBTAN1
+              F(CHF_IX[i;j;k],itanB2)  = FLUXBTAN2
+
+              Bn(CHF_IX[i;j;k])  = BnValue
+            CHF_ENDDO
+          endif
+        endif
+        
+        
+     !~   if( lohisign == -1 ) then
+     !~   !       populations of neutrals
+     !~   do iFluid = 1, fluids-1                
+     !~     if (iFluid == 2) then
+     !~       !cycle
+     !~     endif
+     !~     
+     !~     irho  = iRhoN+(iFluid-1)*WNUM_E
+     !~     inorm = iRhoN+(iFluid-1)*WNUM_E+WVELX + dir
+     !~     itan1 = iRhoN+(iFluid-1)*WNUM_E+WVELX + mod(dir + 1,3)
+     !~     itan2 = iRhoN+(iFluid-1)*WNUM_E+WVELX + mod(dir + 2,3)
+     !~     ipres = iRhoN+(iFluid-1)*WNUM_E+WPRES
+     !~     iURHO = iRhoN+(iFluid-1)*UNUM_E 
+     !~     iUENG = iRhoN+(iFluid-1)*UNUM_E+UENG        
+     !~                   
+     !~   CHF_MULTIDO[box;i;j;k]     
+     !~     rho_in = WRight(CHF_IX[i;j;k],irho )
+     !~     vn_in  = -WRight(CHF_IX[i;j;k],inorm)
+     !~     vt1_in = -WRight(CHF_IX[i;j;k],itan1)
+     !~     vt2_in = -WRight(CHF_IX[i;j;k],itan2)                              
+     !~     p_in   = WRight(CHF_IX[i;j;k],ipres)                    
+     !~     
+     !~     rho_out = WLeft(CHF_IX[i;j;k],irho )
+     !~     vn_out  = -WLeft(CHF_IX[i;j;k],inorm)
+     !~     vt1_out = -WLeft(CHF_IX[i;j;k],itan1)
+     !~     vt2_out = -WLeft(CHF_IX[i;j;k],itan2)                              
+     !~     p_out   = WLeft(CHF_IX[i;j;k],ipres)          
+     !~     
+     !~     FLUXRHO    = -F(CHF_IX[i;j;k],iURHO)
+     !~     FLUXRUNORM = F(CHF_IX[i;j;k],inorm)
+     !~     FLUXRUTAN1 = F(CHF_IX[i;j;k],itan1)
+     !~     FLUXRUTAN2 = F(CHF_IX[i;j;k],itan2)
+     !~     FLUXE      = -F(CHF_IX[i;j;k],iUENG)
+     !~     
+     !~     
+     !~     call BFLUXGAS( rho_in,  vn_in,   vt1_in,  vt2_in,  p_in,      
+     !~&                   rho_out, vn_out,  vt1_out, vt2_out, p_out,          
+     !~&                   FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2, 
+     !~&                   FLUXE,   dir, lohisign) 
+     !~     
+     !~     F(CHF_IX[i;j;k],iURHO) = -FLUXRHO
+     !~     F(CHF_IX[i;j;k],inorm) = FLUXRUNORM
+     !~     F(CHF_IX[i;j;k],itan1) = FLUXRUTAN1
+     !~     F(CHF_IX[i;j;k],itan2) = FLUXRUTAN2
+     !~     F(CHF_IX[i;j;k],iUENG) = -FLUXE          
+     !~   CHF_ENDDO                        
+     !~   enddo
+     !~   endif
+     !~   
+     !~   
+     !~   if( lohisign == 1 ) then
+     !~   !       populations of neutrals
+     !~   do iFluid = 1, fluids-1        
+     !~     if (iFluid == 2) then
+     !~       !cycle
+     !~     endif
+     !~     irho  = iRhoN+(iFluid-1)*WNUM_E
+     !~     inorm = iRhoN+(iFluid-1)*WNUM_E+WVELX + dir
+     !~     itan1 = iRhoN+(iFluid-1)*WNUM_E+WVELX + mod(dir + 1,3)
+     !~     itan2 = iRhoN+(iFluid-1)*WNUM_E+WVELX + mod(dir + 2,3)
+     !~     ipres = iRhoN+(iFluid-1)*WNUM_E+WPRES
+     !~     iURHO = iRhoN+(iFluid-1)*UNUM_E 
+     !~     iUENG = iRhoN+(iFluid-1)*UNUM_E+UENG        
+     !~                   
+     !~   CHF_MULTIDO[box;i;j;k]     
+     !~     rho_in = WLeft(CHF_IX[i;j;k],irho )
+     !~     vn_in  = WLeft(CHF_IX[i;j;k],inorm)
+     !~     vt1_in = WLeft(CHF_IX[i;j;k],itan1)
+     !~     vt2_in = WLeft(CHF_IX[i;j;k],itan2)                              
+     !~     p_in   = WLeft(CHF_IX[i;j;k],ipres)                    
+     !~     
+     !~     rho_out = WRight(CHF_IX[i;j;k],irho )
+     !~     vn_out  = WRight(CHF_IX[i;j;k],inorm)
+     !~     vt1_out = WRight(CHF_IX[i;j;k],itan1)
+     !~     vt2_out = WRight(CHF_IX[i;j;k],itan2)                              
+     !~     p_out   = WRight(CHF_IX[i;j;k],ipres)          
+     !~     
+     !~     FLUXRHO    = F(CHF_IX[i;j;k],iURHO)
+     !~     FLUXRUNORM = F(CHF_IX[i;j;k],inorm)
+     !~     FLUXRUTAN1 = F(CHF_IX[i;j;k],itan1)
+     !~     FLUXRUTAN2 = F(CHF_IX[i;j;k],itan2)
+     !~     FLUXE      = F(CHF_IX[i;j;k],iUENG)
+     !~     
+     !~     
+     !~     call BFLUXGAS( rho_in,  vn_in,   vt1_in,  vt2_in,  p_in,      
+     !~&                   rho_out, vn_out,  vt1_out, vt2_out, p_out,          
+     !~&                   FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2, 
+     !~&                   FLUXE,   dir, lohisign) 
+     !~     
+     !~     F(CHF_IX[i;j;k],iURHO) = FLUXRHO
+     !~     F(CHF_IX[i;j;k],inorm) = FLUXRUNORM
+     !~     F(CHF_IX[i;j;k],itan1) = FLUXRUTAN1
+     !~     F(CHF_IX[i;j;k],itan2) = FLUXRUTAN2
+     !~     F(CHF_IX[i;j;k],iUENG) = FLUXE          
+     !~   CHF_ENDDO                        
+     !~   enddo
+     !~   endif
+        
+
+
+
+        if( fluids > 1 ) then
+!                                                                     Neutrals 1
+          iURHO  = iRhoN
+          iWRHO  = iRhoN
+          
+          inorm  = iWRHO + WVELX + dir
+          itan1  = iWRHO + WVELX + mod(dir + 1,3)
+          itan2  = iWRHO + WVELX + mod(dir + 2,3)
+                    
+          iUENG  = iURHO + UENG
+          iWPRES = iWRHO + WPRES
+          
+          if( lohisign == -1 ) then
+            if( dir .eq. 0 ) then
+              CHF_MULTIDO[box;i;j;k]
+                rhoL   = WRight(CHF_IX[i;j;k],iWRHO )
+                vnL    = WRight(CHF_IX[i;j;k],inorm )
+                vt1L   = WRight(CHF_IX[i;j;k],itan1 )
+                vt2L   = WRight(CHF_IX[i;j;k],itan2 )
+                pL     = WRight(CHF_IX[i;j;k],iWPRES)
+
+                rhoL   = max( smallr, rhoL )
+                pL     = max( smallp, pL   )
+
+                vnL    = min( -1.0D-6, vnL )
+
+                ke     = rhoL*(vnL*vnL + vt1L*vt1L + vt2L*vt2L)
+                e      = pL/hgamma + half*ke
+
+                F(CHF_IX[i;j;k],iURHO)   = rhoL*vnL
+
+                F(CHF_IX[i;j;k],inorm)   = rhoL*vnL*vnL  + pL
+                F(CHF_IX[i;j;k],itan1)   = rhoL*vnL*vt1L
+                F(CHF_IX[i;j;k],itan2)   = rhoL*vnL*vt2L
+
+                F(CHF_IX[i;j;k],iUENG)   = vnL*(e + pL)
+              CHF_ENDDO
+            else
+              CHF_MULTIDO[box;i;j;k]
+                rhoR   = WLeft(CHF_IX[i;j;k],iWRHO )
+                vnR    =-WLeft(CHF_IX[i;j;k],inorm )
+                vt1R   =-WLeft(CHF_IX[i;j;k],itan1 )
+                vt2R   =-WLeft(CHF_IX[i;j;k],itan2 )
+                pR     = WLeft(CHF_IX[i;j;k],iWPRES)
+
+                rhoR   = max( smallr, rhoR )
+                pR     = max( smallp, pR   )
+
+                rhoL   = WRight(CHF_IX[i;j;k],iWRHO )
+                vnL    =-WRight(CHF_IX[i;j;k],inorm )
+                vt1L   =-WRight(CHF_IX[i;j;k],itan1 )
+                vt2L   =-WRight(CHF_IX[i;j;k],itan2 )
+                pL     = WRight(CHF_IX[i;j;k],iWPRES)
+
+                rhoL   = max( smallr, rhoL )
+                pL     = max( smallp, pL   )
+
+                if( vnL > zero ) then
+                  vnR    = vnL
+                  vt1R   = vt1L
+                  vt2R   = vt2L
+                  rhoR   = rhoL
+                endif
+
+                call   VANLEERRS( pL, rhoL, vnL, vt1L, vt2L,
+     .                            pR, rhoR, vnR, vt1R, vt2R,
+     .                            FLUXRHO, FLUXRUNORM, FLUXRUTAN1,
+     .                            FLUXRUTAN2, FLUXE )
+
+                F(CHF_IX[i;j;k],iURHO)   =-FLUXRHO
+
+                F(CHF_IX[i;j;k],inorm)   = FLUXRUNORM
+                F(CHF_IX[i;j;k],itan1)   = FLUXRUTAN1
+                F(CHF_IX[i;j;k],itan2)   = FLUXRUTAN2
+
+                F(CHF_IX[i;j;k],iUENG)   =-FLUXE
+              CHF_ENDDO
+            endif
+          else
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WLeft(CHF_IX[i;j;k],iWRHO )
+              vnL    = WLeft(CHF_IX[i;j;k],inorm )
+              vt1L   = WLeft(CHF_IX[i;j;k],itan1 )
+              vt2L   = WLeft(CHF_IX[i;j;k],itan2 )
+              pL     = WLeft(CHF_IX[i;j;k],iWPRES)
+
+              rhoL   = max( smallr, rhoL )
+              pL     = max( smallp, pL   )
+
+              rhoR   = WRight(CHF_IX[i;j;k],iWRHO )
+              vnR    = WRight(CHF_IX[i;j;k],inorm )
+              vt1R   = WRight(CHF_IX[i;j;k],itan1 )
+              vt2R   = WRight(CHF_IX[i;j;k],itan2 )
+              pR     = WRight(CHF_IX[i;j;k],iWPRES)
+
+              rhoR   = max( smallr, rhoR )
+              pR     = max( smallp, pR   )
+
+              if( vnL > zero ) then
+                vnR    = vnL
+                vt1R   = vt1L
+                vt2R   = vt2L
+                rhoR   = rhoL
+              endif
+
+              call   VANLEERRS( pL, rhoL, vnL, vt1L, vt2L,
+     .                          pR, rhoR, vnR, vt1R, vt2R,
+     .                          FLUXRHO, FLUXRUNORM, FLUXRUTAN1,
+     .                          FLUXRUTAN2, FLUXE )
+
+              F(CHF_IX[i;j;k],iURHO)   = FLUXRHO
+
+              F(CHF_IX[i;j;k],inorm)   = FLUXRUNORM
+              F(CHF_IX[i;j;k],itan1)   = FLUXRUTAN1
+              F(CHF_IX[i;j;k],itan2)   = FLUXRUTAN2
+
+              F(CHF_IX[i;j;k],iUENG)   = FLUXE
+            CHF_ENDDO
+          endif
+        endif
+
+        if( fluids > 2 ) then
+!                                                                     Neutrals 2
+          iURHO  = iRhoN + UNUM_E
+          iWRHO  = iRhoN + WNUM_E
+                                
+          inorm  = iWRHO + WVELX + dir
+          itan1  = iWRHO + WVELX + mod(dir + 1,3)
+          itan2  = iWRHO + WVELX + mod(dir + 2,3)
+                  
+          iUENG  = iURHO + UENG
+          iWPRES = iWRHO + WPRES
+
+          if( lohisign == -1 ) then
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WRight(CHF_IX[i;j;k],iWRHO )
+              vnL    = WRight(CHF_IX[i;j;k],inorm )
+              vt1L   = WRight(CHF_IX[i;j;k],itan1 )
+              vt2L   = WRight(CHF_IX[i;j;k],itan2 )
+              pL     = WRight(CHF_IX[i;j;k],iWPRES)
+
+              rhoL   = max( netFluid2Dens, rhoL )
+              pL     = max( netFluid2Pres, pL   )
+
+              vnL    = min( zero, vnL )
+
+              ke     = rhoL*(vnL*vnL + vt1L*vt1L + vt2L*vt2L)
+              e      = pL/hgamma + half*ke
+
+              F(CHF_IX[i;j;k],iURHO)   = rhoL*vnL
+
+              F(CHF_IX[i;j;k],inorm)   = rhoL*vnL*vnL  + pL
+              F(CHF_IX[i;j;k],itan1)   = rhoL*vnL*vt1L
+              F(CHF_IX[i;j;k],itan2)   = rhoL*vnL*vt2L
+
+              F(CHF_IX[i;j;k],iUENG)   = vnL*(e + pL)
+            CHF_ENDDO
+          else
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WLeft(CHF_IX[i;j;k],iWRHO )
+              vnL    = WLeft(CHF_IX[i;j;k],inorm )
+              vt1L   = WLeft(CHF_IX[i;j;k],itan1 )
+              vt2L   = WLeft(CHF_IX[i;j;k],itan2 )
+              pL     = WLeft(CHF_IX[i;j;k],iWPRES)
+
+              rhoL   = max( netFluid2Dens, rhoL )
+              pL     = max( netFluid2Pres, pL   )
+
+              vnL    = max( zero, vnL )
+
+              ke     = rhoL*(vnL*vnL + vt1L*vt1L + vt2L*vt2L)
+              e      = pL/hgamma + half*ke
+
+              F(CHF_IX[i;j;k],iURHO)   = rhoL*vnL
+
+              F(CHF_IX[i;j;k],inorm)   = rhoL*vnL*vnL  + pL
+              F(CHF_IX[i;j;k],itan1)   = rhoL*vnL*vt1L
+              F(CHF_IX[i;j;k],itan2)   = rhoL*vnL*vt2L
+
+              F(CHF_IX[i;j;k],iUENG)   = vnL*(e + pL)
+            CHF_ENDDO
+          endif
+        endif
+
+        if( fluids > 3 ) then
+!                                                                     Neutrals 3                            
+          iURHO  = iRhoN + 2*UNUM_E
+          iWRHO  = iRhoN + 2*WNUM_E
+                              
+          inorm  = iWRHO + WVELX + dir
+          itan1  = iWRHO + WVELX + mod(dir + 1,3)
+          itan2  = iWRHO + WVELX + mod(dir + 2,3)
+                
+          iUENG  = iURHO + UENG
+          iWPRES = iWRHO + WPRES
+
+          if( lohisign == -1 ) then
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WRight(CHF_IX[i;j;k],iWRHO )
+              vnL    = WRight(CHF_IX[i;j;k],inorm )
+              vt1L   = WRight(CHF_IX[i;j;k],itan1 )
+              vt2L   = WRight(CHF_IX[i;j;k],itan2 )
+              pL     = WRight(CHF_IX[i;j;k],iWPRES)
+
+              rhoL   = max( netFluid3Dens, rhoL )
+              pL     = max( netFluid3Pres, pL   )
+
+              vnL    = min( zero, vnL )
+
+              ke       = rhoL*(vnL*vnL + vt1L*vt1L + vt2L*vt2L)
+              e        = pL/hgamma + half*ke
+
+              F(CHF_IX[i;j;k],iURHO)   = rhoL*vnL
+
+              F(CHF_IX[i;j;k],inorm)   = rhoL*vnL*vnL  + pL
+              F(CHF_IX[i;j;k],itan1)   = rhoL*vnL*vt1L
+              F(CHF_IX[i;j;k],itan2)   = rhoL*vnL*vt2L
+
+              F(CHF_IX[i;j;k],iUENG)   = vnL*(e + pL)
+            CHF_ENDDO
+          else
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WLeft(CHF_IX[i;j;k],iWRHO )
+              vnL    = WLeft(CHF_IX[i;j;k],inorm )
+              vt1L   = WLeft(CHF_IX[i;j;k],itan1 )
+              vt2L   = WLeft(CHF_IX[i;j;k],itan2 )
+              pL     = WLeft(CHF_IX[i;j;k],iWPRES)
+
+              rhoL   = max( netFluid3Dens, rhoL )
+              pL     = max( netFluid3Pres, pL   )
+
+              vnL    = max( zero, vnL )
+
+              ke       = rhoL*(vnL*vnL + vt1L*vt1L + vt2L*vt2L)
+              e        = pL/hgamma + half*ke
+
+              F(CHF_IX[i;j;k],iURHO)   = rhoL*vnL
+
+              F(CHF_IX[i;j;k],inorm)   = rhoL*vnL*vnL  + pL
+              F(CHF_IX[i;j;k],itan1)   = rhoL*vnL*vt1L
+              F(CHF_IX[i;j;k],itan2)   = rhoL*vnL*vt2L
+
+              F(CHF_IX[i;j;k],iUENG)   = vnL*(e + pL)
+            CHF_ENDDO
+          endif
+        endif
+          
+        if( fluids > 4 ) then
+!                                                                     Neutrals 4                            
+          iURHO  = iRhoN + 3*UNUM_E
+          iWRHO  = iRhoN + 3*WNUM_E
+                              
+          inorm  = iWRHO + WVELX + dir
+          itan1  = iWRHO + WVELX + mod(dir + 1,3)
+          itan2  = iWRHO + WVELX + mod(dir + 2,3)
+                
+          iUENG  = iURHO + UENG
+          iWPRES = iWRHO + WPRES
+          
+          if( lohisign == -1 ) then
+            if( dir .eq. 0 ) then
+              CHF_MULTIDO[box;i;j;k]
+                rhoL   = WRight(CHF_IX[i;j;k],iWRHO )
+                vnL    = WRight(CHF_IX[i;j;k],inorm )
+                vt1L   = WRight(CHF_IX[i;j;k],itan1 )
+                vt2L   = WRight(CHF_IX[i;j;k],itan2 )
+                pL     = WRight(CHF_IX[i;j;k],iWPRES)
+
+                rhoL   = max( smallr, rhoL )
+                pL     = max( smallp, pL   )
+
+                vnL    = min( -1.0D-6, vnL )
+
+                ke     = rhoL*(vnL*vnL + vt1L*vt1L + vt2L*vt2L)
+                e      = pL/hgamma + half*ke
+
+                F(CHF_IX[i;j;k],iURHO)   = rhoL*vnL
+
+                F(CHF_IX[i;j;k],inorm)   = rhoL*vnL*vnL  + pL
+                F(CHF_IX[i;j;k],itan1)   = rhoL*vnL*vt1L
+                F(CHF_IX[i;j;k],itan2)   = rhoL*vnL*vt2L
+
+                F(CHF_IX[i;j;k],iUENG)   = vnL*(e + pL)
+              CHF_ENDDO
+            else
+              CHF_MULTIDO[box;i;j;k]
+                rhoR   = WLeft(CHF_IX[i;j;k],iWRHO )
+                vnR    =-WLeft(CHF_IX[i;j;k],inorm )
+                vt1R   =-WLeft(CHF_IX[i;j;k],itan1 )
+                vt2R   =-WLeft(CHF_IX[i;j;k],itan2 )
+                pR     = WLeft(CHF_IX[i;j;k],iWPRES)
+
+                rhoR   = max( smallr, rhoR )
+                pR     = max( smallp, pR   )
+
+                rhoL   = WRight(CHF_IX[i;j;k],iWRHO )
+                vnL    =-WRight(CHF_IX[i;j;k],inorm )
+                vt1L   =-WRight(CHF_IX[i;j;k],itan1 )
+                vt2L   =-WRight(CHF_IX[i;j;k],itan2 )
+                pL     = WRight(CHF_IX[i;j;k],iWPRES)
+
+                rhoL   = max( smallr, rhoL )
+                pL     = max( smallp, pL   )
+
+                if( vnL > zero ) then
+                  vnR    = vnL
+                  vt1R   = vt1L
+                  vt2R   = vt2L
+                endif
+
+                call   VANLEERRS( pL, rhoL, vnL, vt1L, vt2L,
+     .                            pR, rhoR, vnR, vt1R, vt2R,
+     .                            FLUXRHO, FLUXRUNORM, FLUXRUTAN1,
+     .                            FLUXRUTAN2, FLUXE )
+
+                F(CHF_IX[i;j;k],iURHO)   =-FLUXRHO
+
+                F(CHF_IX[i;j;k],inorm)   = FLUXRUNORM
+                F(CHF_IX[i;j;k],itan1)   = FLUXRUTAN1
+                F(CHF_IX[i;j;k],itan2)   = FLUXRUTAN2
+
+                F(CHF_IX[i;j;k],iUENG)   =-FLUXE
+              CHF_ENDDO
+            endif
+          else
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WLeft(CHF_IX[i;j;k],iWRHO )
+              vnL    = WLeft(CHF_IX[i;j;k],inorm )
+              vt1L   = WLeft(CHF_IX[i;j;k],itan1 )
+              vt2L   = WLeft(CHF_IX[i;j;k],itan2 )
+              pL     = WLeft(CHF_IX[i;j;k],iWPRES)
+
+              rhoL   = max( smallr, rhoL )
+              pL     = max( smallp, pL   )
+
+              rhoR   = WRight(CHF_IX[i;j;k],iWRHO )
+              vnR    = WRight(CHF_IX[i;j;k],inorm )
+              vt1R   = WRight(CHF_IX[i;j;k],itan1 )
+              vt2R   = WRight(CHF_IX[i;j;k],itan2 )
+              pR     = WRight(CHF_IX[i;j;k],iWPRES)
+
+              rhoR   = max( smallr, rhoR )
+              pR     = max( smallp, pR   )
+
+              if( vnL > zero ) then
+                vnR    = vnL
+                vt1R   = vt1L
+                vt2R   = vt2L
+              endif
+
+              call   VANLEERRS( pL, rhoL, vnL, vt1L, vt2L,
+     .                          pR, rhoR, vnR, vt1R, vt2R,
+     .                          FLUXRHO, FLUXRUNORM, FLUXRUTAN1,
+     .                          FLUXRUTAN2, FLUXE )
+
+              F(CHF_IX[i;j;k],iURHO)   = FLUXRHO
+
+              F(CHF_IX[i;j;k],inorm)   = FLUXRUNORM
+              F(CHF_IX[i;j;k],itan1)   = FLUXRUTAN1
+              F(CHF_IX[i;j;k],itan2)   = FLUXRUTAN2
+
+              F(CHF_IX[i;j;k],iUENG)   = FLUXE
+            CHF_ENDDO
+          endif
+
+        
+        endif
+        
+        return
+        end
+        
+! to remove, not used        
+        subroutine NEUTRALS_SUNBC3D(  
+     &  CHF_FRA[U],
+     &  CHF_CONST_FRA[UR0],
+     &  CHF_CONST_INTVECT[sunIJK],     
+     &  CHF_CONST_INT[iRhoN],     
+     &  CHF_CONST_REAL[dx],
+     &  CHF_BOX[b])
+     
+        real_t  sunR2, r2
+        integer sunI, iRefl, iEnd
+        integer CHF_DDECL[i;j;k]
+        real_t  CHF_DDECL[x;y;z]
+                
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"        
+                
+        sunR2 = sunR*sunR
+        sunI  = sunIJK(0)
+        iEnd  = min(sunI-1, CHF_UBOUND[b;0])        
+        
+        CHF_DTERM[
+        do i = CHF_LBOUND[b;0], iEnd;
+        do j = CHF_LBOUND[b;1], CHF_UBOUND[b;1];
+        do k = CHF_LBOUND[b;2], CHF_UBOUND[b;2]]
+        
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r2      = CHF_DTERM[x*x; + y*y; + z*z]          
+
+          if (r2 <= sunR2) then
+            iRefl  = sunI-1-i + sunI
+                                  
+            U(CHF_IX[i;j;k],iRhoN + URHO ) =  UR0(CHF_IX[iRefl;j;k],0 )
+            U(CHF_IX[i;j;k],iRhoN + UMOMX) =  UR0(CHF_IX[iRefl;j;k],1 )
+            U(CHF_IX[i;j;k],iRhoN + UMOMY) = -UR0(CHF_IX[iRefl;j;k],2 )
+            U(CHF_IX[i;j;k],iRhoN + UMOMZ) = -UR0(CHF_IX[iRefl;j;k],3 )
+            U(CHF_IX[i;j;k],iRhoN + UENG ) =  UR0(CHF_IX[iRefl;j;k],4 )            
+          endif
+          
+        CHF_DTERM[
+        enddo;
+        enddo;
+        enddo]
+                          
+      return
+      end 
+
+        subroutine HELIOGS(
+     &    CHF_FRA[W],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoN],     
+     &    CHF_CONST_INT[fluids],
+     &    CHF_CONST_INT[iRegTr],     
+     &    CHF_BOX[box])
+
+
+        integer CHF_DDECL[i;j;k], CHF_DDECL[ii; jj; kk]
+        integer iWRHO,iWVELX,iWVELY,iWVELZ,iWPRES   
+        integer iFluid
+                   
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        if (iRegTr > 0) then
+        CHF_MULTIDO[box;i;j;k]
+!          W(CHF_IX[i;j;k],iRegTr ) = two
+          W(CHF_IX[i;j;k],iRegTr ) = one !FF for the old version that uses REGTRACER_REINIT
+        CHF_ENDDO
+        endif
+
+        if( dir .eq. 0 ) then
+          if( lohisign == -1 ) then
+            CHF_MULTIDO[box;i;j;k]
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Left boundary
+              W(CHF_IX[i;j;k],WRHO ) = one
+
+              W(CHF_IX[i;j;k],WVELX) = lismUX
+              W(CHF_IX[i;j;k],WVELY) = lismUY
+              W(CHF_IX[i;j;k],WVELZ) = lismUZ
+
+              W(CHF_IX[i;j;k],WPRES) = lismP
+
+              W(CHF_IX[i;j;k],WBX  ) = lismBX
+              W(CHF_IX[i;j;k],WBY  ) = lismBY
+              W(CHF_IX[i;j;k],WBZ  ) = lismBZ
+            CHF_ENDDO
+          else
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Right boundary
+            CHF_MULTIDO[box;i;j;k]
+              W(CHF_IX[i;j;k],WRHO ) = one
+
+              W(CHF_IX[i;j;k],WVELX) = lismUX
+              W(CHF_IX[i;j;k],WVELY) = lismUY
+              W(CHF_IX[i;j;k],WVELZ) = lismUZ
+
+              W(CHF_IX[i;j;k],WPRES) = lismP
+
+              W(CHF_IX[i;j;k],WBX  ) = lismBX
+              W(CHF_IX[i;j;k],WBY  ) = lismBY
+              W(CHF_IX[i;j;k],WBZ  ) = lismBZ
+            CHF_ENDDO
+          endif
+        else
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Other boundaries
+          CHF_MULTIDO[box;i;j;k]
+            W(CHF_IX[i;j;k],WRHO ) = one
+
+            W(CHF_IX[i;j;k],WVELX) = lismUX
+            W(CHF_IX[i;j;k],WVELY) = lismUY
+            W(CHF_IX[i;j;k],WVELZ) = lismUZ
+
+            W(CHF_IX[i;j;k],WPRES) = lismP
+
+            W(CHF_IX[i;j;k],WBX  ) = lismBX
+            W(CHF_IX[i;j;k],WBY  ) = lismBY
+            W(CHF_IX[i;j;k],WBZ  ) = lismBZ
+          CHF_ENDDO
+        endif
+
+        if( fluids > 1 ) then
+!                                                                     Neutrals 1
+          iWRHO  = iRhoN
+          iWVELX = iRhoN + WVELX
+          iWVELY = iRhoN + WVELY
+          iWVELZ = iRhoN + WVELZ
+          iWPRES = iRhoN + WPRES
+          
+          if( (dir == 0) .and. (lohisign == -1) ) then
+            ii     = iboxhi0 + 1
+
+            CHF_MULTIDO[box;i;j;k]
+              W(CHF_IX[i;j;k],iWRHO )  = W(CHF_IX[ii;j;k],iWRHO )
+              W(CHF_IX[i;j;k],iWVELX)  = W(CHF_IX[ii;j;k],iWVELX)
+              W(CHF_IX[i;j;k],iWVELY)  = W(CHF_IX[ii;j;k],iWVELY)
+              W(CHF_IX[i;j;k],iWVELZ)  = W(CHF_IX[ii;j;k],iWVELZ)
+              W(CHF_IX[i;j;k],iWPRES)  = W(CHF_IX[ii;j;k],iWPRES)
+              
+              W(CHF_IX[i;j;k],iWRHO )  = netRho
+              W(CHF_IX[i;j;k],iWVELX)  = lismUX
+              W(CHF_IX[i;j;k],iWVELY)  = lismUY
+              W(CHF_IX[i;j;k],iWVELZ)  = lismUZ
+              W(CHF_IX[i;j;k],iWPRES)  = netP
+              
+            CHF_ENDDO
+          else
+            CHF_MULTIDO[box;i;j;k]
+              W(CHF_IX[i;j;k],iWRHO )  = netRho
+              W(CHF_IX[i;j;k],iWVELX)  = lismUX
+              W(CHF_IX[i;j;k],iWVELY)  = lismUY
+              W(CHF_IX[i;j;k],iWVELZ)  = lismUZ
+              W(CHF_IX[i;j;k],iWPRES)  = netP
+            CHF_ENDDO
+          endif
+                    
+          if( fluids > 2 ) then
+          do iFluid = 2, fluids - 1
+!                                                                     Neutrals 2, 3
+            iWRHO  = iRhoN + (iFluid-1)*WNUM_E
+            iWVELX = iWRHO + WVELX
+            iWVELY = iWRHO + WVELY
+            iWVELZ = iWRHO + WVELZ
+            iWPRES = iWRHO + WPRES
+            if( dir .eq. 0 ) then
+              if( lohisign == -1 ) then
+                ii     = iboxhi0 + 1
+              else
+                ii     = iboxlo0 - 1
+              endif
+              CHF_MULTIDO[box;i;j;k]
+                W(CHF_IX[i;j;k],iWRHO )  = W(CHF_IX[ii;j;k],iWRHO )
+                W(CHF_IX[i;j;k],iWVELX)  = W(CHF_IX[ii;j;k],iWVELX)
+                W(CHF_IX[i;j;k],iWVELY)  = W(CHF_IX[ii;j;k],iWVELY)
+                W(CHF_IX[i;j;k],iWVELZ)  = W(CHF_IX[ii;j;k],iWVELZ)
+                W(CHF_IX[i;j;k],iWPRES)  = W(CHF_IX[ii;j;k],iWPRES)
+              CHF_ENDDO
+            else
+              if( dir .eq. 1 ) then
+                if( lohisign == -1 ) then
+                  jj     = iboxhi1 + 1
+                else
+                  jj     = iboxlo1 - 1
+                endif
+                CHF_MULTIDO[box;i;j;k]
+                  W(CHF_IX[i;j;k],iWRHO )  = W(CHF_IX[i;jj;k],iWRHO )
+                  W(CHF_IX[i;j;k],iWVELX)  = W(CHF_IX[i;jj;k],iWVELX)
+                  W(CHF_IX[i;j;k],iWVELY)  = W(CHF_IX[i;jj;k],iWVELY)
+                  W(CHF_IX[i;j;k],iWVELZ)  = W(CHF_IX[i;jj;k],iWVELZ)
+                  W(CHF_IX[i;j;k],iWPRES)  = W(CHF_IX[i;jj;k],iWPRES)
+                CHF_ENDDO
+              else
+
+#if CH_SPACEDIM == 3
+                if( lohisign == -1 ) then
+                  kk     = iboxhi2 + 1
+                else
+                  kk     = iboxlo2 - 1
+                endif
+                CHF_MULTIDO[box;i;j;k]
+                  W(CHF_IX[i;j;k],iWRHO )  = W(CHF_IX[i;j;kk],iWRHO )
+                  W(CHF_IX[i;j;k],iWVELX)  = W(CHF_IX[i;j;kk],iWVELX)
+                  W(CHF_IX[i;j;k],iWVELY)  = W(CHF_IX[i;j;kk],iWVELY)
+                  W(CHF_IX[i;j;k],iWVELZ)  = W(CHF_IX[i;j;kk],iWVELZ)
+                  W(CHF_IX[i;j;k],iWPRES)  = W(CHF_IX[i;j;kk],iWPRES)
+                CHF_ENDDO
+#endif
+              endif
+            endif            
+                      
+          enddo
+          endif  ! if( fluids > 2 )                  
+        endif ! if( fluids > 1 )
+                
+        
+        return
+        end
+     
+
+        subroutine HELIOINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iRegTr],     
+     &    CHF_BOX[box])
+
+        real_t ke, b, e0, r, ux, uy, uz, vel, Bx, By, Bz, br, bp, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr, sunBeta
+
+        integer CHF_DDECL[i;j;k]
+        integer shift
+        real_t  x, y, z
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+        sunBeta  = Omega*eos_AU/(sunV*lismV)
+
+        z      = zero
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r      = CHF_DTERM[x*x; + y*y; + z*z]
+          r      = sqrt( r )
+
+          xy     = sqrt( x*x + y*y )
+
+          cosT   = z/r
+          sinT   = sqrt( one - cosT*cosT )
+
+          cosF   = x/xy
+          sinF   = y/xy
+
+          if( r > initR ) then
+            rr     = initR/r
+            
+            rr     = max(rr,0d0) ! if r < 0 pure lism
+
+            rr     = rr*rr*rr
+                        
+            vel    = sinT*cosF*lismUX + sinT*sinF*lismUY + cosT*lismUZ
+            Ux     = lismUX - half*rr*(three*sinT*cosF*vel - lismUX)
+            Uy     = lismUY - half*rr*(three*sinT*sinF*vel - lismUY)
+            Uz     = lismUZ - half*rr*(three*cosT     *vel - lismUZ)
+
+            p      = one/(gamma*lismM*lismM)
+
+            b      = sinT*cosF*lismBX + sinT*sinF*lismBY + cosT*lismBZ
+            Bx     = lismBX - half*rr*(three*sinT*cosF*b - lismBX)
+            By     = lismBY - half*rr*(three*sinT*sinF*b - lismBY)
+            Bz     = lismBZ - half*rr*(three*cosT     *b - lismBZ)
+
+            b      = d_1_4PI*(Bx*Bx + By*By + Bz*Bz)
+            ke     =          ux*ux + uy*uy + uz*uz
+
+            e0     = p/hgamma + half*(ke + b)
+
+            U(CHF_IX[i;j;k],URHO)  = one
+
+            U(CHF_IX[i;j;k],UMOMX) = ux
+            U(CHF_IX[i;j;k],UMOMY) = uy
+            U(CHF_IX[i;j;k],UMOMZ) = uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+
+            U(CHF_IX[i;j;k],UBX )  = Bx
+            U(CHF_IX[i;j;k],UBY )  = By
+            U(CHF_IX[i;j;k],UBZ )  = Bz
+            
+            if (iRegTr>0) then
+!              U(CHF_IX[i;j;k],iRegTr )  = two
+              U(CHF_IX[i;j;k],iRegTr )  = one !FF for the old version that uses REGTRACER_REINIT
+            endif
+            
+          else
+            rr     = r/sunIntBCRadius
+            theta  = acos( cosT )
+
+            cosBr  = cos( sunBeta*r )
+            sinBr  = sin( sunBeta*r )
+
+            sinB   = sinF*cosBr + cosF*sinBr
+            cosB   = cosF*cosBr - sinF*sinBr
+
+            thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+            thetaS = asin( thetaS ) + d_PI_2
+
+            rho    = sunRho/(rr*rr)
+
+            ux     = sunV*sinT*cosF
+            uy     = sunV*sinT*sinF
+            uz     = sunV*cosT
+
+            p      = sunP/rr**(two*gamma)
+                        
+
+!            Bx     = br*(sinT*cosF + sunBeta*r*sinT*sinF)
+!            By     = br*(sinT*sinF - sunBeta*r*sinT*cosF)
+
+            br     = dirBrN*sunB/(rr*rr)
+            bp     = -sunBeta*br*r*sinT ! should be r, not rr
+
+            bx = br*sinT*cosF - bp*sinF
+            by = br*sinT*sinF + bp*cosF
+            bz = br*cosT
+            
+            b      = Bx*Bx + By*By + Bz*Bz
+
+            e0     = p/hgamma + half*(rho*sunV*sunV + d_1_4PI*b)
+
+            U(CHF_IX[i;j;k],URHO)  = rho
+
+            U(CHF_IX[i;j;k],UMOMX) = rho*ux
+            U(CHF_IX[i;j;k],UMOMY) = rho*uy
+            U(CHF_IX[i;j;k],UMOMZ) = rho*uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+            
+            if (sunBmonopolar == 1) then
+              U(CHF_IX[i;j;k],UBX )  = Bx
+              U(CHF_IX[i;j;k],UBY )  = By
+              U(CHF_IX[i;j;k],UBZ )  = Bz
+            else
+              if( theta < thetaS ) then
+                U(CHF_IX[i;j;k],UBX )  = Bx
+                U(CHF_IX[i;j;k],UBY )  = By
+                U(CHF_IX[i;j;k],UBZ )  = Bz
+              else
+                U(CHF_IX[i;j;k],UBX )  =-Bx
+                U(CHF_IX[i;j;k],UBY )  =-By
+                U(CHF_IX[i;j;k],UBZ )  =-Bz
+              endif
+              
+              if (iHCS >= 0) then
+              if( theta < thetaS ) then
+                U(CHF_IX[i;j;k],iHCS) = 1
+              else
+                U(CHF_IX[i;j;k],iHCS) =-1 
+              endif
+              endif     
+              
+            endif            
+                        
+            if (iRegTr>0) then
+              U(CHF_IX[i;j;k],iRegTr )  = -one
+            endif
+            
+          endif
+        CHF_ENDDO
+
+        if( fluids > 1 ) then
+!                                                                     Neutrals 1
+          CHF_MULTIDO[box;i;j;k]
+            U(CHF_IX[i;j;k],iRhoN+URHO)   = netRho
+            U(CHF_IX[i;j;k],iRhoN+UMOMX)  = netRho*lismUX
+            U(CHF_IX[i;j;k],iRhoN+UMOMY)  = netRho*lismUY
+            U(CHF_IX[i;j;k],iRhoN+UMOMZ)  = netRho*lismUZ
+            U(CHF_IX[i;j;k],iRhoN+UENG)   = netP/hgamma + half*netRho
+          CHF_ENDDO
+        endif
+
+        if( fluids > 2 ) then
+!                                                                     Neutrals 2
+          CHF_MULTIDO[box;i;j;k]
+            U(CHF_IX[i;j;k],iRhoN+UNUM_E+URHO)   = netFluid2Dens
+            U(CHF_IX[i;j;k],iRhoN+UNUM_E+UMOMX)  = zero
+            U(CHF_IX[i;j;k],iRhoN+UNUM_E+UMOMY)  = zero
+            U(CHF_IX[i;j;k],iRhoN+UNUM_E+UMOMZ)  = zero
+            U(CHF_IX[i;j;k],iRhoN+UNUM_E+UENG)   = netFluid2Pres/hgamma
+          CHF_ENDDO
+        endif
+
+        if( fluids > 3 ) then
+!                                                                     Neutrals 3
+          CHF_MULTIDO[box;i;j;k]
+            U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+URHO)   = netFluid3Dens
+            U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+UMOMX)  = zero
+            U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+UMOMY)  = zero
+            U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+UMOMZ)  = zero
+            U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+UENG)   = netFluid3Pres/hgamma
+          CHF_ENDDO
+        endif
+       
+        if (fluids>4) then      
+!                                                                     Neutrals 4          
+          shift = iRhoN+3*UNUM_E      
+          CHF_MULTIDO[box;i;j;k]
+            U(CHF_IX[i;j;k],URHO +shift)  = netFluid2Dens  
+            U(CHF_IX[i;j;k],UMOMX+shift)  = zero
+            U(CHF_IX[i;j;k],UMOMY+shift)  = zero
+            U(CHF_IX[i;j;k],UMOMZ+shift)  = zero
+            U(CHF_IX[i;j;k],UENG +shift)  = netFluid2Pres/hgamma            
+          CHF_ENDDO
+        endif
+
+
+        return
+        end
+        
+                
+
+
+       
+
+        subroutine BFLUX(
+     &    CHF_CONST_REAL[rho_in],
+     &    CHF_CONST_REAL[vn_in],
+     &    CHF_CONST_REAL[vt1_in],
+     &    CHF_CONST_REAL[vt2_in],
+     &    CHF_CONST_REAL[p_in],
+     &    CHF_CONST_REAL[Bn_in],
+     &    CHF_CONST_REAL[Bt1_in],
+     &    CHF_CONST_REAL[Bt2_in],
+     &    CHF_CONST_REAL[rho_out],
+     &    CHF_CONST_REAL[vn_out],
+     &    CHF_CONST_REAL[vt1_out],
+     &    CHF_CONST_REAL[vt2_out],
+     &    CHF_CONST_REAL[p_out],
+     &    CHF_CONST_REAL[Bn_out],
+     &    CHF_CONST_REAL[Bt1_out],
+     &    CHF_CONST_REAL[Bt2_out],
+     &    CHF_REAL[FLUXRHO],
+     &    CHF_REAL[FLUXRUNORM],
+     &    CHF_REAL[FLUXRUTAN1],
+     &    CHF_REAL[FLUXRUTAN2],
+     &    CHF_REAL[FLUXE],
+     &    CHF_REAL[FLUXBNORM],
+     &    CHF_REAL[FLUXBTAN1],
+     &    CHF_REAL[FLUXBTAN2],
+     &    CHF_REAL[BnValue] )
+
+      real_t U, V, W, R, BX, BY, BZ, P, PG, BB, KE, E
+      real_t XXX, SZ, B2, SP, EM, EMM, CF, CS, DRho, HRho
+      real_t hyz, hy2, hz2
+
+      real_t U1, V1, W1, R1, BX1, BY1, BZ1, P1, PG1, BB1, KE1, E1
+      real_t XX1, SZ1, B21, SP1, EM1, EMM1, CF1
+
+      real_t U16, V16, W16, R16, BX16, BY16, BZ16, P16, PG16, CF16
+      real_t E16, SZ16
+
+      real_t DEM, THE, ALF, BE, SCM, SCP
+
+#include "EosCommon.fh"
+
+      U      = vn_in
+      V      = vt1_in
+      W      = vt2_in
+      R      = rho_in
+      BX     = Bn_in
+      BY     = Bt1_in
+      BZ     = Bt2_in
+      PG     = p_in
+      BB     = BX*BX + BY*BY + BZ*BZ
+      P      = PG + d_1_8PI*BB
+      KE     = half*(vn_in*vn_in + vt1_in*vt1_in + vt2_in*vt2_in)
+      E      = PG/hgamma + rho_in*ke + d_1_8PI*BB
+
+      XXX    = d_1_4PI*BB
+      SZ     = sqrt( gamma*PG/R )
+      B2     = BB
+      SP     = half*sqrt( d_4PI*R )
+      EM     = SZ**2 + B2/(d_4PI*R) + SZ*abs( BX )/SP
+      EMM    = SZ**2 + B2/(d_4PI*R) - SZ*abs( BX )/SP
+      CF     = half*(sqrt( EM ) + sqrt( EMM ))
+      CS     = half*(sqrt( EM ) - sqrt( EMM ))
+      
+
+      if( U >= CF ) then
+        BnValue    = BX
+        FLUXRHO    = R*U
+        FLUXRUNORM = R*U*U + P - d_1_4PI*BX*BX
+        FLUXRUTAN1 = R*U*V     - d_1_4PI*BX*BY
+        FLUXRUTAN2 = R*U*W     - d_1_4PI*BX*BZ
+        FLUXE      = U*(E+P)   - d_1_4PI*BX*(U*BX + V*BY + W*BZ)
+        FLUXBNORM  = zero
+        FLUXBTAN1  = U*BY - V*BX
+        FLUXBTAN2  = U*BZ - W*BX
+
+        return
+      endif
+
+      U1     = vn_out
+      V1     = vt1_out
+      W1     = vt2_out
+      R1     = rho_out
+      BX1    = Bn_out
+      BY1    = Bt1_out
+      BZ1    = Bt2_out
+      PG1    = p_out
+      BB1    = BX1*BX1 + BY1*BY1 + BZ1*BZ1
+      P1     = PG1 + d_1_8PI*BB1
+      KE1    = half*(vn_out*vn_out + vt1_out*vt1_out + vt2_out*vt2_out)
+      E1     = PG1/hgamma + rho_out*ke1 + d_1_8PI*BB1
+
+      if( U < -CF ) then
+        BnValue    = BX1
+        FLUXRHO    = R1*U1
+        FLUXRUNORM = R1*U1*U1 + P1 - d_1_4PI*BX1*BX1
+        FLUXRUTAN1 = R1*U1*V1      - d_1_4PI*BX1*BY1
+        FLUXRUTAN2 = R1*U1*W1      - d_1_4PI*BX1*BZ1
+        FLUXE      = U1*(E1+P1)    - d_1_4PI*BX1*(U1*BX1 + V1*BY1 + W1*BZ1)
+        FLUXBNORM  = zero
+        FLUXBTAN1  = U1*BY1 - V1*BX1
+        FLUXBTAN2  = U1*BZ1 - W1*BX1
+
+        return
+      endif
+
+      XX1    = d_1_4PI*BB1
+      SZ1    = sqrt( gamma*PG1/R1 )
+      B21    = BB1
+      SP1    = half*sqrt( d_4PI*R1 )
+      EM1    = SZ1**2 + B21/(d_4PI*R1) + SZ1*abs( BX1 )/SP1
+      EMM1   = SZ1**2 + B21/(d_4PI*R1) - SZ1*abs( BX1 )/SP1
+      CF1    = half*(sqrt( EM1 ) + sqrt( EMM1 ))
+
+      if( (U < CF) .and. (U >= zero) .and. (U1 > CF1) ) then
+        SCM    = SZ*SZ - CS*CS
+        SCP    = SZ*SZ + CS*CS
+
+        DEM    = sqrt( EM*EMM )
+        THE    = -half*CF*BX**2/(R*d_4PI*DEM)
+        THE    = THE + (BZ*BZ + BY*BY)*CF*SCP*half/(R*DEM*d_4PI*SCM)
+        THE    = THE + half*CF*hgamma*SZ**2/DEM
+        THE    = THE - SZ*abs( BX )*CS*(gamma - two)*0.25D0/(SP*DEM)
+c        THE    = THE - SZ* BX *CS*(gamma - two)*0.25D0/(SP*DEM)
+
+        CF16   = (U*THE + CF**2)/(THE + CF)
+        U16    = CF16
+        HRho   = (U - CF)/(THE + CF)
+        DRho   = R*HRho
+        R16    = R + DRho
+        SZ16   = SZ*(one + half*hgamma*HRho)
+
+        hyz    = BY*BY + BZ*BZ
+        if( hyz < 1.0D-10 ) then
+          hy2    = half
+          hz2    = half
+        else
+          hy2    = BY*BY/hyz
+          hz2    = BZ*BZ/hyz
+        endif
+
+        BE     = two*d_4PI*(CF*CF - SZ*SZ)*DRho
+
+        BZ16   = BZ*BZ + BE*hz2
+        if( BZ16 <= zero ) then
+          BZ16   = zero
+        else
+          BZ16   = sqrt( BZ16 )
+          if( BZ < zero ) BZ16   =-BZ16
+        endif
+        BY16   = BY*BY + BE*hy2
+        if( BY16 <= zero ) then
+          BY16   = zero
+        else
+          BY16   = sqrt( BY16 )
+          if( BY < zero ) BY16   =-BY16
+        endif
+        BX16   = BX
+
+        ALF    = d_1_4PI*BX/(R*CF)
+
+        W16    = W + ALF*(BZ16 - BZ)
+        V16    = V + ALF*(BY16 - BY)
+
+        PG16   = SZ16**2*R16/gamma
+        BB     = d_1_4PI*(BX16*BX16 + BY16*BY16 + BZ16*BZ16)
+        P16    = PG16 + half*BB
+        E16    = PG16/hgamma + half*(R16*(U16**2 + V16**2 + W16**2) + BB)
+
+        BX         = d_1_4PI*BX16
+
+        BnValue    = BX16
+        FLUXRHO    = R16*U16
+        FLUXRUNORM = R16*U16*U16 + P16 - BX*BX16
+        FLUXRUTAN1 = R16*U16*V16       - BX*BY16
+        FLUXRUTAN2 = R16*U16*W16       - BX*BZ16
+        FLUXE      = U16*(E16 + P16)   - BX*(U16*BX16 + V16*BY16 + W16*BZ16)
+        FLUXBNORM  = zero
+        FLUXBTAN1  = U16*BY16 - V16*BX16
+        FLUXBTAN2  = U16*BZ16 - W16*BX16
+      else
+!        if( U >= zero ) then
+!          BnValue  = BX
+!          call     ROE8WAVEF( PG,  R,  U, V, W, BX,  BY,  BZ,
+!     .                        PG1, R1, U, V, W, BX1, BY1, BZ1,
+!     .                        FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2,
+!     .                        FLUXE, FLUXBNORM, FLUXBTAN1, FLUXBTAN2 )
+!        else
+          BnValue  = half*(BX + BX1)
+          call     ROE8WAVEF( PG,  R,  U,  V,  W,  BX,  BY,  BZ,
+     .                        PG1, R1, U1, V1, W1, BX1, BY1, BZ1,
+     .                        FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2,
+     .                        FLUXE, FLUXBNORM, FLUXBTAN1, FLUXBTAN2 )
+!        endif
+      endif
+
+      return
+      end
+
+
+        subroutine BFLUXR(
+     &    CHF_CONST_REAL[rho_in],
+     &    CHF_CONST_REAL[vn_in],
+     &    CHF_CONST_REAL[vt1_in],
+     &    CHF_CONST_REAL[vt2_in],
+     &    CHF_CONST_REAL[p_in],
+     &    CHF_CONST_REAL[Bn_in],
+     &    CHF_CONST_REAL[Bt1_in],
+     &    CHF_CONST_REAL[Bt2_in],
+     &    CHF_CONST_REAL[rho_out],
+     &    CHF_CONST_REAL[vn_out],
+     &    CHF_CONST_REAL[vt1_out],
+     &    CHF_CONST_REAL[vt2_out],
+     &    CHF_CONST_REAL[p_out],
+     &    CHF_CONST_REAL[Bn_out],
+     &    CHF_CONST_REAL[Bt1_out],
+     &    CHF_CONST_REAL[Bt2_out],
+     &    CHF_CONST_REAL[DX],
+     &    CHF_CONST_REAL[DY],
+     &    CHF_CONST_REAL[DZ],
+     &    CHF_REAL[FLUXRHO],
+     &    CHF_REAL[FLUXRUNORM],
+     &    CHF_REAL[FLUXRUTAN1],
+     &    CHF_REAL[FLUXRUTAN2],
+     &    CHF_REAL[FLUXE],
+     &    CHF_REAL[FLUXBNORM],
+     &    CHF_REAL[FLUXBTAN1],
+     &    CHF_REAL[FLUXBTAN2],
+     &    CHF_REAL[BnValue] )
+
+      real_t U, V, W, R, BX, BY, BZ, P, PG, BB, KE, E
+      real_t XXX, SZ, B2, SP, EM, EMM, CF, CS, DRho, HRho
+      real_t hyz, hy2, hz2
+
+      real_t U1, V1, W1, R1, BX1, BY1, BZ1, P1, PG1, BB1, KE1, E1
+      real_t XX1, SZ1, B21, SP1, EM1, EMM1, CF1, UR1
+
+      real_t U16, V16, W16, R16, BX16, BY16, BZ16, P16, PG16, CF16
+      real_t E16, SZ16
+
+      real_t DEM, THE, ALF, BE, SCM, SCP, DXR, DYR, DZR, RR
+
+#include "EosCommon.fh"
+
+      U      = vn_in
+      V      = vt1_in
+      W      = vt2_in
+      R      = rho_in
+      BX     = Bn_in
+      BY     = Bt1_in
+      BZ     = Bt2_in
+      PG     = p_in
+      BB     = BX*BX + BY*BY + BZ*BZ
+      P      = PG + d_1_8PI*BB
+      KE     = half*(vn_in*vn_in + vt1_in*vt1_in + vt2_in*vt2_in)
+      E      = PG/hgamma + rho_in*ke + d_1_8PI*BB
+
+      XXX    = d_1_4PI*BB
+      SZ     = sqrt( gamma*PG/R )
+      B2     = BB
+      SP     = half*sqrt( d_4PI*R )
+      EM     = SZ**2 + B2/(d_4PI*R) + SZ*abs( BX )/SP
+      EMM    = SZ**2 + B2/(d_4PI*R) - SZ*abs( BX )/SP
+      CF     = half*(sqrt( EM ) + sqrt( EMM ))
+      CS     = half*(sqrt( EM ) - sqrt( EMM ))
+
+      if( U >= CF ) then
+        BnValue    = BX
+        FLUXRHO    = R*U
+        FLUXRUNORM = R*U*U + P - d_1_4PI*BX*BX
+        FLUXRUTAN1 = R*U*V     - d_1_4PI*BX*BY
+        FLUXRUTAN2 = R*U*W     - d_1_4PI*BX*BZ
+        FLUXE      = U*(E+P)   - d_1_4PI*BX*(U*BX + V*BY + W*BZ)
+        FLUXBNORM  = zero
+        FLUXBTAN1  = U*BY - V*BX
+        FLUXBTAN2  = U*BZ - W*BX
+
+        return
+      endif
+
+      U1     = vn_out
+      V1     = vt1_out
+      W1     = vt2_out
+      R1     = rho_out
+      BX1    = Bn_out
+      BY1    = Bt1_out
+      BZ1    = Bt2_out
+      PG1    = p_out
+      BB1    = BX1*BX1 + BY1*BY1 + BZ1*BZ1
+      P1     = PG1 + d_1_8PI*BB1
+      KE1    = half*(vn_out*vn_out + vt1_out*vt1_out + vt2_out*vt2_out)
+      E1     = PG1/hgamma + rho_out*ke1 + d_1_8PI*BB1
+
+      if( U < -CF ) then
+        BnValue    = BX1
+        FLUXRHO    = R1*U1
+        FLUXRUNORM = R1*U1*U1 + P1 - d_1_4PI*BX1*BX1
+        FLUXRUTAN1 = R1*U1*V1      - d_1_4PI*BX1*BY1
+        FLUXRUTAN2 = R1*U1*W1      - d_1_4PI*BX1*BZ1
+        FLUXE      = U1*(E1+P1)    - d_1_4PI*BX1*(U1*BX1 + V1*BY1 + W1*BZ1)
+        FLUXBNORM  = zero
+        FLUXBTAN1  = U1*BY1 - V1*BX1
+        FLUXBTAN2  = U1*BZ1 - W1*BX1
+
+        return
+      endif
+
+      XX1    = d_1_4PI*BB1
+      SZ1    = sqrt( gamma*PG1/R1 )
+      B21    = BB1
+      SP1    = half*sqrt( d_4PI*R1 )
+      EM1    = SZ1**2 + B21/(d_4PI*R1) + SZ1*abs( BX1 )/SP1
+      EMM1   = SZ1**2 + B21/(d_4PI*R1) - SZ1*abs( BX1 )/SP1
+      CF1    = half*(sqrt( EM1 ) + sqrt( EMM1 ))
+
+      RR     = sqrt( DX*DX + DY*DY + DZ*DZ )
+      DXR    = DX/RR
+      DYR    = DY/RR
+      DZR    = DZ/RR
+
+      UR1    = U1*DXR + V1*DYR + W1*DZR
+
+!      if( (U < CF) .and. (U >= zero) .and. (UR1 > CF1) ) then
+       if( (U < CF) .and. (U >= zero) ) then
+        SCM    = SZ*SZ - CS*CS
+        SCP    = SZ*SZ + CS*CS
+
+        DEM    = sqrt( EM*EMM )
+        THE    = -half*CF*BX**2/(R*d_4PI*DEM)
+        THE    = THE + (BZ*BZ + BY*BY)*CF*SCP*half/(R*DEM*d_4PI*SCM)
+        THE    = THE + half*CF*hgamma*SZ**2/DEM
+        THE    = THE - SZ*abs( BX )*CS*(gamma - two)*0.25D0/(SP*DEM)
+
+        hyz    = BY*BY + BZ*BZ
+        if( hyz < 1.0D-10 ) then
+          hy2    = half
+          hz2    = half
+        else
+          hy2    = BY*BY/hyz
+          hz2    = BZ*BZ/hyz
+        endif
+
+        BE     = two*d_4PI*(CF*CF - SZ*SZ)
+
+        R16    = max( R + R*(U - CF)/(THE + CF), 1.0D-14 )
+        DRho   = R16 - R
+        HRho   = DRho/R
+
+        CF16   = U - HRho*CF
+        U16    = CF16
+        SZ16   = SZ*(one + half*hgamma*HRho)
+
+        BZ16   = BZ*BZ + BE*hz2*DRho
+        if( BZ16 <= zero ) then
+          BZ16   = zero
+        else
+          BZ16   = sqrt( BZ16 )
+          if( BZ < zero ) BZ16   =-BZ16
+        endif
+        BY16   = BY*BY + BE*hy2*DRho
+        if( BY16 <= zero ) then
+          BY16   = zero
+        else
+          BY16   = sqrt( BY16 )
+          if( BY < zero ) BY16   =-BY16
+        endif
+        BX16   = BX
+
+        ALF    = d_1_4PI*BX/(R*CF)
+
+        W16    = W + ALF*(BZ16 - BZ)
+        V16    = V + ALF*(BY16 - BY)
+
+        PG16   = SZ16**2*R16/gamma
+        BB     = d_1_4PI*(BX16*BX16 + BY16*BY16 + BZ16*BZ16)
+        P16    = PG16 + half*BB
+        E16    = PG16/hgamma + half*(R16*(U16**2 + V16**2 + W16**2) + BB)
+
+        BX         = d_1_4PI*BX16
+
+        BnValue    = BX16
+        FLUXRHO    = R16*U16
+        FLUXRUNORM = R16*U16*U16 + P16 - BX*BX16
+        FLUXRUTAN1 = R16*U16*V16       - BX*BY16
+        FLUXRUTAN2 = R16*U16*W16       - BX*BZ16
+        FLUXE      = U16*(E16 + P16)   - BX*(U16*BX16 + V16*BY16 + W16*BZ16)
+        FLUXBNORM  = zero
+        FLUXBTAN1  = U16*BY16 - V16*BX16
+        FLUXBTAN2  = U16*BZ16 - W16*BX16
+      else
+        if( U >= zero ) then
+          BnValue  = BX
+          call     ROE8WAVEF( PG,  R, U, V, W, BX,  BY,  BZ,
+     .                        PG1, R, U, V, W, BX1, BY1, BZ1,
+     .                        FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2,
+     .                        FLUXE, FLUXBNORM, FLUXBTAN1, FLUXBTAN2 )
+        else
+          BnValue  = half*(BX + BX1)
+          call     ROE8WAVEF( PG,  R,  U,  V,  W,  BX,  BY,  BZ,
+     .                        PG1, R1, U1, V1, W1, BX1, BY1, BZ1,
+     .                        FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2,
+     .                        FLUXE, FLUXBNORM, FLUXBTAN1, FLUXBTAN2 )
+        endif
+      endif
+
+      return
+      end
+      
+!=============================================
+!=====      Spherical coordinates        =====
+!=============================================
+
+! Special 'r' spacing for LISM-SWTILT problem
+       !added lohisign here
+        subroutine HELIOINITSPHERICAL(
+     &    CHF_FRA[U],     
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iHCSb],
+     &    CHF_CONST_INT[iRegTr],     
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+#if CH_SPACEDIM == 3
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB, rr, vel
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr, sunBeta        
+        real_t up,ur,ut,rur,invrho,rut,rup 
+               
+        integer CHF_DDECL[i;j;k]
+        integer shift
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        sinTILT  = sin( sunTILT )
+        cosTILT  = cos( sunTILT )
+        sunBeta  = Omega*eos_AU/(sunV*lismV)
+        
+        CHF_MULTIDO[box;i;j;k]    
+
+c        write(*,*) ' i = ', i, ' j = ',j
+                
+          r      = m_rc(i,level)
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+          
+          if( r > initR ) then
+            rr     = initR/r
+
+            rr     = rr*rr*rr
+
+            vel    = sinT*cosF*lismUX + sinT*sinF*lismUY + cosT*lismUZ
+            Ux     = lismUX - half*rr*(three*sinT*cosF*vel - lismUX)
+            Uy     = lismUY - half*rr*(three*sinT*sinF*vel - lismUY)
+            Uz     = lismUZ - half*rr*(three*cosT     *vel - lismUZ)
+
+            p      = one/(gamma*lismM*lismM)
+
+            b      = sinT*cosF*lismBX + sinT*sinF*lismBY + cosT*lismBZ
+            Bx     = lismBX - half*rr*(three*sinT*cosF*b - lismBX)
+            By     = lismBY - half*rr*(three*sinT*sinF*b - lismBY)
+            Bz     = lismBZ - half*rr*(three*cosT     *b - lismBZ)
+
+            b      = d_1_4PI*(Bx*Bx + By*By + Bz*Bz)
+            ke     =          ux*ux + uy*uy + uz*uz
+
+            e0     = p/hgamma + half*(ke + b)
+
+            U(CHF_IX[i;j;k],URHO)  = one
+
+            U(CHF_IX[i;j;k],UMOMX) = ux
+            U(CHF_IX[i;j;k],UMOMY) = uy
+            U(CHF_IX[i;j;k],UMOMZ) = uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+
+            U(CHF_IX[i;j;k],UBX )  = Bx
+            U(CHF_IX[i;j;k],UBY )  = By
+            U(CHF_IX[i;j;k],UBZ )  = Bz
+            
+            if (iHCS >= 0) then               
+              U(CHF_IX[i;j;k],iHCS) = one
+            endif
+            if (iHCSb >= 0) then               
+              U(CHF_IX[i;j;k],iHCSb) = one
+            endif
+            if (iRegTr>0) then
+!             U(CHF_IX[i;j;k],iRegTr )  = two  !FF for the old version that uses REGTRACER_REINIT 
+              U(CHF_IX[i;j;k],iRegTr )  = one
+            endif
+                                    
+          else
+            rr     = r/sunIntBCRadius
+            theta  = acos( cosT )
+
+            cosBr  = cos( sunBeta*r )
+            sinBr  = sin( sunBeta*r )
+
+            sinB   = sinF*cosBr + cosF*sinBr
+            cosB   = cosF*cosBr - sinF*sinBr
+
+            thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+            thetaS = asin( thetaS ) + d_PI_2
+
+            rho    = sunRho/(rr*rr)
+
+            ux     = sunV*sinT*cosF
+            uy     = sunV*sinT*sinF
+            uz     = sunV*cosT            
+                                
+            p      = sunP/rr**(two*gamma)                           
+            
+            b      = sunB/(rr*rr)
+
+            Bx     = b*(sinT*cosF + sunBeta*r*sinT*sinF)
+            By     = b*(sinT*sinF - sunBeta*r*sinT*cosF)
+            Bz     = b* cosT
+            
+            b      = Bx*Bx + By*By + Bz*Bz
+
+            e0     = p/hgamma + half*(rho*sunV*sunV + d_1_4PI*b)
+
+            U(CHF_IX[i;j;k],URHO)  = rho
+
+            U(CHF_IX[i;j;k],UMOMX) = rho*ux
+            U(CHF_IX[i;j;k],UMOMY) = rho*uy
+            U(CHF_IX[i;j;k],UMOMZ) = rho*uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+            
+            if (sunBmonopolar == 1) then
+              U(CHF_IX[i;j;k],UBX )  = Bx
+              U(CHF_IX[i;j;k],UBY )  = By
+              U(CHF_IX[i;j;k],UBZ )  = Bz
+            else
+              if( theta < thetaS ) then
+                U(CHF_IX[i;j;k],UBX )  = Bx
+                U(CHF_IX[i;j;k],UBY )  = By
+                U(CHF_IX[i;j;k],UBZ )  = Bz
+              else
+                U(CHF_IX[i;j;k],UBX )  =-Bx
+                U(CHF_IX[i;j;k],UBY )  =-By
+                U(CHF_IX[i;j;k],UBZ )  =-Bz
+              endif
+            endif
+            
+            if (iRegTr>0) then
+              U(CHF_IX[i;j;k],iRegTr )  = -one
+            endif
+                                    
+          endif
+        CHF_ENDDO
+        
+        if( fluids > 1 ) then
+        ke  = lismUX*lismUX + lismUY*lismUY + lismUZ*lismUZ
+!                                                                     Neutrals 1
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],iRhoN+URHO )  = netRho
+          U(CHF_IX[i;j;k],iRhoN+UMOMX)  = lismUX*netRho
+          U(CHF_IX[i;j;k],iRhoN+UMOMY)  = lismUY*netRho
+          U(CHF_IX[i;j;k],iRhoN+UMOMZ)  = lismUZ*netRho
+          U(CHF_IX[i;j;k],iRhoN+UENG )  = netP/hgamma + half*netRho*ke
+        CHF_ENDDO
+        endif
+
+        
+        if( fluids > 2 ) then
+!                                                                     Neutrals 2
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],iRhoN+UNUM_E+URHO)   = netFluid2Dens
+          U(CHF_IX[i;j;k],iRhoN+UNUM_E+UMOMX)  = zero
+          U(CHF_IX[i;j;k],iRhoN+UNUM_E+UMOMY)  = zero
+          U(CHF_IX[i;j;k],iRhoN+UNUM_E+UMOMZ)  = zero
+          U(CHF_IX[i;j;k],iRhoN+UNUM_E+UENG )  = netFluid2Pres/hgamma
+        CHF_ENDDO
+        endif
+
+        if( fluids > 3 ) then
+!                                                                     Neutrals 3
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+URHO )  = netFluid3Dens
+          U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+UMOMX)  = zero
+          U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+UMOMY)  = zero
+          U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+UMOMZ)  = zero
+          U(CHF_IX[i;j;k],iRhoN+2*UNUM_E+UENG )  = netFluid3Pres/hgamma
+        CHF_ENDDO
+        endif
+        
+        if (fluids>4) then      
+!                                                                     Neutrals 4          
+        shift = iRhoN+3*UNUM_E      
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],URHO +shift)  = netFluid2Dens  
+          U(CHF_IX[i;j;k],UMOMX+shift)  = zero
+          U(CHF_IX[i;j;k],UMOMY+shift)  = zero
+          U(CHF_IX[i;j;k],UMOMZ+shift)  = zero
+          U(CHF_IX[i;j;k],UENG +shift)  = netFluid2Pres/hgamma            
+        CHF_ENDDO
+        endif
+
+
+#endif        
+        return
+        end
+
+
+        subroutine HELIOGSSPHERICAL(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[jsize],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iHCSb],
+     &    CHF_CONST_INT[iRegTr],     
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3
+        integer CHF_DDECL[i;j;k]
+        
+        real_t b, r, ux, uy, uz, Bx, By, Bz, p, rho,rr, vel
+        real_t sinT, cosT, xy, cosF, sinF, cosB, sinB
+        real_t sinTILT, cosTILT, theta, thetaS, cosBr, sinBr, sunBeta        
+        real_t br,bp,bt
+        real_t up,ur,ke,ut,rur,invrho,rut,rup 
+        real_t rux,ruy,ruz
+        
+        integer ii,shift,iFluid,indb,ivar
+        integer iWRHO, iWVELR, iWVELP, iWVELT, iWPRES
+        
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+                                                
+        sinTILT=sin(sunTILT)
+        cosTILT=cos(sunTILT)
+        sunBeta=Omega*eos_AU/(sunV*lismV)
+        
+        ! Inner boundary
+        if( lohisign == -1 ) then                
+        CHF_MULTIDO[box;i;j;k]                    
+          r      = m_rc(i,level)
+          rr     = r/sunIntBCRadius
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                                        
+          cosBr  = cos( sunBeta*(r - sunV*t) )
+          sinBr  = sin( sunBeta*(r - sunV*t) )
+
+          sinB   = sinF*cosBr + cosF*sinBr
+          cosB   = cosF*cosBr - sinF*sinBr
+
+          thetaS = sinTILT*sinB/sqrt( (cosTILT*cosB)**2 + sinB**2 )
+          thetaS = asin( thetaS ) + d_PI_2
+
+          rho    = sunRho/(rr*rr)
+
+          ux     = sunV*sinT*cosF
+          uy     = sunV*sinT*sinF
+          uz     = sunV*cosT
+
+!          p      = sunP/rr**(two*gamma)
+          p      = sunP/rr**(two*1.4225)
+          
+          b      = sunB/(rr*rr)
+
+          Bx     = b*(sinT*cosF + sunBeta*r*sinT*sinF)
+          By     = b*(sinT*sinF - sunBeta*r*sinT*cosF)
+          Bz     = b* cosT
+          
+          b      = Bx*Bx + By*By + Bz*Bz
+          
+          W(CHF_IX[i;j;k],WRHO)  = rho
+
+          W(CHF_IX[i;j;k],WVELR) = sunV
+          W(CHF_IX[i;j;k],WVELP) = zero
+          W(CHF_IX[i;j;k],WVELT) = zero
+          W(CHF_IX[i;j;k],WPRES) = p
+                              
+          br = (Bx*cosF + By*sinF)*sinT + Bz*cosT
+          bp = -Bx*sinF + By*cosF
+          bt = (Bx*cosF + By*sinF)*cosT - Bz*sinT
+          
+          if (iRegTr>0) then
+            W(CHF_IX[i;j;k],iRegTr )  = -one
+          endif
+          
+          theta  = acos(cosT)
+            
+          if (sunBmonopolar == 1) then
+            W(CHF_IX[i;j;k],WBR )  = br
+            W(CHF_IX[i;j;k],WBP )  = bp
+            W(CHF_IX[i;j;k],WBT )  = bt
+          else
+            if( theta < thetaS ) then
+              W(CHF_IX[i;j;k],WBR )  = br
+              W(CHF_IX[i;j;k],WBP )  = bp
+              W(CHF_IX[i;j;k],WBT )  = bt
+            else
+              W(CHF_IX[i;j;k],WBR )  =-Br
+              W(CHF_IX[i;j;k],WBP )  =-Bp
+              W(CHF_IX[i;j;k],WBT )  =-Bt
+            endif 
+          endif
+    
+          if (fluids > 1) then          
+          if (U(CHF_IX[iboxhi0;j;k], iRhoN) > 0d0) then
+c                                                         BC data exist
+            rho    = U(CHF_IX[iboxhi0;j;k], iRhoN)
+            invrho = one/rho
+            
+            rux    = U(CHF_IX[iboxhi0;j;k], iRhoN+UMOMX)
+            ruy    = U(CHF_IX[iboxhi0;j;k], iRhoN+UMOMY)
+            ruz    = U(CHF_IX[iboxhi0;j;k], iRhoN+UMOMZ)   
+            ux     = rux*invrho
+            uy     = ruy*invrho
+            uz     = ruz*invrho
+                      
+            ke  = rux*ux + ruy*uy + ruz*uz
+
+            p    = hgamma*(U(CHF_IX[iboxhi0;j;k], iRhoN+UENG) - half*ke)
+            p    = max( p, smallp )    
+
+            if ((jsize/4<=j).and.(j<=3*jsize/4-1)) then
+            ! Calculate ur, up, ut as they are on the other side (phi = 180- phi)
+              ur =  (ux*(-cosF) + uy*sinF)*sinT + uz*cosT
+              up =  -ux*sinF + uy*(-cosF)
+              ut =  (ux*(-cosF) + uy*sinF)*cosT - uz*sinT
+              ur = -ur
+            else                                       
+              ur =  (ux*cosF + uy*sinF)*sinT + uz*cosT
+              up =  -ux*sinF + uy*cosF
+              ut =  (ux*cosF + uy*sinF)*cosT - uz*sinT
+            endif
+            
+            ur =  (ux*cosF + uy*sinF)*sinT + uz*cosT
+            up =  -ux*sinF + uy*cosF
+            ut =  (ux*cosF + uy*sinF)*cosT - uz*sinT
+                                    
+            W(CHF_IX[i;j;k],iRhoN+WRHO ) = rho
+            W(CHF_IX[i;j;k],iRhoN+WVELR) = ur
+            W(CHF_IX[i;j;k],iRhoN+WVELP) = up
+            W(CHF_IX[i;j;k],iRhoN+WVELT) = ut
+            W(CHF_IX[i;j;k],iRhoN+WPRES) = p            
+          else
+            W(CHF_IX[i;j;k],iRhoN+WRHO ) = W(CHF_IX[0;j;k],iRhoN+WRHO )
+            W(CHF_IX[i;j;k],iRhoN+WVELR) = W(CHF_IX[0;j;k],iRhoN+WVELR)
+            W(CHF_IX[i;j;k],iRhoN+WVELP) = W(CHF_IX[0;j;k],iRhoN+WVELP)
+            W(CHF_IX[i;j;k],iRhoN+WVELT) = W(CHF_IX[0;j;k],iRhoN+WVELT)
+            W(CHF_IX[i;j;k],iRhoN+WPRES) = W(CHF_IX[0;j;k],iRhoN+WPRES)
+          endif
+          endif
+          
+          ! 5th fluid
+          if (fluids > 4) then   
+          shift = iRhoN+3*UNUM_E  
+          if (U(CHF_IX[iboxhi0;j;k], shift) > 0d0) then
+c                                                         BC data exist
+            rho    = U(CHF_IX[iboxhi0;j;k], shift)
+            invrho = one/rho
+            
+            rux    = U(CHF_IX[iboxhi0;j;k], shift+UMOMX)
+            ruy    = U(CHF_IX[iboxhi0;j;k], shift+UMOMY)
+            ruz    = U(CHF_IX[iboxhi0;j;k], shift+UMOMZ)   
+            ux     = rux*invrho
+            uy     = ruy*invrho
+            uz     = ruz*invrho
+                      
+            ke  = rux*ux + ruy*uy + ruz*uz
+
+            p    = hgamma*(U(CHF_IX[iboxhi0;j;k], shift+UENG) - half*ke)
+            p    = max( p, smallp )            
+            
+            if ((jsize/4<=j).and.(j<=3*jsize/4-1)) then
+              ur =  (ux*(-cosF) + uy*sinF)*sinT + uz*cosT
+              up =  -ux*sinF + uy*(-cosF)
+              ut =  (ux*(-cosF) + uy*sinF)*cosT - uz*sinT
+              ur = -ur
+            else
+              ur =  (ux*cosF + uy*sinF)*sinT + uz*cosT
+              up =  -ux*sinF + uy*cosF
+              ut =  (ux*cosF + uy*sinF)*cosT - uz*sinT
+            endif
+            
+            ur =  (ux*cosF + uy*sinF)*sinT + uz*cosT
+            up =  -ux*sinF + uy*cosF
+            ut =  (ux*cosF + uy*sinF)*cosT - uz*sinT
+                                    
+            W(CHF_IX[i;j;k],shift+WRHO ) = rho
+            W(CHF_IX[i;j;k],shift+WVELR) = ur
+            W(CHF_IX[i;j;k],shift+WVELP) = up
+            W(CHF_IX[i;j;k],shift+WVELT) = ut
+            W(CHF_IX[i;j;k],shift+WPRES) = p                      
+          else
+            W(CHF_IX[i;j;k],shift+WRHO ) = W(CHF_IX[0;j;k],shift+WRHO )
+            W(CHF_IX[i;j;k],shift+WVELR) = W(CHF_IX[0;j;k],shift+WVELR)
+            W(CHF_IX[i;j;k],shift+WVELP) = W(CHF_IX[0;j;k],shift+WVELP)
+            W(CHF_IX[i;j;k],shift+WVELT) = W(CHF_IX[0;j;k],shift+WVELT)
+            W(CHF_IX[i;j;k],shift+WPRES) = W(CHF_IX[0;j;k],shift+WPRES)
+          endif
+          endif
+        CHF_ENDDO
+                        
+        endif
+        
+        ! Outer boundary
+        if( lohisign == 1 ) then  
+        indb     = iboxlo0 - 1  
+        r        = m_rc(indb,level)
+        
+        if (r<initR) then
+          CHF_MULTIDO[box;i;j;k]                            
+          do ivar = 0, WNUM-1          
+          W(CHF_IX[i;j;k],ivar)  = W(CHF_IX[indb;j;k],ivar)
+          enddo
+          if (iHCS >= 0) then            
+              W(CHF_IX[i;j;k],iHCS) = W(CHF_IX[indb;j;k],iHCS)
+          endif
+          if (iHCSb >= 0) then            
+              W(CHF_IX[i;j;k],iHCSb) = W(CHF_IX[indb;j;k],iHCSb)
+          endif
+          if (iRegTr>0) then
+              W(CHF_IX[i;j;k],iRegTr )  = W(CHF_IX[indb;j;k],iRegTr)
+          endif
+          CHF_ENDDO
+        else          
+          CHF_MULTIDO[box;i;j;k]                    
+          r      = m_rc(i,level)
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)                             
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+          
+          rr     = initR/r
+
+          rr     = rr*rr*rr
+                    
+          vel    = sinT*cosF*lismUX + sinT*sinF*lismUY + cosT*lismUZ
+          Ux     = lismUX - half*rr*(three*sinT*cosF*vel - lismUX)
+          Uy     = lismUY - half*rr*(three*sinT*sinF*vel - lismUY)
+          Uz     = lismUZ - half*rr*(three*cosT     *vel - lismUZ)
+          
+          p      = one/(gamma*lismM*lismM)
+
+          b      = sinT*cosF*lismBX + sinT*sinF*lismBY + cosT*lismBZ
+          Bx     = lismBX - half*rr*(three*sinT*cosF*b - lismBX)
+          By     = lismBY - half*rr*(three*sinT*sinF*b - lismBY)
+          Bz     = lismBZ - half*rr*(three*cosT     *b - lismBZ)
+
+          W(CHF_IX[i;j;k],WRHO)  = one
+          W(CHF_IX[i;j;k],WVELR) = (ux*cosF + uy*sinF)*sinT + uz*cosT
+          W(CHF_IX[i;j;k],WVELP) = -ux*sinF + uy*cosF
+          W(CHF_IX[i;j;k],WVELT) = (ux*cosF + uy*sinF)*cosT - uz*sinT
+          W(CHF_IX[i;j;k],WPRES) = p
+          W(CHF_IX[i;j;k],WBR )  = (Bx*cosF + By*sinF)*sinT + Bz*cosT
+          W(CHF_IX[i;j;k],WBP )  = -Bx*sinF + By*cosF
+          W(CHF_IX[i;j;k],WBT )  = (Bx*cosF + By*sinF)*cosT - Bz*sinT
+          if (iHCS >= 0) then            
+              W(CHF_IX[i;j;k],iHCS) = one
+          endif
+          if (iHCSb >= 0) then            
+              W(CHF_IX[i;j;k],iHCSb) = one
+          endif
+          if (iRegTr>0) then
+!            W(CHF_IX[i;j;k],iRegTr )  = two  !!FF for the old version that uses REGTRACER_REINIT
+            W(CHF_IX[i;j;k],iRegTr )  = one
+          endif
+                    
+        CHF_ENDDO
+        endif
+        
+        if (fluids > 1) then  
+        CHF_MULTIDO[box;i;j;k]                         
+          ux = lismUX
+          uy = lismUY
+          uz = lismUZ
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+
+          
+          ur = (ux*cosF + uy*sinF)*sinT + uz*cosT
+          up = -ux*sinF + uy*cosF
+          ut = (ux*cosF + uy*sinF)*cosT - uz*sinT
+          
+          W(CHF_IX[i;j;k],iRhoN+WRHO)   = netRho
+          W(CHF_IX[i;j;k],iRhoN+WVELR)  = ur
+          W(CHF_IX[i;j;k],iRhoN+WVELP)  = up
+          W(CHF_IX[i;j;k],iRhoN+WVELT)  = ut
+          W(CHF_IX[i;j;k],iRhoN+WPRES)  = netP
+        CHF_ENDDO
+        endif            
+        
+        endif ! Outer boundary
+        
+        if( lohisign == -1 ) then
+          ii     = iboxhi0 + 1
+        else
+          ii     = iboxlo0 - 1
+        endif
+        
+        CHF_MULTIDO[box;i;j;k]                            
+        do iFluid = 2, fluids - 1
+          if ((iFluid == 4) .and. (lohisign == -1)) then
+            ! 5th fluid, inner boundary is filled earlier
+            continue
+          endif
+          shift = iRhoN+(iFluid-1)*WNUM_E            
+          
+          iWRHO  = WRHO +shift
+          iWVELR = WVELR+shift
+          iWVELP = WVELP+shift
+          iWVELT = WVELT+shift
+          iWPRES = WPRES+shift
+          
+          W(CHF_IX[i;j;k],iWRHO )  = W(CHF_IX[ii;j;k],iWRHO )
+          W(CHF_IX[i;j;k],iWVELR)  = W(CHF_IX[ii;j;k],iWVELR)
+          W(CHF_IX[i;j;k],iWVELP)  = W(CHF_IX[ii;j;k],iWVELP)
+          W(CHF_IX[i;j;k],iWVELT)  = W(CHF_IX[ii;j;k],iWVELT)
+          W(CHF_IX[i;j;k],iWPRES)  = W(CHF_IX[ii;j;k],iWPRES)           
+        enddo
+        CHF_ENDDO
+  
+#endif        
+        return
+        end
+
+        subroutine HELIOGSNEUTRALS(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[lohisign],     
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],     
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3
+        integer CHF_DDECL[i;j;k]
+        
+        real_t b, r, ux, uy, uz, p, rho,rr, vel
+        real_t sinT, cosT, xy, cosF, sinF           
+        real_t up,ur,ke,ut,rur,invrho,rut,rup 
+        real_t rux,ruy,ruz
+        
+        integer ii,shift,iFluid
+        integer iWRHO, iWVELR, iWVELP, iWVELT, iWPRES
+                        
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+                                                        
+        
+        ! Inner boundary
+        if( lohisign == -1 ) then                
+        CHF_MULTIDO[box;i;j;k]                    
+          r      = m_rc(i,level)
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                                        
+          
+    
+          if (fluids > 1) then          
+          if (U(CHF_IX[iboxhi0;j;k], iRhoN) > 0d0) then
+c                                                         BC data exist
+            rho    = U(CHF_IX[iboxhi0;j;k], iRhoN)
+            invrho = one/rho
+            
+            rux    = U(CHF_IX[iboxhi0;j;k], iRhoN+UMOMX)
+            ruy    = U(CHF_IX[iboxhi0;j;k], iRhoN+UMOMY)
+            ruz    = U(CHF_IX[iboxhi0;j;k], iRhoN+UMOMZ)   
+            ux     = rux*invrho
+            uy     = ruy*invrho
+            uz     = ruz*invrho
+                      
+            ke  = rux*ux + ruy*uy + ruz*uz
+
+            p    = hgamma*(U(CHF_IX[iboxhi0;j;k], iRhoN+UENG) - half*ke)
+            p    = max( p, smallp )            
+                                       
+            ur =  (ux*cosF + uy*sinF)*sinT + uz*cosT
+            up =  -ux*sinF + uy*cosF
+            ut =  (ux*cosF + uy*sinF)*cosT - uz*sinT
+                                    
+            W(CHF_IX[i;j;k],iRhoN+WRHO )  = rho
+            W(CHF_IX[i;j;k],iRhoN+WVELR) = ur
+            W(CHF_IX[i;j;k],iRhoN+WVELP) = up
+            W(CHF_IX[i;j;k],iRhoN+WVELT) = ut
+            W(CHF_IX[i;j;k],iRhoN+WPRES) = p            
+                                
+          else
+            W(CHF_IX[i;j;k],iRhoN+WRHO ) = W(CHF_IX[0;j;k],iRhoN+WRHO )
+            W(CHF_IX[i;j;k],iRhoN+WVELR) = W(CHF_IX[0;j;k],iRhoN+WVELR)
+            W(CHF_IX[i;j;k],iRhoN+WVELP) = W(CHF_IX[0;j;k],iRhoN+WVELP)
+            W(CHF_IX[i;j;k],iRhoN+WVELT) = W(CHF_IX[0;j;k],iRhoN+WVELT)
+            W(CHF_IX[i;j;k],iRhoN+WPRES) = W(CHF_IX[0;j;k],iRhoN+WPRES)
+          endif
+                            
+          endif  
+        CHF_ENDDO
+                        
+        endif
+        
+        ! Outer boundary
+        if( lohisign == 1 ) then  
+        CHF_MULTIDO[box;i;j;k]                    
+          r      = m_rc(i,level)
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)                             
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+                    
+          
+          if (fluids > 1) then          
+            ux = lismUX
+            uy = lismUY
+            uz = lismUZ
+            ur = (ux*cosF + uy*sinF)*sinT + uz*cosT
+            up = -ux*sinF + uy*cosF
+            ut = (ux*cosF + uy*sinF)*cosT - uz*sinT
+            
+            W(CHF_IX[i;j;k],iRhoN+WRHO)   = netRho
+            W(CHF_IX[i;j;k],iRhoN+WVELR)  = ur
+            W(CHF_IX[i;j;k],iRhoN+WVELP)  = up
+            W(CHF_IX[i;j;k],iRhoN+WVELT)  = ut
+            W(CHF_IX[i;j;k],iRhoN+WPRES)  = netP
+          endif
+            
+        CHF_ENDDO
+        endif 
+        
+        if( lohisign == -1 ) then
+          ii     = iboxhi0 + 1
+        else
+          ii     = iboxlo0 - 1
+        endif
+
+        CHF_MULTIDO[box;i;j;k]                            
+        do iFluid = 2, fluids - 1
+          shift = iRhoN+(iFluid-1)*WNUM_E            
+          
+          iWRHO  = WRHO +shift
+          iWVELR = WVELR+shift
+          iWVELP = WVELP+shift
+          iWVELT = WVELT+shift
+          iWPRES = WPRES+shift
+          
+          W(CHF_IX[i;j;k],iWRHO )  = W(CHF_IX[ii;j;k],iWRHO )
+          W(CHF_IX[i;j;k],iWVELR)  = W(CHF_IX[ii;j;k],iWVELR)
+          W(CHF_IX[i;j;k],iWVELP)  = W(CHF_IX[ii;j;k],iWVELP)
+          W(CHF_IX[i;j;k],iWVELT)  = W(CHF_IX[ii;j;k],iWVELT)
+          W(CHF_IX[i;j;k],iWPRES)  = W(CHF_IX[ii;j;k],iWPRES)           
+        enddo
+        CHF_ENDDO
+  
+#endif        
+        return
+        end
+
+
+
+        subroutine HELIOBCSPHERICAL(          
+     &    CHF_FRA[F],
+     &    CHF_FRA1[Bn],     
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[lohisign], 
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids], 
+     &    CHF_BOX[box] )
+        
+        real_t FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2
+        real_t FLUXE, FLUXBNORM, FLUXBTAN1, FLUXBTAN2
+
+! postfix "_in" means that value lies inside problem domain, "_out" - outside
+        real_t rho_in, vn_in, vt1_in, vt2_in
+        real_t p_in, Bn_in, Bt1_in, Bt2_in
+        real_t rho_out, vn_out, vt1_out, vt2_out
+        real_t p_out, Bn_out, Bt1_out, Bt2_out
+                
+        integer CHF_DDECL[i;j;k], CHF_DDECL[ioff;joff;koff]
+        integer inorm,  itan1,  itan2
+        integer inormB, itanB1, itanB2        
+        integer iFluid, irho, ipres, iURHO, iUENG
+        
+        real_t BnValue
+           
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_DTERM[
+        ioff = CHF_ID(0,dir);
+        joff = CHF_ID(1,dir);
+        koff = CHF_ID(2,dir)]
+
+        inorm = WVELX + dir
+        itan1 = WVELX + mod(dir + 1,3)
+        itan2 = WVELX + mod(dir + 2,3)
+
+        inormB = WBX + dir
+        itanB1 = WBX + mod(dir + 1,3)
+        itanB2 = WBX + mod(dir + 2,3)
+
+      
+        if ((dir == 0) .and. (lohisign == 1)) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!                                                       Outer boundary                            
+        CHF_MULTIDO[box;i;j;k]          
+          rho_in = WLeft(CHF_IX[i;j;k],WRHO )
+          vn_in  = WLeft(CHF_IX[i;j;k],inorm)
+          vt1_in = WLeft(CHF_IX[i;j;k],itan1)
+          vt2_in = WLeft(CHF_IX[i;j;k],itan2)
+          p_in   = WLeft(CHF_IX[i;j;k],WPRES)
+          Bn_in  = WLeft(CHF_IX[i;j;k],inormB)
+          Bt1_in = WLeft(CHF_IX[i;j;k],itanB1)
+          Bt2_in = WLeft(CHF_IX[i;j;k],itanB2)
+          
+          rho_out = WRight(CHF_IX[i;j;k],WRHO )
+          vn_out  = WRight(CHF_IX[i;j;k],inorm)
+          vt1_out = WRight(CHF_IX[i;j;k],itan1)
+          vt2_out = WRight(CHF_IX[i;j;k],itan2)
+          p_out   = WRight(CHF_IX[i;j;k],WPRES)
+          Bn_out  = WRight(CHF_IX[i;j;k],inormB)
+          Bt1_out = WRight(CHF_IX[i;j;k],itanB1)
+          Bt2_out = WRight(CHF_IX[i;j;k],itanB2)
+          
+          FLUXRHO    = F(CHF_IX[i;j;k],URHO)
+          FLUXRUNORM = F(CHF_IX[i;j;k],inorm)
+          FLUXRUTAN1 = F(CHF_IX[i;j;k],itan1)
+          FLUXRUTAN2 = F(CHF_IX[i;j;k],itan2)
+          FLUXE      = F(CHF_IX[i;j;k],UENG)
+          FLUXBNORM  = F(CHF_IX[i;j;k],inormB)
+          FLUXBTAN1  = F(CHF_IX[i;j;k],itanB1)
+          FLUXBTAN2  = F(CHF_IX[i;j;k],itanB2)
+          
+          BnValue    = half*(Bn_in+Bn_out)
+          
+c          call BFLUXMHD( rho_in,  vn_in,   vt1_in,  vt2_in,  p_in, 
+c     &                    Bn_in,   Bt1_in,  Bt2_in,          
+c     &                    rho_out, vn_out,  vt1_out, vt2_out, p_out,     
+c     &                    Bn_out,  Bt1_out, Bt2_out,  
+c     &                    FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2, 
+c     &                    FLUXE,   FLUXBNORM,  FLUXBTAN1,  FLUXBTAN2,  
+c     &                    BnValue, dir, lohisign) 
+     
+     
+          call BFLUX( rho_in,  vn_in,   vt1_in,  vt2_in,  p_in,
+     &                    Bn_in,   Bt1_in,  Bt2_in,
+     &                    rho_out, vn_out,  vt1_out, vt2_out, p_out,
+     &                    Bn_out,  Bt1_out, Bt2_out,  
+     &                    FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2, 
+     &                    FLUXE,   FLUXBNORM,  FLUXBTAN1,  FLUXBTAN2,  
+     &                    BnValue) 
+
+          
+          F(CHF_IX[i;j;k],URHO ) = FLUXRHO
+
+          F(CHF_IX[i;j;k],inorm) = FLUXRUNORM
+          F(CHF_IX[i;j;k],itan1) = FLUXRUTAN1
+          F(CHF_IX[i;j;k],itan2) = FLUXRUTAN2
+
+          F(CHF_IX[i;j;k],UENG ) = FLUXE
+
+          F(CHF_IX[i;j;k],inormB)   = FLUXBNORM
+          F(CHF_IX[i;j;k],itanB1)   = FLUXBTAN1
+          F(CHF_IX[i;j;k],itanB2)   = FLUXBTAN2
+          
+          Bn(CHF_IX[i;j;k]) = BnValue
+        CHF_ENDDO              
+        
+!       populations of neutrals
+        do iFluid = 1, fluids - 1
+        if (iFluid == 1) then
+          irho  = iRhoN
+          inorm = iRhoN+WVELX + dir
+          itan1 = iRhoN+WVELX + mod(dir + 1,3)
+          itan2 = iRhoN+WVELX + mod(dir + 2,3)
+          ipres = iRhoN+WPRES
+          iURHO = iRhoN
+          iUENG = iRhoN+UENG
+        endif
+        if (iFluid == 2) then
+          irho  = iRhoN+WNUM_E          
+          inorm = iRhoN+WNUM_E+WVELX + dir
+          itan1 = iRhoN+WNUM_E+WVELX + mod(dir + 1,3)
+          itan2 = iRhoN+WNUM_E+WVELX + mod(dir + 2,3)
+          ipres = iRhoN+WNUM_E+WPRES
+          iURHO = iRhoN+UNUM_E
+          iUENG = iRhoN+UNUM_E+UENG
+        endif
+        if (iFluid == 3) then
+          irho  = iRhoN+2*WNUM_E
+          inorm = iRhoN+2*WNUM_E+WVELX + dir
+          itan1 = iRhoN+2*WNUM_E+WVELX + mod(dir + 1,3)
+          itan2 = iRhoN+2*WNUM_E+WVELX + mod(dir + 2,3)
+          ipres = iRhoN+2*WNUM_E+WPRES
+          iURHO = iRhoN+2*UNUM_E 
+          iUENG = iRhoN+2*UNUM_E+UENG
+        endif
+                        
+        CHF_MULTIDO[box;i;j;k]     
+          rho_in = WLeft(CHF_IX[i;j;k],irho )
+          vn_in  = WLeft(CHF_IX[i;j;k],inorm)
+          vt1_in = WLeft(CHF_IX[i;j;k],itan1)
+          vt2_in = WLeft(CHF_IX[i;j;k],itan2)                              
+          p_in   = WLeft(CHF_IX[i;j;k],ipres)                    
+          
+          rho_out = WRight(CHF_IX[i;j;k],irho )
+          vn_out  = WRight(CHF_IX[i;j;k],inorm)
+          vt1_out = WRight(CHF_IX[i;j;k],itan1)
+          vt2_out = WRight(CHF_IX[i;j;k],itan2)                              
+          p_out   = WRight(CHF_IX[i;j;k],ipres)          
+          
+          FLUXRHO    = F(CHF_IX[i;j;k],iURHO)
+          FLUXRUNORM = F(CHF_IX[i;j;k],inorm)
+          FLUXRUTAN1 = F(CHF_IX[i;j;k],itan1)
+          FLUXRUTAN2 = F(CHF_IX[i;j;k],itan2)
+          FLUXE      = F(CHF_IX[i;j;k],iUENG)
+          
+          
+          call BFLUXGAS( rho_in,  vn_in,   vt1_in,  vt2_in,  p_in,      
+     &                   rho_out, vn_out,  vt1_out, vt2_out, p_out,          
+     &                   FLUXRHO, FLUXRUNORM, FLUXRUTAN1, FLUXRUTAN2, 
+     &                   FLUXE,   dir, lohisign) 
+          
+          F(CHF_IX[i;j;k],iURHO) = FLUXRHO
+          F(CHF_IX[i;j;k],inorm) = FLUXRUNORM
+          F(CHF_IX[i;j;k],itan1) = FLUXRUTAN1
+          F(CHF_IX[i;j;k],itan2) = FLUXRUTAN2
+          F(CHF_IX[i;j;k],iUENG) = FLUXE          
+        CHF_ENDDO                        
+        enddo
+        
+        endif
+        
+        if ((dir == 0) .and. (lohisign == -1 )) then            
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!                                                                 Inner  boundary        
+        CHF_MULTIDO[box;i;j;k]
+          Bn(CHF_IX[i;j;k]) = half*(
+     &         WLeft( CHF_IX[i;j;k],inormB)
+     &       + WRight(CHF_IX[i;j;k],inormB))        
+        CHF_ENDDO
+        endif
+
+            
+        return
+        end
+                
+        
+        
+         subroutine NEUTRALS_SUNBCSPHERICAL(
+     &   CHF_CONST_FRA[a_from],
+     &   CHF_FRA[a_to],       
+     &   CHF_CONST_INT[jsize],       
+     &   CHF_CONST_INT[a_sign] ) 
+     
+        integer js
+        integer CHF_DDECL[i;j;k]
+                
+! I removed changing sign (see    SUNBCSPHERICAL2)    
+        if (a_sign == 1) then
+        CHF_MULTIDO[a_to;i;j;k]
+        if (j<=jsize/4-1) then          
+          a_to(CHF_IX[i;j;k], URHO)  =  a_from(CHF_IX[i+1;j;k], URHO)
+          a_to(CHF_IX[i;j;k], UMOMX) =  a_from(CHF_IX[i+1;j;k], UMOMX)
+          a_to(CHF_IX[i;j;k], UMOMY) =  a_from(CHF_IX[i+1;j;k], UMOMY)
+          a_to(CHF_IX[i;j;k], UMOMZ) =  a_from(CHF_IX[i+1;j;k], UMOMZ)
+          a_to(CHF_IX[i;j;k], UENG)  =  a_from(CHF_IX[i+1;j;k], UENG)    
+          if (CHF_NCOMP[a_to]>5) then 
+            a_to(CHF_IX[i;j;k], UNUM_E + URHO)  =  a_from(CHF_IX[i+1;j;k], UNUM_E + URHO)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMX) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMX)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMY) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMY)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMZ) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMZ)
+            a_to(CHF_IX[i;j;k], UNUM_E + UENG)  =  a_from(CHF_IX[i+1;j;k], UNUM_E + UENG)    
+          endif
+        else
+          js = jsize/2-1-j
+          a_to(CHF_IX[i;j;k], URHO)  =  a_from(CHF_IX[i+1;js;k], URHO)
+          a_to(CHF_IX[i;j;k], UMOMX) =  a_from(CHF_IX[i+1;js;k], UMOMX)
+          a_to(CHF_IX[i;j;k], UMOMY) = a_from(CHF_IX[i+1;js;k], UMOMY)
+          a_to(CHF_IX[i;j;k], UMOMZ) = a_from(CHF_IX[i+1;js;k], UMOMZ)
+          a_to(CHF_IX[i;j;k], UENG)  =  a_from(CHF_IX[i+1;js;k], UENG)          
+          if (CHF_NCOMP[a_to]>5) then 
+            a_to(CHF_IX[i;j;k], UNUM_E + URHO)  =  a_from(CHF_IX[i+1;js;k], UNUM_E + URHO)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMX) =  a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMX)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMY) = a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMY)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMZ) = a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMZ)
+            a_to(CHF_IX[i;j;k], UNUM_E + UENG)  =  a_from(CHF_IX[i+1;js;k], UNUM_E + UENG)          
+          endif
+        endif
+        CHF_ENDDO
+        endif
+        
+        if (a_sign == 2) then
+        CHF_MULTIDO[a_to;i;j;k]
+        if ((3*jsize/4<=j).and.(j<=jsize-1)) then          
+          a_to(CHF_IX[i;j;k], URHO)  =  a_from(CHF_IX[i+1;j;k], URHO)
+          a_to(CHF_IX[i;j;k], UMOMX) =  a_from(CHF_IX[i+1;j;k], UMOMX)
+          a_to(CHF_IX[i;j;k], UMOMY) =  a_from(CHF_IX[i+1;j;k], UMOMY)
+          a_to(CHF_IX[i;j;k], UMOMZ) =  a_from(CHF_IX[i+1;j;k], UMOMZ)
+          a_to(CHF_IX[i;j;k], UENG)  =  a_from(CHF_IX[i+1;j;k], UENG)          
+          if (CHF_NCOMP[a_to]>5) then 
+            a_to(CHF_IX[i;j;k], UNUM_E + URHO)  =  a_from(CHF_IX[i+1;j;k], UNUM_E + URHO)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMX) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMX)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMY) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMY)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMZ) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMZ)
+            a_to(CHF_IX[i;j;k], UNUM_E + UENG)  =  a_from(CHF_IX[i+1;j;k], UNUM_E + UENG)          
+          endif
+        else
+          js = 3*jsize/2-1-j
+          a_to(CHF_IX[i;j;k], URHO)  =  a_from(CHF_IX[i+1;js;k], URHO)
+          a_to(CHF_IX[i;j;k], UMOMX) =  a_from(CHF_IX[i+1;js;k], UMOMX)
+          a_to(CHF_IX[i;j;k], UMOMY) = a_from(CHF_IX[i+1;js;k], UMOMY)
+          a_to(CHF_IX[i;j;k], UMOMZ) = a_from(CHF_IX[i+1;js;k], UMOMZ)
+          a_to(CHF_IX[i;j;k], UENG)  =  a_from(CHF_IX[i+1;js;k], UENG)                  
+          if (CHF_NCOMP[a_to]>5) then 
+            a_to(CHF_IX[i;j;k], UNUM_E + URHO)  =  a_from(CHF_IX[i+1;js;k], UNUM_E + URHO)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMX) =  a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMX)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMY) = a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMY)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMZ) = a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMZ)
+            a_to(CHF_IX[i;j;k], UNUM_E + UENG)  =  a_from(CHF_IX[i+1;js;k], UNUM_E + UENG)                  
+          endif
+        endif
+        CHF_ENDDO
+        endif
+        
+        return
+        end
+       
+
+        subroutine NEUTRALS_SUNBCSPHERICAL2(
+     &   CHF_CONST_FRA[a_from],
+     &   CHF_FRA[a_to],       
+     &   CHF_CONST_INT[jsize],       
+     &   CHF_CONST_INT[a_sign] ) 
+     
+        integer js
+        integer CHF_DDECL[i;j;k]
+                
+        
+        if (a_sign == 1) then
+        CHF_MULTIDO[a_to;i;j;k]
+        if (j<=jsize/4-1) then          
+          a_to(CHF_IX[i;j;k], URHO)  =  a_from(CHF_IX[i+1;j;k], URHO)
+          a_to(CHF_IX[i;j;k], UMOMX) =  a_from(CHF_IX[i+1;j;k], UMOMX)
+          a_to(CHF_IX[i;j;k], UMOMY) =  a_from(CHF_IX[i+1;j;k], UMOMY)
+          a_to(CHF_IX[i;j;k], UMOMZ) =  a_from(CHF_IX[i+1;j;k], UMOMZ)
+          a_to(CHF_IX[i;j;k], UENG)  =  a_from(CHF_IX[i+1;j;k], UENG)    
+          if (CHF_NCOMP[a_to]>5) then 
+            a_to(CHF_IX[i;j;k], UNUM_E + URHO)  =  a_from(CHF_IX[i+1;j;k], UNUM_E + URHO)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMX) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMX)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMY) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMY)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMZ) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMZ)
+            a_to(CHF_IX[i;j;k], UNUM_E + UENG)  =  a_from(CHF_IX[i+1;j;k], UNUM_E + UENG)    
+          endif
+        else
+          js = jsize/2-1-j
+          a_to(CHF_IX[i;j;k], URHO)  =  a_from(CHF_IX[i+1;js;k], URHO)
+          a_to(CHF_IX[i;j;k], UMOMX) =  a_from(CHF_IX[i+1;js;k], UMOMX)
+          a_to(CHF_IX[i;j;k], UMOMY) = -a_from(CHF_IX[i+1;js;k], UMOMY)
+          a_to(CHF_IX[i;j;k], UMOMZ) = -a_from(CHF_IX[i+1;js;k], UMOMZ)
+          a_to(CHF_IX[i;j;k], UENG)  =  a_from(CHF_IX[i+1;js;k], UENG)          
+          if (CHF_NCOMP[a_to]>5) then 
+            a_to(CHF_IX[i;j;k], UNUM_E + URHO)  =  a_from(CHF_IX[i+1;js;k], UNUM_E + URHO)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMX) =  a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMX)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMY) = -a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMY)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMZ) = -a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMZ)
+            a_to(CHF_IX[i;j;k], UNUM_E + UENG)  =  a_from(CHF_IX[i+1;js;k], UNUM_E + UENG)          
+          endif
+        endif
+        CHF_ENDDO
+        endif
+        
+        if (a_sign == 2) then
+        CHF_MULTIDO[a_to;i;j;k]
+        if ((3*jsize/4<=j).and.(j<=jsize-1)) then          
+          a_to(CHF_IX[i;j;k], URHO)  =  a_from(CHF_IX[i+1;j;k], URHO)
+          a_to(CHF_IX[i;j;k], UMOMX) =  a_from(CHF_IX[i+1;j;k], UMOMX)
+          a_to(CHF_IX[i;j;k], UMOMY) =  a_from(CHF_IX[i+1;j;k], UMOMY)
+          a_to(CHF_IX[i;j;k], UMOMZ) =  a_from(CHF_IX[i+1;j;k], UMOMZ)
+          a_to(CHF_IX[i;j;k], UENG)  =  a_from(CHF_IX[i+1;j;k], UENG)          
+          if (CHF_NCOMP[a_to]>5) then 
+            a_to(CHF_IX[i;j;k], UNUM_E + URHO)  =  a_from(CHF_IX[i+1;j;k], UNUM_E + URHO)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMX) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMX)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMY) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMY)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMZ) =  a_from(CHF_IX[i+1;j;k], UNUM_E + UMOMZ)
+            a_to(CHF_IX[i;j;k], UNUM_E + UENG)  =  a_from(CHF_IX[i+1;j;k], UNUM_E + UENG)          
+          endif
+        else
+          js = 3*jsize/2-1-j
+          a_to(CHF_IX[i;j;k], URHO)  =  a_from(CHF_IX[i+1;js;k], URHO)
+          a_to(CHF_IX[i;j;k], UMOMX) =  a_from(CHF_IX[i+1;js;k], UMOMX)
+          a_to(CHF_IX[i;j;k], UMOMY) = -a_from(CHF_IX[i+1;js;k], UMOMY)
+          a_to(CHF_IX[i;j;k], UMOMZ) = -a_from(CHF_IX[i+1;js;k], UMOMZ)
+          a_to(CHF_IX[i;j;k], UENG)  =  a_from(CHF_IX[i+1;js;k], UENG)                  
+          if (CHF_NCOMP[a_to]>5) then 
+            a_to(CHF_IX[i;j;k], UNUM_E + URHO)  =  a_from(CHF_IX[i+1;js;k], UNUM_E + URHO)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMX) =  a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMX)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMY) = -a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMY)
+            a_to(CHF_IX[i;j;k], UNUM_E + UMOMZ) = -a_from(CHF_IX[i+1;js;k], UNUM_E + UMOMZ)
+            a_to(CHF_IX[i;j;k], UNUM_E + UENG)  =  a_from(CHF_IX[i+1;js;k], UNUM_E + UENG)                  
+          endif
+        endif
+        CHF_ENDDO
+        endif
+        
+        return
+        end
+        
+        
+        subroutine TRANSFORMTOROTATINGFRAME(
+     &     CHF_FRA[W],              
+     &     CHF_CONST_FRA[WI],                   
+     &     CHF_CONST_REAL[time0],  
+     &     CHF_CONST_REAL[time],       
+     &     CHF_CONST_INT[level],          
+     &     CHF_BOX[box],
+     &     CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3                
+        integer CHF_DDECL[i;j;k]                
+                
+        real_t OmegaDL,TDL,t,dphi,jf,phi
+        integer j1,jmax,WComp,ivar
+        
+                        
+#include "EosCommon.fh"        
+#include "SWLISMCommon.fh"
+
+        OmegaDL = Omega*eos_AU/lismV   ! dimensionless angular speed
+        TDL     = d_2PI/OmegaDL        ! dimensionless period
+        t       = MODULO(time - time0,TDL)   ! time within the cycle
+        
+        jmax  = CHF_UBOUND[W;1]                       
+        dphi  = m_dphi(0/m_ref_factor(level))*m_inv_factor(level);
+        WComp = CHF_NCOMP[W] - 1
+                              
+        CHF_MULTIDO[box;i;j;k]                                           
+          phi    = (j+half)*dphi
+          
+          jf     = (phi - t*OmegaDL)/dphi - half
+          if (jf<0D0) then
+            jf = jf + jmax + one          
+          endif
+          
+          if (abs(jf-nint(jf))<1d-8) then
+            jf = nint(jf)
+            j1 = nint(jf)
+          else                                 
+            j1 = floor(jf)
+          endif
+                    
+          
+c          if ((i==-1).and.(k == 0)) then
+c          print *,'j=',j,'jf=',jf,'j1=',j1
+c          endif              
+
+          do ivar = 0, WComp          
+          W(CHF_IX[i;j1;k],ivar)  = WI(CHF_IX[i;j;k],ivar)                        
+          enddo
+                    
+        CHF_ENDDO  
+                
+#endif                  
+        return
+        end 
+        
+        
+        subroutine SUNGRAVITYSPH( 
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],  
+     &    CHF_CONST_REAL[dt],   
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3                     
+       real_t g,gx,gy,gz,ux,uy,uz,ur,up,ut,rho
+       real_t r,sinT,cosT,sinF,cosF,tmp,rr
+       
+       integer CHF_DDECL[i;j;k]
+      
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+      
+        g  = eos_mSun*eos_G/(eos_AU*lismV*lismV)
+        
+        CHF_MULTIDO[box;i;j;k]
+          r      = m_rc(i,level)
+          
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+          
+          ur  = W(CHF_IX[i;j;k],WVELR)
+          up  = W(CHF_IX[i;j;k],WVELP)
+          ut  = W(CHF_IX[i;j;k],WVELT)
+          
+          tmp = ur *sinT + ut*cosT                  
+          ux  = tmp*cosF - up*sinF
+          uy  = tmp*sinF + up*cosF
+          uz  = ur *cosT - ut*sinT
+          
+          rr  = one/(r*r)
+          
+          gx     = g*rr*sinT*cosF
+          gy     = g*rr*sinT*sinF
+          gz     = g*rr*cosT
+          
+          rho    = W(CHF_IX[i;j;k],WRHO)
+          
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) = -dt*rho*gx
+          S(CHF_IX[i;j;k],UMOMY) = -dt*rho*gy
+          S(CHF_IX[i;j;k],UMOMZ) = -dt*rho*gz
+
+          S(CHF_IX[i;j;k],UENG ) = -dt*rho*(ux*gx+uy*gy+uz*gz)                          
+        CHF_ENDDO
+#endif                          
+        return
+        end
+        
+        
+        subroutine SUNHEATINGSPH( 
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],  
+     &    CHF_CONST_REAL[dt],   
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+            
+       real_t r,Q0SI,Q0,LQ,seng
+       
+       integer CHF_DDECL[i;j;k]
+      
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        Q0SI = 3.3D-6 ! Nakamizo
+        Q0SI = 1.2D-6 ! Zhou
+
+        Q0   = 10D0*Q0SI*eos_AU/(lismN*eos_mp*lismV**3)
+        
+        LQ = 0.9D0*eos_rSun/eos_AU
+              
+        
+        CHF_MULTIDO[box;i;j;k]
+          r      = m_rc(i,level)          
+          seng   = Q0*exp(-r/LQ)                    
+          S(CHF_IX[i;j;k],UENG ) = dt*seng                          
+        CHF_ENDDO
+        
+        return
+        end
+     

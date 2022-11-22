@@ -1,0 +1,47 @@
+C
+C   Fortran parameters for the SW-LISM interaction problem:
+C
+        real_t sunXC, sunYC, sunZC, sunR, sunTILT, sunB, Omega
+        real_t lismN, lismV, lismT, lismM, lismB, lismP
+        real_t lismBX, lismBY, lismBZ, lismUX, lismUY, lismUZ
+        real_t sunN, sunV, sunT, sunRho, sunP, initR, dirBrN
+        real_t netN, netRho, netM, netP
+        real_t LISMDeviation, SWDeviation, R0Turb
+        real_t Vfast,Vslow,Tfast,Tslow,Nfast,Nslow,fs_a,fs_b
+        real_t Pfast,Pslow
+        real_t tilt_min,tilt_max
+        real_t slow_min,slow_max
+        real_t lismZ2, lismLambda, lismSigmaC
+        real_t sunZ2, sunLambda, sunSigmaC, sunIntBCRadius
+        real_t lismRhoPI, lismPressPI, sunRhoPI, sunPressPI
+
+        real_t TMLIM, ULIM, ULIM2, RegSafeZTop, RegSafeZBot
+        parameter (ULIM   = 10.0D0)
+        parameter (ULIM2  = ULIM*ULIM)
+
+        integer sunBmonopolar
+
+!--------RKB: for table loading -->shockBC
+        integer, parameter :: nMach =100, nBeta=300
+        real_t  Tratio_table70(nMach, nBeta), Tratio_table80(nMach, nBeta), Tratio_table87(nMach, nBeta)
+        real_t  Mach_table(nMach), beta_table(nBeta) 
+!-------------------
+
+        common /swlismcm/
+     .                   sunXC, sunYC, sunZC, sunR, sunTILT, sunB, Omega,
+     .                   lismN, lismV, lismT, lismM, lismB, lismP,
+     .                   lismBX, lismBY, lismBZ,
+     .                   lismUX, lismUY, lismUZ,
+     .                   sunN, sunV, sunT, sunRho, sunP, initR, dirBrN,
+     .                   netN, netRho, netM, netP,
+     .                   LISMDeviation, SWDeviation, R0Turb,
+     .                   Vfast, Vslow, Tfast, Tslow, Nfast, Nslow, fs_a,
+     .                   fs_b, Pfast, Pslow, tilt_min,tilt_max, slow_min,slow_max,
+     .                   lismZ2, lismLambda,
+     .                   lismSigmaC, sunZ2, sunLambda, sunSigmaC,
+     .                   sunIntBCRadius, lismRhoPI, lismPressPI,
+     .                   sunRhoPI, sunPressPI, TMLIM, RegSafeZTop, RegSafeZBot,
+     .                   sunBmonopolar, Tratio_table70, Tratio_table80, Tratio_table87,
+     .                    Mach_table, beta_table
+ 
+

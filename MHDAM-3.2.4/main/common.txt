@@ -1,0 +1,201 @@
+# Common parameters for all problems.
+
+# problem name
+mhdam.problem = "myproblem"
+
+# verbosity (range: -1 ... 4)
+# 0  : no output
+# -1 : the same as "1" but only rank 0 processor performs output
+mhdam.verbosity = 0
+
+# number of time steps and maximum time
+mhdam.max_step = 4
+mhdam.max_time = 1000000.0
+
+# number of tracking surfaces using a level set method
+mhdam.num_tracking_surfaces = 0
+# = 1 if we need to advect level set without updating fluid
+mhdam.lsonly = 1
+# reinitialization of level set
+mhdam.lsreinit_interval = 100
+
+# Coordinate system :
+# 0 - Cartesian
+# 1 - axisymmetric
+# 2 - cylindrical
+# 3 - polar
+# 4 - axisymmetric polar
+# 5 - spherical
+mhdam.coord_sys  = 1
+# any hdf5 file than contains "geometry" group written CSHandler
+mhdam.geom_file  = geom.h5
+# determines directions for which geom info should be read
+mhdam.geom_dirs  = 0 0 1
+
+# Type of grid spacing in r direction (for polar and spherical coordiante systems only)
+# 0 - dr=const
+# 1 - uniform cells (dr = r*dphi)
+# 2 - exponential distribution with Rexpalpha coefficient
+mhdam.Rspacing = 0
+mhdam.Rexpalpha = 1
+
+# Computational domain and grid
+mhdam.domain_length = 1500.0
+mhdam.num_cells =  192 96 4
+# Determine which spatial directions are periodic
+mhdam.is_periodic = 0 0 0
+# Maximum number of additional levels.
+mhdam.max_level = 3
+# Refinement ratios between levels
+mhdam.ref_ratio = 2 2 2 2 2 2
+# step factor between levels usially the same as ref_ratio
+mhdam.step_factor = 2 2 2 2
+
+# Number of coarse time steps from one regridding to the next
+mhdam.regrid_interval = 20 -1 -1 -1 -1 -1
+
+# How far to extend refinement from cells newly tagged for refinement
+mhdam.tag_buffer_size = 6
+
+# Thresholds that trigger refinement
+mhdam.refine_density_thresh = 0.25
+mhdam.refine_B_thresh = -1
+
+# The finest level of the refinement where criterion is applied to.
+# Thus, 3+1=4 is the finest level which can be created using particular criteria
+mhdam.refine_density_maxlevel = 3
+mhdam.refine_B_maxlevel = 100
+
+# Blocking factor. For each box B in the grids, this is the number Nref 
+# for which it is guaranteed to be true that refine(coarsen(B;Nref);Nref) == B. 
+# Default = 1. Note that this will also be the minimum possible box size.
+mhdam.block_factor = 4
+
+# Maximum length of a grid in any dimension. An input value of 0
+# means the maximum value will be infinity (no limit).
+mhdam.max_grid_size = 32
+
+# Overall grid effciency to be generated. If this number is set
+# low, the grids will tend to be larger and less filled with tags. If this number
+# is set high, the grids will tend to be smaller and more filled with tags. This
+# controls the aggressiveness of agglomeration by box merging.
+mhdam.fill_ratio = 0.75
+
+# Proper nesting buffer size. This will be the minimum number
+# of level l cells between any level l+1 cell and a level l-1 cell. Default = 1.
+mhdam.grid_buffer_size = 5
+
+# Characteristic reconstruction
+# 0 - CR isn't used
+# 1 - CR is used
+mhdam.char_reconstruction = 0
+
+# Additional check for primitive variable TVD property after characteristic reconstruction
+# 0 - no check
+# 1 - check for density and pressure only
+# 2 - chek for all primitive variables
+mhdam.check_tvd = 1
+
+# Check positibity of face values of density and pressure after recostruction
+mhdam.check_positivity = 0
+
+# Limiters being used
+# for characterisitic variables:
+# rho,vx - entropy and divB waves
+# vy,vx  - Alvfen waves
+# p,bx   - fast waves  
+# by,bz  - slow waves
+mhdam.limiter_RHO = 1
+mhdam.limiter_VX  = 1
+mhdam.limiter_VY  = 1
+mhdam.limiter_VZ  = 1
+mhdam.limiter_P   = 1
+mhdam.limiter_BX  = 1
+mhdam.limiter_BY  = 1
+mhdam.limiter_BZ  = 1
+mhdam.limiter_LS  = 2 # superbee
+
+# Time approximation
+# 0 - first order
+# 1 - Hancock method
+# 2 - RK2
+mhdam.time_approximation = 2
+
+# Method to calculate divB
+# 0 - divB isn't claculated
+# 1 - divB is calculated with reconstructed B face values
+# 2 - divB is calculated using CD formulae
+mhdam.divB_method = 1
+
+# 8-wave source term calculation
+# 0 - 8-wave method source terms are not calculated
+# 1 - 8-wave method source terms are calculated
+mhdam.8wave_use = 1
+
+# div B cleaning method
+# 0 - divB cleaning isn't used
+# 1 - E is calculated by Balsara & Spacer method
+# 2 - E is calculated by Gardiner & Stone method 1
+# 3 - E is calculated by Gardiner & Stone method 2
+# 4 - projection scheme with Hancock method
+# 5 - Dedner approach (correction potential)
+mhdam.divB_cleaning = 0
+
+# Dedner parameters
+mhdam.factorCh = 1 # Ch = factorCh*Umax
+mhdam.factorCp = 1 # Cp = sqrt(Ch*dx/alpha);
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.1
+mhdam.max_dt_growth = 1.02
+mhdam.dt_tolerance_factor = 1.02
+
+# Method for flux computation
+# 1 - Roe method with arithmetic averaging
+# 2 - Rusanov method with arithmetic averaging
+# 3 - Roe method with Roe averaging
+# 4 - Rusanov method with Roe averaging
+# 5 - VFRoe method with arithmetic averaging
+mhdam.flux = 1
+mhdam.entropy_fix_coeff = 0.3
+
+# Keep only last "max_chk_files" checkpoints, -1 keep all checkpoints
+mhdam.max_chk_files = 10
+mhdam.chk_map_files = 1 # 1, if map files should be written for checkpoints
+mhdam.checkpoint_interval = 500
+mhdam.plot_interval = 2   
+mhdam.tecplot_interval = 1
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = swk
+
+# whether vectors should be written in the cartesian coordinates 
+# (if coordinate system is not cartesian)
+mhdam.output_vec_cs = 1 
+mhdam.output_divb   = 1 # output divb, it is calculated using 'divB_method'.
+
+# Program can create slices when it is compiled in 3D
+mhdam.slice_interval = 100
+mhdam.slices = 4
+mhdam.slice_planes = X Y Z Z
+mhdam.slice_values = 100 100 100 200
+
+# Program can extract data along coordinate lines
+mhdam.lines = 2
+mhdam.lines_interval = 100
+mhdam.line0_coords = 0 0.5 1 0.5 # curvilinear coordinates (start-end)
+mhdam.line1_coords = 0.5 0 0.5 1 # curvilinear coordinates (start-end)
+
+# probes
+mhdam.num_probes = 2
+mhdam.probe_dt   = 24 # time step in hours
+# 1 - 1D point
+# 2 - trajectory
+probe0.type = 1 # static probe
+probe0.filename = 15AU.dat  # output file name
+probe0.coords   = 15 0.001 3.141592654
+probe1.type = 2 # moving probe
+probe1.filename = 15AU.dat
+probe1.coords   = trajU.dat
+
+# Checkpoint to restart
+mhdam.restart_file = swk6000.2d.hdf5

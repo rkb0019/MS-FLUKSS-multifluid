@@ -1,0 +1,82 @@
+mhdam.problem = orszag
+
+mhdam.gamma = 1.66666666667
+
+mhdam.verbosity = 0
+
+mhdam.max_step = 1000
+mhdam.max_time = 0.5
+
+mhdam.domain_length = 1.0
+mhdam.num_cells =  64 64 4
+mhdam.is_periodic = 1 1 0
+mhdam.max_level = 3
+mhdam.ref_ratio = 2 2 2 2 2 2 2
+
+mhdam.regrid_interval = 5 -1 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.15
+mhdam.refine_B_thresh = 0.15
+
+mhdam.writeDensityGradient = 0
+mhdam.write_B_Gradient = 0
+
+# Blocking factor. For each box B in the grids, this is the number Nref 
+# for which it is guaranteed to be true that refine(coarsen(B;Nref);Nref) == B. 
+# Default = 1. Note that this will also be the minimum possible box size.
+mhdam.block_factor = 4
+
+# Maximum length of a grid in any dimension. An input value of 0
+# means the maximum value will be infinity (no limit).
+mhdam.max_grid_size = 32
+
+# Overall grid e±ciency to be generated. If this number is set
+# low, the grids will tend to be larger and less filled with tags. If this number
+# is set high, the grids will tend to be smaller and more filled with tags. This
+# controls the aggressiveness of agglomeration by box merging.
+mhdam.fill_ratio = 0.75
+
+# Proper nesting buffer size. This will be the minimum number
+# of level l cells between any level l+1 cell and a level l-1 cell. Default = 1.
+mhdam.grid_buffer_size = 4
+
+mhdam.char_reconstruction = 1
+mhdam.check_tvd = 1
+
+mhdam.limiter_RHO = 9
+mhdam.limiter_VX = 9
+mhdam.limiter_VY = 9
+mhdam.limiter_VZ = 9
+mhdam.limiter_P = 9
+mhdam.limiter_BX = 9
+mhdam.limiter_BY = 9
+mhdam.limiter_BZ = 9
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+mhdam.8wave_use = 1
+
+
+mhdam.checkpoint_interval = 1000000
+mhdam.plot_interval = 0
+mhdam.plot_prefix  = orsz.p
+mhdam.chk_prefix = orsz.c
+mhdam.tecplot_interval = 100000
+
+# Program can extract data along coordinate lines
+mhdam.lines = 1
+mhdam.lines_interval = 10000
+mhdam.line0_coords = 0.1 0.3125 0.9 0.3125 # curvilinear coordinates
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1
+
+#mhdam.restart_file = chk407.2d.hdf5

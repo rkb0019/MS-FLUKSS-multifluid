@@ -1,0 +1,232 @@
+      subroutine RIEMANNHD_STATES( CHF_FRA[Wgdnv],
+     &                             CHF_CONST_FRA[WLeft],
+     &                             CHF_CONST_FRA[WRight],
+     &                             CHF_CONST_INT[idir],
+     &                             CHF_CONST_INT[iRho],
+     &                             CHF_BOX[box])
+
+#include "EosCommon.fh"
+
+      integer i, j, k
+      integer inorm, itan1, itan2
+      real_t pl,rhol,pr,rhor,cl,cr,wl,wr,wstar
+      real_t pstar,ustar,ro,po,uno,co,sgnm
+      real_t rstar,cstar,spout,spin,ushock,frac
+      real_t unl,unr
+
+      integer spacedim, iVelX, iPres
+
+!                            Simple Riemann solver for hydrodynamics from CHOMBO
+
+      spacedim = 3
+
+      iVelX  = iRho + 1
+      iPres  = iRho + 4
+
+      inorm  = iVelX +      idir
+      itan1  = iVelX + mod( idir + 1, spacedim )
+      itan2  = iVelX + mod( idir + 2, spacedim )
+
+      CHF_MULTIDO[box;i;j;k]
+        pl     = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+        rhol   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+        unl    =              WLeft(CHF_IX[i;j;k],inorm)
+
+        pr     = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+        rhor   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+        unr    =              WRight(CHF_IX[i;j;k],inorm)
+
+        cl     = sqrt( gamma*pl/rhol )
+        cr     = sqrt( gamma*pr/rhor )
+
+        wl     = rhol*cl
+        wr     = rhor*cr
+
+        pstar  = (wr*pl + wl*pr + wl*wr*(unl - unr))/(wl + wr)
+        ustar  = (wl*unl + wr*unr + pl - pr)/(wl + wr)
+
+        if( ustar > zero ) then
+          ro     = rhol
+          po     = pl
+          uno    = unl
+
+          Wgdnv(CHF_IX[i;j;k],itan1) = WLeft(CHF_IX[i;j;k],itan1)
+          Wgdnv(CHF_IX[i;j;k],itan2) = WLeft(CHF_IX[i;j;k],itan2)
+
+          co     = cl
+          sgnm   = one
+        else
+          ro     = rhor
+          po     = pr
+          uno    = unr
+
+          Wgdnv(CHF_IX[i;j;k],itan1) = WRight(CHF_IX[i;j;k],itan1)
+          Wgdnv(CHF_IX[i;j;k],itan2) = WRight(CHF_IX[i;j;k],itan2)
+
+          co     = cr
+          sgnm   =-one
+        endif
+
+        rstar  = ro + (pstar - po)/co**2
+        rstar  = max( rstar, smallr )
+
+        cstar  = sqrt( abs( gamma*pstar/rstar ) )
+        wstar  = half*(cstar*rstar + co*ro)
+
+        spout  = co    - sgnm*uno
+        spin   = cstar - sgnm*ustar
+
+        ushock = wstar/rstar - sgnm*ustar
+
+        if( pstar > po ) then
+          spout  = ushock
+          spin   = ushock
+        endif
+
+        frac   = ((one + (spout + spin)/max( spout - spin, small ))/two)
+        frac   = max( zero, min( one, frac ) )
+
+        Wgdnv(CHF_IX[i;j;k],iRho)  = ro  + frac*(rstar - ro)
+        Wgdnv(CHF_IX[i;j;k],inorm) = uno + frac*(ustar - uno)
+        Wgdnv(CHF_IX[i;j;k],iPres) = po  + frac*(pstar - po)
+
+        if( spout <= zero ) then
+          Wgdnv(CHF_IX[i;j;k],iRho)  = ro
+          Wgdnv(CHF_IX[i;j;k],inorm) = uno
+          Wgdnv(CHF_IX[i;j;k],iPres) = po
+        endif
+
+        if( spin > zero ) then
+          Wgdnv(CHF_IX[i;j;k],iRho)  = rstar
+          Wgdnv(CHF_IX[i;j;k],inorm) = ustar
+          Wgdnv(CHF_IX[i;j;k],iPres) = pstar
+        endif
+
+        Wgdnv(CHF_IX[i;j;k],iRho)  = max(Wgdnv(CHF_IX[i;j;k],iRho) ,smallr)
+        Wgdnv(CHF_IX[i;j;k],iPres) = max(Wgdnv(CHF_IX[i;j;k],iPres),smallp)
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine RIEMANNHD_FLUXES( CHF_FRA[Fgdnv],
+     &                             CHF_CONST_FRA[WLeft],
+     &                             CHF_CONST_FRA[WRight],
+     &                             CHF_CONST_INT[idir],
+     &                             CHF_CONST_INT[iRho],
+     &                             CHF_BOX[box])
+
+#include "EosCommon.fh"
+
+      integer i, j, k
+      integer inorm, itan1, itan2
+      real_t pl,rhol,pr,rhor,cl,cr,wl,wr,wstar
+      real_t pstar,ustar,ro,po,uno,co,sgnm
+      real_t rstar,cstar,spout,spin,ushock,frac
+      real_t unl,unr
+      real_t RhoM, UM, VM, WM, PM, EM
+
+      integer spacedim, iVelX, iPres
+
+!                            Simple Riemann solver for hydrodynamics from CHOMBO
+
+      spacedim = 3
+
+      iVelX  = iRho + 1
+      iPres  = iRho + 4
+
+      inorm  = iVelX +      idir
+      itan1  = iVelX + mod( idir + 1, spacedim )
+      itan2  = iVelX + mod( idir + 2, spacedim )
+
+      CHF_MULTIDO[box;i;j;k]
+        pl     = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+        rhol   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+        unl    =              WLeft(CHF_IX[i;j;k],inorm)
+
+        pr     = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+        rhor   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+        unr    =              WRight(CHF_IX[i;j;k],inorm)
+
+        cl     = sqrt( gamma*pl/rhol )
+        cr     = sqrt( gamma*pr/rhor )
+
+        wl     = rhol*cl
+        wr     = rhor*cr
+
+        pstar  = (wr*pl + wl*pr + wl*wr*(unl - unr))/(wl + wr)
+        ustar  = (wl*unl + wr*unr + pl - pr)/(wl + wr)
+
+        if( ustar > zero ) then
+          ro     = rhol
+          po     = pl
+
+          uno    = unl
+
+          VM     = WLeft(CHF_IX[i;j;k],itan1)
+          WM     = WLeft(CHF_IX[i;j;k],itan2)
+
+          co     = cl
+          sgnm   = one
+        else
+          ro     = rhor
+          po     = pr
+          uno    = unr
+
+          VM     = WRight(CHF_IX[i;j;k],itan1)
+          WM     = WRight(CHF_IX[i;j;k],itan2)
+
+          co     = cr
+          sgnm   =-one
+        endif
+
+        rstar  = ro + (pstar - po)/co**2
+        rstar  = max( rstar, smallr )
+
+        cstar  = sqrt( abs( gamma*pstar/rstar ) )
+        wstar  = half*(cstar*rstar + co*ro)
+
+        spout  = co    - sgnm*uno
+        spin   = cstar - sgnm*ustar
+
+        ushock = wstar/rstar - sgnm*ustar
+
+        if( pstar > po ) then
+          spout  = ushock
+          spin   = ushock
+        endif
+
+        frac   = ((one + (spout + spin)/max( spout - spin, small ))/two)
+        frac   = max( zero, min( one, frac ) )
+
+        RhoM   = ro  + frac*(rstar - ro)
+        UM     = uno + frac*(ustar - uno)
+        PM     = po  + frac*(pstar - po)
+
+        if( spout <= zero ) then
+          RhoM   = ro
+          UM     = uno
+          PM     = po
+        endif
+
+        if( spin > zero ) then
+          RhoM   = rstar
+          UM     = ustar
+          PM     = pstar
+        endif
+
+        RhoM   = max( RhoM, smallr )
+        PM     = max( PM  , smallp )
+
+        EM     = PM/hgamma + half*RhoM*(UM*UM + VM*VM + WM*WM)
+
+        Fgdnv(CHF_IX[i;j;k],iRho)  = RhoM*UM
+        Fgdnv(CHF_IX[i;j;k],inorm) = RhoM*UM*UM + PM
+        Fgdnv(CHF_IX[i;j;k],itan1) = RhoM*UM*VM
+        Fgdnv(CHF_IX[i;j;k],itan2) = RhoM*UM*WM
+        Fgdnv(CHF_IX[i;j;k],iPres) = UM*(EM + PM)
+      CHF_ENDDO
+
+      return
+      end
+

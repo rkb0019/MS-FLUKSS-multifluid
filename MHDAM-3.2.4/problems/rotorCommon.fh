@@ -1,0 +1,8 @@
+C
+C   Fortran parameters for the planar rotor problem example:
+C
+        real_t rotorU, rotorP, rotorR, rotorB
+        real_t rotorXC, rotorYC, rotorR0, rotorR1
+        common /rotorcm/
+     &                    rotorU, rotorP, rotorR, rotorB,
+     &                    rotorXC, rotorYC, rotorR0, rotorR1

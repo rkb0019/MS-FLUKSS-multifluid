@@ -1,0 +1,1279 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+      real_t function minmod( A, B )
+
+      implicit none
+      real_t, intent(IN) :: A, B
+      real_t signA
+
+      signA  = sign( one, A )
+
+      minmod = signA*max( zero, min( abs( A ), signA*B ) )
+
+      end
+
+      real_t function minmod3( A, B, C )
+
+      implicit none
+      real_t, intent(IN) :: A, B, C
+      real_t :: signA
+
+      signA  = sign( one, A )
+
+      minmod3 = signA*max( zero, min( abs( A ), signA*B, signA*C ) )
+
+      end
+
+      subroutine CONSTANTFACEVALUES( CHF_CONST_FRA1[W],
+     &                               CHF_FRA1[Wleft],
+     &                               CHF_FRA1[Wright],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  WP
+
+      CHF_MULTIDO[box;i;j;k]
+        WP                     = W(CHF_IX[i;j;k])
+        Wleft (CHF_IX[i;j;k])  = WP
+        Wright(CHF_IX[i;j;k])  = WP
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine CENTEREDFACEVALUES( CHF_CONST_FRA1[W],
+     &                               CHF_FRA1[Wleft],
+     &                               CHF_FRA1[Wright],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  SLOPE, WP
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        SLOPE  = 0.25D0*(W(CHF_IX[i+ioff;j+joff;k+koff])
+     &         -         W(CHF_IX[i-ioff;j-joff;k-koff]))
+
+        Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+        Wright(CHF_IX[i;j;k])  = WP + SLOPE
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine INITIALSLOPES( CHF_CONST_FRA[W],
+     &                          CHF_FRA[Wleft],
+     &                          CHF_FRA[Wright],
+     &                          CHF_CONST_INT[idir],
+     &                          CHF_CONST_INT[iBGN],
+     &                          CHF_CONST_INT[iEND],
+     &                          CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k], iv
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, WP
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      do  iv = iBGN, iEND
+        CHF_MULTIDO[box;i;j;k]
+          WP     = W(CHF_IX[i;j;k],iv)
+          dWR    = W(CHF_IX[i+ioff;j+joff;k+koff],iv) - WP
+          dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff],iv)
+
+          Wleft (CHF_IX[i;j;k],iv) = dWL
+          Wright(CHF_IX[i;j;k],iv) = dWR
+        CHF_ENDDO
+      enddo
+
+      return
+      end
+
+      subroutine FROMSLOPESTOVALUES( CHF_CONST_FRA[W],
+     &                               CHF_FRA[Wleft],
+     &                               CHF_FRA[Wright],
+     &                               CHF_CONST_INT[iBGN],
+     &                               CHF_CONST_INT[iEND],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k], iv
+      real_t  dWR, dWL, WP
+
+      do  iv = iBGN, iEND
+        CHF_MULTIDO[box;i;j;k]
+          WP     = W(CHF_IX[i;j;k],iv)
+
+          Wleft (CHF_IX[i;j;k],iv) = WP - Wleft (CHF_IX[i;j;k],iv)
+          Wright(CHF_IX[i;j;k],iv) = WP + Wright(CHF_IX[i;j;k],iv)
+        CHF_ENDDO
+      enddo
+
+      return
+      end
+
+      subroutine MINMODFACEVALUES( CHF_CONST_FRA1[W],
+     &                             CHF_FRA1[Wleft],
+     &                             CHF_FRA1[Wright],
+     &                             CHF_CONST_INT[idir],
+     &                             CHF_BOX[box])
+
+      real_t  minmod
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPE, WP
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        SLOPE  = half*minmod(dWR, dWL)
+
+        Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+        Wright(CHF_IX[i;j;k])  = WP + SLOPE
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine MINMODFACESLOPES( CHF_FRA1[Sleft],
+     &                             CHF_FRA1[Sright],
+     &                             CHF_CONST_INT[idir],
+     &                             CHF_BOX[box])
+
+      real_t  minmod
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, SLOPE
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPE  = half*minmod( dSR, dSL )
+
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine MINMODFACEVALUES_V( CHF_CONST_FRA1[W],
+     &                               CHF_FRA1[Wleft],
+     &                               CHF_FRA1[Wright],
+     &                               CHF_CONST_FRA1[dxarr],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      real_t  minmod
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPE, WP
+      real_t  c1, c2, dx, dxe, dxw
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        dx     = dxarr(CHF_IX[i*ioff;j*joff;k*koff])
+        dxe    = dxarr(CHF_IX[(i+1)*ioff;(j+1)*joff;(k+1)*koff])
+        dxw    = dxarr(CHF_IX[(i-1)*ioff;(j-1)*joff;(k-1)*koff])
+
+        c1     = one/(dx + dxe)
+        c2     = one/(dx + dxw)
+
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        SLOPE  = dx*minmod( dWR*c1, dWL*c2 )
+
+        Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+        Wright(CHF_IX[i;j;k])  = WP + SLOPE
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine MINMODFACESLOPES_V( CHF_FRA1[Sleft],
+     &                               CHF_FRA1[Sright],
+     &                               CHF_CONST_FRA1[dxarr],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      real_t  minmod
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dSR, dSL, SLOPE
+      real_t  c1, c2, dx, dxe, dxw
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        dx     = dxarr(CHF_IX[i*ioff;j*joff;k*koff])
+        dxe    = dxarr(CHF_IX[(i+1)*ioff;(j+1)*joff;(k+1)*koff])
+        dxw    = dxarr(CHF_IX[(i-1)*ioff;(j-1)*joff;(k-1)*koff])
+
+        c1     = one/(dx + dxe)
+        c2     = one/(dx + dxw)
+
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPE  = dx*minmod( dSR*c1, dSL*c2 )
+
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine SUPERBEEFACEVALUES( CHF_CONST_FRA1[W],
+     &                               CHF_FRA1[Wleft],
+     &                               CHF_FRA1[Wright],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPE, WP, AR, AL
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        if( dWL*dWR <= zero ) then
+          Wleft (CHF_IX[i;j;k])  = WP
+          Wright(CHF_IX[i;j;k])  = WP
+        else
+          AR     = abs( dWR )
+          AL     = abs( dWL )
+          if( AL <= half*AR ) then
+            SLOPE  = dWL
+          else if( AL <=      AR ) then
+            SLOPE  = half*dWR
+          else if( AL <= AR + AR ) then
+            SLOPE  = half*dWL
+          else
+            SLOPE  = dWR
+          endif
+          Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+          Wright(CHF_IX[i;j;k])  = WP + SLOPE
+        endif
+
+      CHF_ENDDO
+
+      return
+      end
+      
+      
+      subroutine SUPERBEEFACEVALUES_V( CHF_CONST_FRA1[W],
+     &                               CHF_FRA1[Wleft],
+     &                               CHF_FRA1[Wright],
+     &                               CHF_CONST_FRA1[dxarr],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      real_t  minmod
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPE, WP
+      real_t  dx, dxe, dxw, dxhalf, sgn
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+        
+        dx     = dxarr(CHF_IX[i*ioff;j*joff;k*koff])
+        dxe    = dxarr(CHF_IX[(i+1)*ioff;(j+1)*joff;(k+1)*koff])
+        dxw    = dxarr(CHF_IX[(i-1)*ioff;(j-1)*joff;(k-1)*koff])
+        dxhalf = half*dx
+        
+        dWR    = two*dWR/(dx + dxe)
+        dWL    = two*dWL/(dx + dxw)
+        
+        sgn    = half*(sign( one, dWR ) + sign( one, dWL ))                
+        SLOPE  = sgn*dxhalf*max(min(abs(dWR),abs(two*dWL)),
+     &                          min(abs(two*dWR),abs(dWL)))
+        
+c      This code works too
+c        SLOPE  = sgn*dxhalf*max(abs(minmod(dWR,two*dWL)),
+c     &                          abs(minmod(two*dWR,dWL)))
+
+c      But this code doesn't
+c        dWR    = abs(dWR)
+c        dWL    = abs(dWL)
+c        SLOPE  = sgn*dxhalf*max(min(dWR,two*dWL),min(two*dWR,dWL))
+
+                        
+        Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+        Wright(CHF_IX[i;j;k])  = WP + SLOPE        
+      CHF_ENDDO
+
+      return
+      end
+      
+
+      subroutine SUPERBEEFACESLOPES( CHF_FRA1[Sleft],
+     &                               CHF_FRA1[Sright],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, SLOPE, AR, AL
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPE  = zero
+        if( dSL*dSR > zero ) then
+          AR     = abs( dSR )
+          AL     = abs( dSL )
+          if( AL <= half*AR ) then
+            SLOPE  = dSL
+          else if( AL <=      AR ) then
+            SLOPE  = half*dSR
+          else if( AL <= AR + AR ) then
+            SLOPE  = half*dSL
+          else
+            SLOPE  = dSR
+          endif
+        endif
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE
+
+      CHF_ENDDO
+
+      return
+      end
+      
+      subroutine SUPERBEEFACESLOPES_V(CHF_FRA1[Sleft],
+     &                               CHF_FRA1[Sright],
+     &                               CHF_CONST_FRA1[dxarr],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dSR, dSL, SLOPE
+      real_t  dx, dxe, dxw, dxhalf, sgn
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+        
+        dx     = dxarr(CHF_IX[i*ioff;j*joff;k*koff])
+        dxe    = dxarr(CHF_IX[(i+1)*ioff;(j+1)*joff;(k+1)*koff])
+        dxw    = dxarr(CHF_IX[(i-1)*ioff;(j-1)*joff;(k-1)*koff])
+        dxhalf = half*dx
+        
+        dSR    = two*dSR/(dx + dxe)
+        dSL    = two*dSL/(dx + dxw)
+        
+        sgn    = half*(sign( one, dSR ) + sign( one, dSL ))                        
+        SLOPE  = sgn*dxhalf*max(min(abs(dSR),abs(two*dSL)),
+     &                          min(abs(two*dSR),abs(dSL)))
+                        
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE        
+      CHF_ENDDO
+
+      return
+      end
+      
+
+      subroutine HYPERBEEFACEVALUES( CHF_CONST_FRA1[W],
+     &                               CHF_FRA1[Wleft],
+     &                               CHF_FRA1[Wright],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPE, WP, A
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        if( dWL*dWR <= zero ) then
+          Wleft (CHF_IX[i;j;k])  = WP
+          Wright(CHF_IX[i;j;k])  = WP
+        else
+          A      = one + sqrt( dWR/dWL )
+          SLOPE  = dWR/(A*A)
+          SLOPE  = SLOPE + SLOPE
+          Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+          Wright(CHF_IX[i;j;k])  = WP + SLOPE
+        endif
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine HYPERBEEFACESLOPES( CHF_FRA1[Sleft],
+     &                               CHF_FRA1[Sright],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, SLOPE, A
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPE  = zero
+        if( dSL*dSR > zero ) then
+          A      = one + sqrt( dSR/dSL )
+          SLOPE  = dSR/(A*A)
+          SLOPE  = SLOPE + SLOPE
+        endif
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine HARMONICFACEVALUES( CHF_CONST_FRA1[W],
+     &                               CHF_FRA1[Wleft],
+     &                               CHF_FRA1[Wright],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPE, WP
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        if( dWL*dWR <= zero ) then
+          Wleft (CHF_IX[i;j;k])  = WP
+          Wright(CHF_IX[i;j;k])  = WP
+        else
+          SLOPE  = dWR/(one + dWR/dWL)
+          Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+          Wright(CHF_IX[i;j;k])  = WP + SLOPE
+        endif
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine HARMONICFACESLOPES( CHF_FRA1[Sleft],
+     &                               CHF_FRA1[Sright],
+     &                               CHF_CONST_INT[idir],
+     &                               CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, SLOPE
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPE  = zero
+        if( dSL*dSR > zero ) then
+          SLOPE  = dSR*dSL/(dSL + dSR)
+        endif
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine VANALBADAFACEVALUES( CHF_CONST_FRA1[W],
+     &                                CHF_FRA1[Wleft],
+     &                                CHF_FRA1[Wright],
+     &                                CHF_CONST_INT[idir],
+     &                                CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPE, WP
+
+      real_t dSave
+      parameter(dSave    = 1.0D-6)
+
+      real_t dSaveS
+      parameter(dSaveS   = dSave + dSave)
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        if( dWL*dWR <= zero ) then
+          Wleft (CHF_IX[i;j;k])  = WP
+          Wright(CHF_IX[i;j;k])  = WP
+        else
+          SLOPE  = half*(dWR*dWL + dSave)*(dWR + dWL)
+     &           /      (dWR*dWR + dWL*dWL + dSaveS)
+          Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+          Wright(CHF_IX[i;j;k])  = WP + SLOPE
+        endif
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine VANALBADAFACESLOPES( CHF_FRA1[Sleft],
+     &                                CHF_FRA1[Sright],
+     &                                CHF_CONST_INT[idir],
+     &                                CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, SLOPE
+
+      real_t dSave
+      parameter(dSave    = 1.0D-6)
+
+      real_t dSaveS
+      parameter(dSaveS   = dSave + dSave)
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPE  = zero
+        if( dSL*dSR > zero ) then
+          SLOPE  = half*(dSR*dSL + dSave)*(dSR + dSL)
+     &           /      (dSR*dSR + dSL*dSL + dSaveS)
+        endif
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine MCFACEVALUES( CHF_CONST_FRA1[W],
+     &                         CHF_FRA1[Wleft],
+     &                         CHF_FRA1[Wright],
+     &                         CHF_CONST_INT[idir],
+     &                         CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPE, WP, AR, AL
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        if( dWL*dWR <= zero ) then
+          Wleft (CHF_IX[i;j;k])  = WP
+          Wright(CHF_IX[i;j;k])  = WP
+        else
+          AR     = abs( dWR )
+          AL     = abs( dWL )
+          if( three*AL <= AR ) then
+            SLOPE  = dWL
+          else if( AL <= three*AR ) then
+            SLOPE  = 0.25D0*(dWR + dWL)
+          else
+            SLOPE  = dWR
+          endif
+          Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+          Wright(CHF_IX[i;j;k])  = WP + SLOPE
+        endif
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine MCFACESLOPES( CHF_FRA1[Sleft],
+     &                         CHF_FRA1[Sright],
+     &                         CHF_CONST_INT[idir],
+     &                         CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, SLOPE, AR, AL
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPE  = zero
+        if( dSL*dSR > zero ) then
+          AR     = abs( dSR )
+          AL     = abs( dSL )
+          if( three*AL <= AR ) then
+            SLOPE  = dSL
+          else if( AL <= three*AR ) then
+            SLOPE  = 0.25D0*(dSR + dSL)
+          else
+            SLOPE  = dSR
+          endif
+        endif
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine MCFACEVALUES_V( CHF_CONST_FRA1[W],
+     &                           CHF_FRA1[Wleft],
+     &                           CHF_FRA1[Wright],
+     &                           CHF_CONST_FRA1[dxarr],
+     &                           CHF_CONST_INT[idir],
+     &                           CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dwC, dWR, dWL, SLOPE, WP
+      real_t  c1, c2, DXP, dx, dxe, dxw, dxhalf, sgn
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        dx     = dxarr(CHF_IX[i*ioff;j*joff;k*koff])
+        dxe    = dxarr(CHF_IX[(i+1)*ioff;(j+1)*joff;(k+1)*koff])
+        dxw    = dxarr(CHF_IX[(i-1)*ioff;(j-1)*joff;(k-1)*koff])
+        dxhalf = half*dx
+
+        c1     = two*(dxhalf + dxw)/(dx + dxe)
+        c2     = two*(dxhalf + dxe)/(dx + dxw)
+
+        DXP    = one/(dxw + dx + dxe)
+
+        c1     = c1*DXP
+        c2     = c2*DXP
+
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        dWC    = c1*dWR + c2*dWL
+
+        dWR    = two*dWR/(dx + dxe)
+        dWL    = two*dWL/(dx + dxw)
+
+        sgn    = half*(sign( one, dWR ) + sign( one, dWL ))
+        SLOPE  = sgn*dxhalf*min( abs(two*dWR), abs(two*dWL), abs(dWC))
+
+        Wleft (CHF_IX[i;j;k])  = WP - SLOPE
+        Wright(CHF_IX[i;j;k])  = WP + SLOPE
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine MCFACESLOPES_V( CHF_FRA1[Sleft],
+     &                           CHF_FRA1[Sright],
+     &                           CHF_CONST_FRA1[dxarr],
+     &                           CHF_CONST_INT[idir],
+     &                           CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dSC, dSR, dSL, SLOPE
+      real_t  c1, c2, DXP, dx, dxe, dxw, dxhalf, sgn
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        dx     = dxarr(CHF_IX[i*ioff;j*joff;k*koff])
+        dxe    = dxarr(CHF_IX[(i+1)*ioff;(j+1)*joff;(k+1)*koff])
+        dxw    = dxarr(CHF_IX[(i-1)*ioff;(j-1)*joff;(k-1)*koff])
+        dxhalf = half*dx
+
+        c1     = two*(dxhalf + dxw)/(dx + dxe)
+        c2     = two*(dxhalf + dxe)/(dx + dxw)
+
+        DXP    = one/(dxw + dx + dxe)
+
+        c1     = c1*DXP
+        c2     = c2*DXP
+
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        dSC    = c1*dSR + c2*dSL
+
+        dSR    = two*dSR/(dx + dxe)
+        dSL    = two*dSL/(dx + dxw)
+
+        sgn    = half*(sign( one, dSR ) + sign( one, dSL ))
+        SLOPE  = sgn*dxhalf*min( abs(two*dSR), abs(two*dSL), abs(dSC))
+
+        Sleft (CHF_IX[i;j;k])  = SLOPE
+        Sright(CHF_IX[i;j;k])  = SLOPE
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine VANLEERFACEVALUES( CHF_CONST_FRA1[W],
+     &                              CHF_FRA1[Wleft],
+     &                              CHF_FRA1[Wright],
+     &                              CHF_CONST_INT[idir],
+     &                              CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, SLOPL, SLOPR, WP, SR, SL, SLOPE
+
+      real_t  dSLim
+      parameter (dSLim = one/three)
+
+      real_t  BT, SL1, SL2
+      parameter (BT     = (three - dSLim)/(one - dSLim))
+      parameter (SL1    = 0.25D0*(one - dSLim))
+      parameter (SL2    = 0.25D0*(one + dSLim))
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        if( dWL*dWR <= zero ) then
+          Wleft (CHF_IX[i;j;k])  = WP
+          Wright(CHF_IX[i;j;k])  = WP
+        else
+          SL     = min( abs( dWR ), abs( BT*dWL ) )
+          SR     = min( abs( dWL ), abs( BT*dWR ) )
+          SLOPL  = SL1*SL + SL2*SR
+          SLOPR  = SL1*SR + SL2*SL
+          if( dWR < zero ) then
+            SLOPL  =-SLOPL
+            SLOPR  =-SLOPR
+          endif
+          Wleft (CHF_IX[i;j;k])  = WP - SLOPL
+          Wright(CHF_IX[i;j;k])  = WP + SLOPR
+        endif
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine VANLEERFACESLOPES( CHF_FRA1[Sleft],
+     &                              CHF_FRA1[Sright],
+     &                              CHF_CONST_INT[idir],
+     &                              CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, SLOPL, SLOPR, SR, SL, SLOPE
+
+      real_t  dSLim
+      parameter (dSLim = one/three)
+
+      real_t  BT, SL1, SL2
+      parameter (BT     = (three - dSLim)/(one - dSLim))
+      parameter (SL1    = 0.25D0*(one - dSLim))
+      parameter (SL2    = 0.25D0*(one + dSLim))
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPL  = zero
+        SLOPR  = zero
+        if( dSL*dSR > zero ) then
+          SL     = min( abs( dSR ), abs( BT*dSL ) )
+          SR     = min( abs( dSL ), abs( BT*dSR ) )
+          SLOPL  = SL1*SL + SL2*SR
+          SLOPR  = SL1*SR + SL2*SL
+          if( dSR < zero ) then
+            SLOPL  =-SLOPL
+            SLOPR  =-SLOPR
+          endif
+        endif
+        Sleft (CHF_IX[i;j;k])  = SLOPL
+        Sright(CHF_IX[i;j;k])  = SLOPR
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine KORENFACEVALUES( CHF_CONST_FRA1[W],
+     &                            CHF_FRA1[Wleft],
+     &                            CHF_FRA1[Wright],
+     &                            CHF_CONST_INT[idir],
+     &                            CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, WP, H
+
+      real_t dSave
+      parameter(dSave    = 1.0D-10)
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        if( dWL*dWR <= zero ) then
+          Wleft (CHF_IX[i;j;k])  = WP
+          Wright(CHF_IX[i;j;k])  = WP
+        else
+          H      = dWL*dWR/(two*(dWL*dWL + dWR*dWR + dSave) - dWL*dWR)
+          Wleft (CHF_IX[i;j;k])  = WP - (dWL + half*dWR)*H
+          Wright(CHF_IX[i;j;k])  = WP + (dWR + half*dWL)*H
+        endif
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine KORENFACESLOPES( CHF_FRA1[Sleft],
+     &                            CHF_FRA1[Sright],
+     &                            CHF_CONST_INT[idir],
+     &                            CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, H, SLOPL, SLOPR
+
+      real_t dSave
+      parameter(dSave    = 1.0D-10)
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPL  = zero
+        SLOPR  = zero
+        if( dSL*dSR > zero ) then
+          H      = dSL*dSR/(two*(dSL*dSL + dSR*dSR + dSave) - dSL*dSR)
+          SLOPL  = (dSL + half*dSR)*H
+          SLOPR  = (dSR + half*dSL)*H
+        endif
+        Sleft (CHF_IX[i;j;k])  = SLOPL
+        Sright(CHF_IX[i;j;k])  = SLOPR
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine VENKATAKRISHNANFACEVALUES( CHF_CONST_FRA1[W],
+     &                                      CHF_FRA1[Wleft],
+     &                                      CHF_FRA1[Wright],
+     &                                      CHF_CONST_INT[idir],
+     &                                      CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, WP, H
+
+      real_t dSave
+      parameter(dSave    = 1.0D-10)
+
+      real_t dSave2
+      parameter(dSave2   = dSave*dSave)
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        if( dWL*dWR <= zero ) then
+          Wleft (CHF_IX[i;j;k])  = WP
+          Wright(CHF_IX[i;j;k])  = WP
+        else
+          H      = (dWR + dWL)/(six*(dWR*dWR + dWL*dWL + dSave2))
+          Wleft (CHF_IX[i;j;k])  = WP - (dWR + two*dWL)*(dWL + dSave)*H
+          Wright(CHF_IX[i;j;k])  = WP + (dWL + two*dWR)*(dWR + dSave)*H
+        endif
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine VENKATAKRISHNANFACESLOPES( CHF_FRA1[Sleft],
+     &                                      CHF_FRA1[Sright],
+     &                                      CHF_CONST_INT[idir],
+     &                                      CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, H, SLOPL, SLOPR
+
+      real_t dSave
+      parameter(dSave    = 1.0D-10)
+
+      real_t dSave2
+      parameter(dSave2   = dSave*dSave)
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        SLOPL  = zero
+        SLOPR  = zero
+        if( dSL*dSR > zero ) then
+          H      = (dSR + dSL)/(six*(dSR*dSR + dSL*dSL + dSave2))
+          SLOPL  = (dSR + two*dSL)*(dSL + dSave)*H
+          SLOPR  = (dSL + two*dSR)*(dSR + dSave)*H
+        endif
+        Sleft (CHF_IX[i;j;k])  = SLOPL
+        Sright(CHF_IX[i;j;k])  = SLOPR
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine CHECKPOSITIVITY( CHF_FIA1[neg],
+     &                            CHF_CONST_FRA1[WL],
+     &                            CHF_CONST_FRA1[WR],
+     &                            CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+
+      CHF_MULTIDO[box;i;j;k]
+        if( WL(CHF_IX[i;j;k]) <= zero ) neg(CHF_IX[i;j;k]) = 1
+        if( WR(CHF_IX[i;j;k]) <= zero ) neg(CHF_IX[i;j;k]) = 1
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine REDUCEORDER( CHF_FRA1[WL],
+     &                        CHF_FRA1[WR],
+     &                        CHF_CONST_FRA1[W],
+     &                        CHF_CONST_FIA1[neg],
+     &                        CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+
+      CHF_MULTIDO[box;i;j;k]
+        if( neg(CHF_IX[i;j;k]) == 1 ) then
+          WL(CHF_IX[i;j;k]) = W(CHF_IX[i;j;k])
+          WR(CHF_IX[i;j;k]) = W(CHF_IX[i;j;k])
+        endif
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine CDFACEVALUES( CHF_CONST_FRA1[W],
+     &                         CHF_FRA1[Wleft],
+     &                         CHF_FRA1[Wright],
+     &                         CHF_CONST_INT[idir],
+     &                         CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  WP
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+
+        Wleft (CHF_IX[i;j;k])  = half*(WP + W(CHF_IX[i+ioff;j+joff;k+koff]))
+        Wright(CHF_IX[i;j;k])  = half*(WP + W(CHF_IX[i-ioff;j-joff;k-koff]))
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine CDFACESLOPES( CHF_FRA1[Sleft],
+     &                         CHF_FRA1[Sright],
+     &                         CHF_CONST_INT[idir],
+     &                         CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+
+      CHF_MULTIDO[box;i;j;k]
+        Sleft (CHF_IX[i;j;k])  = half*Sleft (CHF_IX[i;j;k])
+        Sright(CHF_IX[i;j;k])  = half*Sright(CHF_IX[i;j;k])
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine WENO3FACEVALUES( CHF_CONST_FRA1[W],
+     &                            CHF_FRA1[Wleft],
+     &                            CHF_FRA1[Wright],
+     &                            CHF_CONST_INT[idir],
+     &                            CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, WP, WL, WR, BL, BR, AL, AR, H
+
+      real_t dSave
+      parameter(dSave    = 1.0D-6)
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        WR     = W(CHF_IX[i+ioff;j+joff;k+koff])
+        WL     = W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        dWR    = WR - WP
+        dWL    = WP - WL
+
+        BR     = dWR*dWR + dSave
+        AR     = one/(BR*BR)
+
+        BL     = dWL*dWL + dSave
+        AL     = one/(BL*BL)
+
+        H      = AR/(AR + two*AL)
+        Wleft (CHF_IX[i;j;k])  = WP - half*(dWL + H*(dWR - dWL))
+
+        H      = AL/(AL + two*AR)
+        Wright(CHF_IX[i;j;k])  = WP + half*(dWR - H*(dWR - dWL))
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine WENO3FACESLOPES( CHF_FRA1[Sleft],
+     &                            CHF_FRA1[Sright],
+     &                            CHF_CONST_INT[idir],
+     &                            CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, H, BL, BR, AL, AR
+
+      real_t dSave
+      parameter(dSave    = 1.0D-6)
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        BR     = dSR*dSR + dSave
+        AR     = one/(BR*BR)
+
+        BL     = dSL*dSL + dSave
+        AL     = one/(BL*BL)
+
+        H      = AR/(AR + two*AL)
+        Sleft (CHF_IX[i;j;k])  = half*(dSL + H*(dSR - dSL))
+
+        H      = AL/(AL + two*AR)
+        Sright(CHF_IX[i;j;k])  = half*(dSR - H*(dSR - dSL))
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine WENO3YCFACEVALUES( CHF_CONST_FRA1[W],
+     &                              CHF_FRA1[Wleft],
+     &                              CHF_FRA1[Wright],
+     &                              CHF_CONST_INT[idir],
+     &                              CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+      real_t  dWR, dWL, WP, WL, WR, BL, BR, AL, AR, H, D2P
+
+      real_t dSave
+      parameter(dSave    = 1.0D-6)
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        WR     = W(CHF_IX[i+ioff;j+joff;k+koff])
+        WL     = W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        dWR    = WR - WP
+        dWL    = WP - WL
+
+        BR     = dWR*dWR + dSave
+        BL     = dWL*dWL + dSave
+
+        D2P    = dWR - dWL
+        D2P    = D2P*D2P
+
+        AL     = one + D2P/BL
+        AR     = one + D2P/BR
+
+        H      = AR/(AR + two*AL)
+        Wleft (CHF_IX[i;j;k])  = WP - half*(dWL + H*(dWR - dWL))
+
+        H      = AL/(AL + two*AR)
+        Wright(CHF_IX[i;j;k])  = WP + half*(dWR - H*(dWR - dWL))
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine WENO3YCFACESLOPES( CHF_FRA1[Sleft],
+     &                              CHF_FRA1[Sright],
+     &                              CHF_CONST_INT[idir],
+     &                              CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      real_t  dSR, dSL, H, BL, BR, AL, AR, D2P
+
+      real_t dSave
+      parameter(dSave    = 1.0D-6)
+
+      CHF_MULTIDO[box;i;j;k]
+        dSR    = Sright(CHF_IX[i;j;k])
+        dSL    = Sleft (CHF_IX[i;j;k])
+
+        BR     = dSR*dSR + dSave
+        BL     = dSL*dSL + dSave
+
+        D2P    = dSR - dSL
+        D2P    = D2P*D2P
+
+        AL     = one + D2P/BL
+        AR     = one + D2P/BR
+
+        H      = AR/(AR + two*AL)
+        Sleft (CHF_IX[i;j;k])  = half*(dSL + H*(dSR - dSL))
+
+        H      = AL/(AL + two*AR)
+        Sright(CHF_IX[i;j;k])  = half*(dSR - H*(dSR - dSL))
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine CHECKTVD( CHF_CONST_FRA1[W],
+     &                     CHF_FRA1[Wleft],
+     &                     CHF_FRA1[Wright],
+     &                     CHF_CONST_INT[idir],
+     &                     CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ioff;joff;koff]
+
+      real_t :: WP, dWL, dWR, dSL, dSR
+      real_t :: minmod3
+
+      CHF_DTERM[
+      ioff   = CHF_ID(0,idir);
+      joff   = CHF_ID(1,idir);
+      koff   = CHF_ID(2,idir)]
+
+      CHF_MULTIDO[box;i;j;k]
+        WP     = W(CHF_IX[i;j;k])
+        dWR    = W(CHF_IX[i+ioff;j+joff;k+koff]) - WP
+        dWL    = WP - W(CHF_IX[i-ioff;j-joff;k-koff])
+
+        dSL    = WP - Wleft (CHF_IX[i;j;k])
+        dSR    = Wright(CHF_IX[i;j;k]) - WP
+
+        Wleft (CHF_IX[i;j;k])  = WP - minmod3( dWL, dWR, dSL )
+        Wright(CHF_IX[i;j;k])  = WP + minmod3( dWL, dWR, dSR )
+      CHF_ENDDO
+
+      return
+      end
+

@@ -1,0 +1,59 @@
+mhdam.problem = riemann_2F
+
+mhdam.gamma = 1.666666666666667
+
+mhdam.verbosity = 0
+
+mhdam.numdenL    = 0.06
+mhdam.temperatureL = 6527.0
+mhdam.velxL      = 2640000.0
+mhdam.BxL        = 0.0000015
+mhdam.netnumL    = 0.1
+
+mhdam.startX     = 512.0
+
+mhdam.max_step = 6000
+mhdam.max_time = 1000000000000.00
+
+mhdam.domain_length = 3072.0
+mhdam.num_cells =  768 4 4
+mhdam.is_periodic = 0 1 0
+mhdam.max_level = 2
+mhdam.ref_ratio = 2 2 2 2 
+
+mhdam.regrid_interval = 2 2 2 2 2 2
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.15
+mhdam.refine_B_thresh = -1
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.limiter_RHO = 1
+mhdam.limiter_VX = 1
+mhdam.limiter_VY = 1
+mhdam.limiter_VZ = 1
+mhdam.limiter_P = 1
+mhdam.limiter_BX = 1
+mhdam.limiter_BY = 1
+mhdam.limiter_BZ = 1
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 50
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = rmn
+
+mhdam.cfl = 0.4
+mhdam.initial_cfl = 0.4
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1

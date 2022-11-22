@@ -1,0 +1,50 @@
+#include "CONSTANTS.H"
+
+        subroutine PRINTARRAY(
+     &                         CHF_CONST_FRA[U],
+     &                         CHF_CONST_INT[index],
+     &                         CHF_CONST_INT[flag],
+     &                         CHF_BOX[box]
+     &                       )
+
+        integer CHF_DDECL[i;j;k]
+        integer n
+        character(len=25) :: chFormat, chFormatI
+
+        n    = iboxhi0 - iboxlo0 + 1
+
+        write( chFormat,  '(a10,i3,a11)' ) '(''j= '',i3,', n, '(1X,d11.4))'
+        write( chFormatI, '(a10,i3,a11)' ) '(''i=    '',', n, '(2X,i7,3X))'
+
+        open ( unit = 11, status = 'old', access = 'sequential',
+     &         form = 'formatted', file = 'pout.0' )
+
+
+        if( index == 0 ) then
+          write(*,*)' Array: Density   ', flag
+        else if( index == 1 ) then
+          write(*,*)' Array: X Velocity   ', flag
+        else if( index == 2 ) then
+          write(*,*)' Array: Y Velocity   ', flag
+        else if( index == 3 ) then
+          write(*,*)' Array: Z Velocity   ', flag
+        else if( index == 4 ) then
+          write(*,*)' Array: Energy   ', flag
+        else if( index == 5 ) then
+          write(*,*)' Array: Bx   ', flag
+        else if( index == 6 ) then
+          write(*,*)' Array: By   ', flag
+        else if( index == 7 ) then
+          write(*,*)' Array: Bz   ', flag
+        else
+          write(*,*)' Unknown Array   ', flag
+        endif
+
+        write  (*,chFormatI) (i,i = iboxlo0,iboxhi0)
+
+        do j = iboxhi1, iboxlo1,-1
+          write  (*,chFormat) j, (U(CHF_IX[i;j;k],index),i = iboxlo0,iboxhi0)
+        enddo
+        return
+        end
+

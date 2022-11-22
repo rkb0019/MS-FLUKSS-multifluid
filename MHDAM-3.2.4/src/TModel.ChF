@@ -1,0 +1,536 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+#include "CH_assert.H"
+
+
+        subroutine SETCONST_TM(
+     &    CHF_CONST_REAL[auAlpha],
+     &    CHF_CONST_REAL[auBeta],
+     &    CHF_CONST_REAL[auSmallTM],
+     &    CHF_CONST_REAL[auSigmaD],
+     &    CHF_CONST_REAL[auFD],
+     &    CHF_CONST_REAL[auNH],
+     &    CHF_CONST_REAL[auTion],
+     &    CHF_CONST_REAL[auLcav],
+     &    CHF_CONST_REAL[auUr1AU],
+     &    CHF_CONST_REAL[auVa1AU],
+     &    CHF_CONST_REAL[auNSW1AU] )
+
+#include "TMCommon.fh"
+
+        alphaTM      = auAlpha
+        betaTM       = auBeta
+        smallTM      = auSmallTM
+        sigmaDTM     = auSigmaD
+        fDTM         = auFD
+        nHTM         = auNH
+        TionTM       = auTion
+        LcavTM       = auLcav
+        Ur1AUTM      = auUr1AU
+        Va1AUTM      = auVa1AU
+        nSW1AUTM     = auNSW1AU
+
+        return
+        end
+
+        subroutine SETSCALES_FOR_EPI(
+     &    CHF_CONST_REAL[auRefLen],
+     &    CHF_CONST_REAL[auRefVel] )
+
+#include "TMCommon.fh"
+
+        refLenTM     = auRefLen
+        refVelTM     = auRefVel
+
+        c1EPI        = fDTM*(nHTM/TionTM)*(refLenTM/auRefVel**3)
+        c2EPI        = LcavTM/refLenTM
+
+        return
+        end
+
+        subroutine CONSTOPRIM_TM(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        real_t rho, invrho, rhoZ2
+        integer iRhoZ2SC, iRhoLm, iSC, iLm
+
+#include "EosCommon.fh"
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = max(U(CHF_IX[i;j;k],URHO),smallr)
+          rhoZ2  =     U(CHF_IX[i;j;k],iRhoZ2)
+
+          invrho = one / rho
+
+          W(CHF_IX[i;j;k],iZ2) = rhoZ2*invrho
+          W(CHF_IX[i;j;k],iSC) = U(CHF_IX[i;j;k],iRhoZ2SC)/rhoZ2
+          W(CHF_IX[i;j;k],iLm) = U(CHF_IX[i;j;k],iRhoLm  )*invrho
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine PRIMTOCONS_TM(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i ;j ;k ]
+        real_t rho, invrho, Z2, SC, LM
+        integer iRhoZ2SC, iRhoLm, iSC, iLm
+
+#include "EosCommon.fh"
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        CHF_MULTIDO[box;I;J;K]
+          rho  = max( W(CHF_IX[i;j;k],WRHO), smallr )
+
+          Z2   =      W(CHF_IX[i;j;k],iZ2)
+          SC   =      W(CHF_IX[i;j;k],iSC)
+          Lm   =      W(CHF_IX[i;j;k],iLm)
+
+          U(CHF_IX[i;j;k],iRhoZ2  ) = rho*Z2
+          U(CHF_IX[i;j;k],iRhoZ2SC) = rho*Z2*SC
+          U(CHF_IX[i;j;k],iRhoLm  ) = rho*Lm
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine POSTPROCESSING_TM(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_BOX[box])
+ 
+        integer iWas
+        real_t Rho, Z2, SC, Lm, invRho
+        integer CHF_DDECL[i;j;k]
+        integer iRhoZ2SC, iRhoLm, iSC, iLm
+
+#include "TMCommon.fh"
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        CHF_MULTIDO[box;i;j;k]
+          Rho    = U(CHF_IX[i;j;k],URHO)
+         
+          invRho = one / Rho
+          Z2     = U(CHF_IX[i;j;k],iRhoZ2  )*invRho
+          SC     = U(CHF_IX[i;j;k],iRhoZ2SC)*invRho
+          Lm     = U(CHF_IX[i;j;k],iRhoLm  )*invRho
+
+          iWas   = 0
+          if( Z2 < smallTM ) then
+            Z2     = smallTM
+            iWas   = 1
+          endif
+
+          if( SC > one ) then
+            SC     = one
+            iWas   = 1
+          endif
+
+          if( Lm < smallTM ) then
+            Lm     = smallTM
+            iWas   = 1
+          endif
+
+          if( iWas == 1 ) then
+            U(CHF_IX[i;j;k],UMOMX) = Rho*Z2
+            U(CHF_IX[i;j;k],UMOMY) = Rho*Z2*SC
+            U(CHF_IX[i;j;k],UMOMZ) = Rho*Lm
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine FLUXE_TM(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[Prim],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iRhoZ2SC, iRhoLm, iSC, iLm, inorm
+
+        real_t rho, Z2, SC, Lm, invRho, u
+
+#include "EosCommon.fh"
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        inorm  = WVELX + idir
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = max( smallr, Prim(CHF_IX[i;j;k],WRHO) )
+          u      =              Prim(CHF_IX[i;j;k],inorm)
+          Z2     =              Prim(CHF_IX[i;j;k],iZ2)
+          SC     =              Prim(CHF_IX[i;j;k],iSC)
+          Lm     =              Prim(CHF_IX[i;j;k],iLm)
+
+          F(CHF_IX[i;j;k],iRhoZ2)    = rho*u*Z2
+          F(CHF_IX[i;j;k],iRhoZ2SC)  = rho*u*Z2*SC
+          F(CHF_IX[i;j;k],iRhoLm  )  = rho*u*Lm
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine UPWINDSCALARFLUXES(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        real_t RhoU, Z2, SC, LM
+        integer iRhoZ2SC, iRhoLm, iSC, iLm, iPres, iBX, iVelX
+        integer inorm, itan1, itan2, inormB, itanB1, itanB2
+        integer spacedim
+        real_t  C1, C2, BB, UB, RZ2, RZ2B, CRZ2B_B, FL, Rho
+        real_t  RAV, UAV, VAV, WAV, BXAV, BYAV, BZAV, Z2AV, SCAV
+
+#include "EosCommon.fh"
+#include "TMCommon.fh"
+
+        spacedim = 3
+
+        iVelX  = iRho + 1
+        iPres  = iRho + 4
+        iBX    = iRho + 5
+
+        inorm  = iVelX +      idir
+        itan1  = iVelX + mod( idir + 1, spacedim )
+        itan2  = iVelX + mod( idir + 2, spacedim )
+
+        inormB = iBX   +      idir
+        itanB1 = iBX   + mod( idir + 1, spacedim )
+        itanB2 = iBX   + mod( idir + 2, spacedim )
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        C1       = (3.0D0 + sigmaDTM)/12.0D0
+        C2       = sigmaDTM/3.0D0
+
+        CHF_MULTIDO[box;i;j;k]
+          RAV    = half*(WLeft(CHF_IX[i;j;k],iRho ) + WRight(CHF_IX[i;j;k],iRho ))
+          UAV    = half*(WLeft(CHF_IX[i;j;k],inorm) + WRight(CHF_IX[i;j;k],inorm))
+          VAV    = half*(WLeft(CHF_IX[i;j;k],itan1) + WRight(CHF_IX[i;j;k],itan1))
+          WAV    = half*(WLeft(CHF_IX[i;j;k],itan2) + WRight(CHF_IX[i;j;k],itan2))
+
+          BXAV   = half*(WLeft(CHF_IX[i;j;k],inormB) + WRight(CHF_IX[i;j;k],inormB))
+          BYAV   = half*(WLeft(CHF_IX[i;j;k],itanB1) + WRight(CHF_IX[i;j;k],itanB1))
+          BZAV   = half*(WLeft(CHF_IX[i;j;k],itanB2) + WRight(CHF_IX[i;j;k],itanB2))
+
+          Z2AV   = half*(WLeft(CHF_IX[i;j;k],iZ2) + WRight(CHF_IX[i;j;k],iZ2))
+          SCAV   = half*(WLeft(CHF_IX[i;j;k],iSC) + WRight(CHF_IX[i;j;k],iSC))
+
+          RZ2    = RAV*Z2AV
+          FL     = C1*RZ2
+
+          BB     = BXAV**2 + BYAV**2 + BZAV**2
+
+          if( BB > 1.0D-10 ) then
+            UB     = BXAV*UAV + BYAV*VAV + BZAV*WAV
+
+            RZ2B     = RZ2*BXAV
+            CRZ2B_B  = C2*RZ2B/BB
+
+            Wgdnv(CHF_IX[i;j;k],inorm) = Wgdnv(CHF_IX[i;j;k],inorm) - CRZ2B_B*BXAV
+            Wgdnv(CHF_IX[i;j;k],itan1) = Wgdnv(CHF_IX[i;j;k],itan1) - CRZ2B_B*BYAV
+            Wgdnv(CHF_IX[i;j;k],itan2) = Wgdnv(CHF_IX[i;j;k],itan2) - CRZ2B_B*BZAV
+            Wgdnv(CHF_IX[i;j;k],iPres) = Wgdnv(CHF_IX[i;j;k],iPres) - (C2*UB/BB + SCAV/(four*sqrt( d_PI*RAV )))*RZ2B
+          endif
+
+          RhoU   = Wgdnv(CHF_IX[i;j;k],iRho  )
+
+          if( RhoU > zero ) then
+            Rho    = WLeft(CHF_IX[i;j;k],iRho)
+            Z2     = WLeft(CHF_IX[i;j;k],iZ2)
+            SC     = WLeft(CHF_IX[i;j;k],iSC)
+            LM     = WLeft(CHF_IX[i;j;k],iLm)
+          else
+            Rho    = WRight(CHF_IX[i;j;k],iRho)
+            Z2     = WRight(CHF_IX[i;j;k],iZ2)
+            SC     = WRight(CHF_IX[i;j;k],iSC)
+            LM     = WRight(CHF_IX[i;j;k],iLm)
+          endif
+
+          Wgdnv(CHF_IX[i;j;k],inorm) = Wgdnv(CHF_IX[i;j;k],inorm) + C1*Rho *Z2
+          Wgdnv(CHF_IX[i;j;k],iPres) = Wgdnv(CHF_IX[i;j;k],iPres) + C1*RhoU*Z2
+
+          Wgdnv(CHF_IX[i;j;k],iRhoZ2  )  = RhoU*Z2
+          Wgdnv(CHF_IX[i;j;k],iRhoZ2SC)  = RhoU*Z2*SC
+          Wgdnv(CHF_IX[i;j;k],iRhoLm  )  = RhoU*LM
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine SOURCEBREECHETAL2008(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3              
+        integer CHF_DDECL[i;j;k]
+        integer iRhoZ2SC, iRhoLm, iSC, iLm, iRef
+        real_t Rho, Z2, SC, S2, Lm, invRho, H1, H2, FP, FM, RhoZ, R, C3
+        real_t sinT, divU
+        real_t URPL, RPL, URMN, RMN, UFPL, UFMN, dF
+        real_t UTPL, STPL, UTMN, STMN, dTH
+
+#include "TMCommon.fh"
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        iRef     = m_ref_factor(level)
+
+        C3       = half*(one + sigmaDTM)
+
+        CHF_MULTIDO[box;i;j;k]
+          R      = m_rc(i,level)
+
+          sinT   = m_thetac(k,ISIN,level)
+
+          URPL   = W(CHF_IX[i+1;j;k],WVELR)
+          RPL    = m_rc(i+1,level)
+
+          URMN   = W(CHF_IX[i-1;j;k],WVELR)
+          RMN    = m_rc(i-1,level)
+
+          divU   = (RPL*RPL*URPL - RMN*RMN*URMN)/(RPL - RMN)/(R*R)
+
+          UFPL   = W(CHF_IX[i;j+1;k],WVELP)
+          UFMN   = W(CHF_IX[i;j-1;k],WVELP)
+
+          dF     = m_dphi(j/iRef) + half*(m_dphi((j+1)/iRef) + m_dphi((j-1)/iRef))
+          dF     = dF*m_inv_factor(level)
+
+          divU   = divU + (UFPL - UFMN)/dF/(R*sinT)
+
+          UTPL   = W(CHF_IX[i;j;k+1],WVELT)
+          STPL   = m_thetac(k+1,ISIN,level)
+
+          UTMN   = W(CHF_IX[i;j;k-1],WVELT)
+          STMN   = m_thetac(k-1,ISIN,level)
+
+          dTH    = m_dtheta(k,level) + half*(m_dtheta(k+1,level) + m_dtheta(k-1,level))
+          dTH    = dTH*m_inv_factor(level)
+
+          divU   = divU + (STPL*UTPL - STMN*UTMN)/dTH/(R*sinT)
+
+          Rho    =               W(CHF_IX[i;j;k],WRHO)
+          Z2     = max( smallTM, W(CHF_IX[i;j;k],iZ2) )
+          SC     =               W(CHF_IX[i;j;k],iSC)
+          Lm     = max( smallTM, W(CHF_IX[i;j;k],iLm) )
+
+          S2     = SC*SC
+          H1     = sqrt( (one - S2)*(one + SC) )
+          H2     = sqrt( (one - S2)*(one - SC) )
+          FP     = half*(H1 + H2)
+          FM     = half*(H1 - H2)
+
+          RhoZ   = Rho*sqrt( Z2 )
+
+          H1     = alphaTM*RhoZ*Z2/Lm
+
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) = zero
+          S(CHF_IX[i;j;k],UMOMY) = zero
+          S(CHF_IX[i;j;k],UMOMZ) = zero
+
+          S(CHF_IX[i;j;k],UENG ) = dt*half*FP*H1
+
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+
+          S(CHF_IX[i;j;k],iRhoZ2  )  = dt*(-FP*H1 - C3  *Rho*Z2*divU   )
+          S(CHF_IX[i;j;k],iRhoZ2SC)  =-dt*( FM*H1 + half*Rho*Z2*divU*SC)
+          S(CHF_IX[i;j;k],iRhoLm  )  = dt*betaTM*FP*RhoZ
+
+        CHF_ENDDO
+#endif
+        return
+        end
+
+        subroutine SOURCEEPIICENBERG(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k]
+        integer iRhoLm, iLm
+        real_t Rho, Z2, Lm, R
+        real_t C1Theta, EPI
+
+#include "TMCommon.fh"
+
+        iRhoLm   = iRhoZ2 + 2
+
+        iLm      = iZ2 + 2
+!                            In future it should be a function of theta
+        C1Theta  = c1EPI*Ur1AUTM*Va1AUTM/nSW1AUTM
+
+        CHF_MULTIDO[box;i;j;k]
+          R      = m_rc(i,level)
+
+          Rho    =               W(CHF_IX[i;j;k],WRHO)
+          Z2     = max( smallTM, W(CHF_IX[i;j;k],iZ2) )
+          Lm     = max( smallTM, W(CHF_IX[i;j;k],iLm) )
+
+          EPI    = C1Theta*exp(-c2EPI/R )
+
+          S(CHF_IX[i;j;k],iRhoZ2)  = S(CHF_IX[i;j;k],iRhoZ2) + dt*Rho*EPI
+          S(CHF_IX[i;j;k],iRhoLm)  = S(CHF_IX[i;j;k],iRhoLm) - dt*Rho*EPI*betaTM*Lm/(Z2*alphaTM)
+
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine SOURCEEPIICENBERG_PI(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoH],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_BOX[box] )
+
+        integer CHF_DDECL[i;j;k]
+        integer iRhoLm, iLm
+        integer iWVELXH, iWVELYH, iWVELZH, iWPRESH, iPressPIW
+        real_t Rho,  ux,  uy,  uz,  p, U2, Z2, Lm
+        real_t rhoH, uxH, uyH, uzH, pH, vT2H, vT2P
+        real_t DUxDU, UdPH, sigmaPH, EPI
+        real_t rhoS, rhoI, pS, pI, duX, duY, duZ
+
+!                                                               c_11 =      4/PI
+        real_t, parameter :: C11   = 1.273239544735162686151070106980114896276D0
+!                                                               c_12 =      4/PI
+        real_t, parameter :: C12   = 1.273239544735162686151070106980114896276D0
+
+#include "TMCommon.fh"
+#include "ChargeExchange.fh"
+
+        iWVELXH  = iRhoH + WVELX
+        iWVELYH  = iRhoH + WVELY
+        iWVELZH  = iRhoH + WVELZ
+        iWPRESH  = iRhoH + WPRES
+
+        iPressPIW  = iRhoPIW + 1
+
+        iRhoLm   = iRhoZ2 + 2
+
+        iLm      = iZ2 + 2
+
+        CHF_MULTIDO[box;i;j;k]
+          Rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+
+          rhoI   = W(CHF_IX[i;j;k],iRhoPIW)
+          pI     = W(CHF_IX[i;j;k],iPressPIW)
+
+          rhoS   = rho - rhoI
+          pS     = p   - pI
+
+          vT2P   =       pS/rhoS
+!                                                                     NEUTRALS 1
+          rhoH   = W(CHF_IX[i;j;k],iRhoH)
+
+          uxH    = W(CHF_IX[i;j;k],iWVELXH)
+          uyH    = W(CHF_IX[i;j;k],iWVELYH)
+          uzH    = W(CHF_IX[i;j;k],iWVELZH)
+
+          pH     = W(CHF_IX[i;j;k],iWPRESH)
+
+          vT2H   = 2.0D0*pH/rhoH
+
+          duX    = ux - uxH 
+          duY    = uy - uyH 
+          duZ    = uz - uzH 
+
+          DUxDU  = duX*duX + duY*duY + duZ*duZ
+!                              proton + neutral(1) -> pickup proton + neutral(2)
+          UdPH   = sqrt( C11*vT2P + C12*vT2H + DUxDU )
+
+          sigmaPH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdPH )
+          sigmaPH  = ce_scaleSigmaFite*sigmaPH*sigmaPH
+
+          EPI    = fDTM*sigmaPH*rhoH*UdPH*U2
+
+          Z2     = max( smallTM, W(CHF_IX[i;j;k],iZ2) )
+          Lm     = max( smallTM, W(CHF_IX[i;j;k],iLm) )
+
+          S(CHF_IX[i;j;k],iRhoZ2)  = S(CHF_IX[i;j;k],iRhoZ2) + dt*Rho*EPI
+          S(CHF_IX[i;j;k],iRhoLm)  = S(CHF_IX[i;j;k],iRhoLm) - dt*Rho*EPI*betaTM*Lm/(Z2*alphaTM)
+
+        CHF_ENDDO
+
+        return
+        end
+

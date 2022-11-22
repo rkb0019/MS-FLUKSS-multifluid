@@ -1,0 +1,63 @@
+mhdam.problem = ramp
+
+mhdam.gamma = 1.4
+
+mhdam.verbosity = 0
+
+mhdam.max_step = 2000
+mhdam.max_time = 0.064
+
+mhdam.gamma = 1.4
+mhdam.alpha_deg = 30.0
+mhdam.shock_mach = 10.0
+mhdam.xcorner = 0.05
+
+mhdam.domain_length = 1.0
+mhdam.num_cells =  64 16 4
+mhdam.max_level = 4
+mhdam.ref_ratio = 2 2 2 2 2 2 2 2
+
+mhdam.regrid_interval = 2 2 2 2 2 2 2 2
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.015
+mhdam.refine_B_thresh = -1
+
+mhdam.output_density_gradient = 0
+mhdam.output_B_gradient = 0
+
+mhdam.block_factor = 2
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.char_reconstruction = 1
+
+mhdam.limiter_RHO = 4
+mhdam.limiter_VX = 4
+mhdam.limiter_VY = 4
+mhdam.limiter_VZ = 4
+mhdam.limiter_P = 4
+mhdam.limiter_BX = 4
+mhdam.limiter_BY = 4
+mhdam.limiter_BZ = 4
+
+mhdam.time_approximation = 2
+
+mhdam.flux = 1
+
+mhdam.divB_method = 0
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 50
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = ramp
+mhdam.chk_prefix = ramp
+mhdam.tecplot_interval = 100
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1
+
+#mhdam.restart_file = chk100.2d.hdf5

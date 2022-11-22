@@ -1,0 +1,511 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "CH_assert.H"
+
+        subroutine CONSTOPRIM_MF(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[iRhoN],     
+     &    CHF_CONST_INT[fluids],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        real_t rho, p, ke, uu, vv, ww, ru, rv, rw, invrho
+        real_t bx, by, bz, b
+        integer iFluid,shift
+
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          rho  = max(U(CHF_IX[i;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+
+          ke   = ru*uu + rv*vv + rw*ww
+
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+
+          p    = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p    = max( p, smallp )
+
+          W(CHF_IX[i;j;k],WVELX) = uu
+          W(CHF_IX[i;j;k],WVELY) = vv
+          W(CHF_IX[i;j;k],WVELZ) = ww
+
+          W(CHF_IX[i;j;k],WRHO)  = rho
+          W(CHF_IX[i;j;k],WPRES) = p
+
+          W(CHF_IX[i;j;k],WBX)   = bx
+          W(CHF_IX[i;j;k],WBY)   = by
+          W(CHF_IX[i;j;k],WBZ)   = bz
+          
+          ! Neutral fluids
+          do iFluid = 1, fluids-1
+            shift = iRhoN+(iFluid-1)*WNUM_E            
+          
+            rho  = max(U(CHF_IX[i;j;k],URHO+shift),smallr)
+            ru   = U(CHF_IX[i;j;k],UMOMX+shift)
+            rv   = U(CHF_IX[i;j;k],UMOMY+shift)
+            rw   = U(CHF_IX[i;j;k],UMOMZ+shift)
+
+            invrho = one / rho
+            uu   = ru*invrho
+            vv   = rv*invrho
+            ww   = rw*invrho
+
+            ke   = ru*uu + rv*vv + rw*ww
+
+            p    = hgamma*(U(CHF_IX[i;j;k],UENG+shift) - half*ke)
+            p    = max( p, smallp )
+                      
+            W(CHF_IX[i;j;k],WVELX+shift)  = uu
+            W(CHF_IX[i;j;k],WVELY+shift)  = vv
+            W(CHF_IX[i;j;k],WVELZ+shift)  = ww
+            W(CHF_IX[i;j;k],WRHO +shift)  = rho
+            W(CHF_IX[i;j;k],WPRES+shift)  = p
+          enddo
+          
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine PRIMTOCONS_MF(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_INT[iRhoN],     
+     &    CHF_CONST_INT[fluids],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i ;j ;k ]
+        real_t  p,rho,ke,uu,vv,ww
+        real_t bx, by, bz, b
+        integer iFluid,shift
+
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;I;J;K]
+          rho  = max( W(CHF_IX[i;j;k],WRHO), smallr )
+
+          uu   =      W(CHF_IX[i;j;k],WVELX)
+          vv   =      W(CHF_IX[i;j;k],WVELY)
+          ww   =      W(CHF_IX[i;j;k],WVELZ)
+
+          p    =      W(CHF_IX[i;j;k],WPRES)
+
+          bx   =      W(CHF_IX[i;j;k],WBX)
+          by   =      W(CHF_IX[i;j;k],WBY)
+          bz   =      W(CHF_IX[i;j;k],WBZ)
+
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          ke   =          uu*uu + vv*vv + ww*ww
+
+
+          U(CHF_IX[i;j;k],URHO)  = rho
+          U(CHF_IX[i;j;k],UMOMX) = rho*uu
+          U(CHF_IX[i;j;k],UMOMY) = rho*vv
+          U(CHF_IX[i;j;k],UMOMZ) = rho*ww
+
+          U(CHF_IX[i;j;k],UENG)  = p*invhgamma + half*(rho*ke + b)
+
+          U(CHF_IX[i;j;k],UBX)   = bx
+          U(CHF_IX[i;j;k],UBY)   = by
+          U(CHF_IX[i;j;k],UBZ)   = bz
+          
+          
+          ! Neutral fluids
+          do iFluid = 1, fluids-1
+            shift = iRhoN+(iFluid-1)*WNUM_E            
+
+            rho  = max( W(CHF_IX[i;j;k],WRHO+shift), smallr )
+
+            uu   =      W(CHF_IX[i;j;k],WVELX+shift)
+            vv   =      W(CHF_IX[i;j;k],WVELY+shift)
+            ww   =      W(CHF_IX[i;j;k],WVELZ+shift)
+
+            p    =      W(CHF_IX[i;j;k],WPRES+shift)
+
+            ke   =          uu*uu + vv*vv + ww*ww
+
+            U(CHF_IX[i;j;k],URHO +shift)  = rho
+            U(CHF_IX[i;j;k],UMOMX+shift)  = rho*uu
+            U(CHF_IX[i;j;k],UMOMY+shift)  = rho*vv
+            U(CHF_IX[i;j;k],UMOMZ+shift)  = rho*ww
+            U(CHF_IX[i;j;k],UENG +shift)  = p*invhgamma + half*rho*ke
+          enddo
+   
+        CHF_ENDDO
+
+        return
+        end
+
+ 
+        subroutine SOURCEAXISYMMETRIC_MF(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_INT[iRhoN],     
+     &    CHF_CONST_INT[fluids],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t Rho, Ux, Uy, Uz, Bx, By, Bz, P, e, y
+        real_t BxB, UxU, By4Pi, h, hu
+        integer iFluid,shift
+
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          y      = dx*(j + half)
+          h      =-dt/y
+
+          Rho    = W(CHF_IX[i;j;k],WRHO)
+
+          Ux     = W(CHF_IX[i;j;k],WVELX)
+          Uy     = W(CHF_IX[i;j;k],WVELY)
+          Uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          P      = W(CHF_IX[i;j;k],WPRES)
+
+          Bx     = W(CHF_IX[i;j;k],WBX)
+          By     = W(CHF_IX[i;j;k],WBY)
+          Bz     = W(CHF_IX[i;j;k],WBZ)
+
+          By4Pi  = d_1_4PI*By
+          BxB    = d_1_4PI*(Bx*Bx + By*By + Bz*Bz)
+          UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+
+          e      = p/hgamma + Rho*UxU
+
+          S(CHF_IX[i;j;k],URHO ) = h*Rho*Uy
+
+          S(CHF_IX[i;j;k],UMOMX) = h*(Rho*Ux*Uy - By4Pi*Bx)
+          S(CHF_IX[i;j;k],UMOMY) = h*(Rho*Uy*Uy - By4Pi*By)
+          S(CHF_IX[i;j;k],UMOMZ) = zero
+
+          S(CHF_IX[i;j;k],UENG ) = h*(Uy*(e + p + BxB) - By4Pi*(Bx*Ux + By*Uy))
+
+          S(CHF_IX[i;j;k],UBX  ) = h*(Uy*Bx - Ux*By)
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+!                                              swirling flow source
+!          S(CHF_IX[i;j;k],URHO ) = h*Rho*Uy
+
+!          S(CHF_IX[i;j;k],UMOMX) = h*(Rho*Ux*Uy - By4Pi*Bx)
+!          S(CHF_IX[i;j;k],UMOMY) = h*(Rho*(Uy*Uy - Uz*Uz) - d_1_4PI*(By*By - Bz*Bz))
+!          S(CHF_IX[i;j;k],UMOMZ) = two*h*(Rho*Uz*Uy - By4Pi*Bz)
+
+!          S(CHF_IX[i;j;k],UENG ) = h*(Uy*(e + p + BxB) - By4Pi*(Bx*Ux + By*Uy + Bz*Uz))
+
+!          S(CHF_IX[i;j;k],UBX  ) = h*(Uy*Bx - Ux*By)
+!          S(CHF_IX[i;j;k],UBY  ) = zero
+!          S(CHF_IX[i;j;k],UBZ  ) = zero
+
+          do iFluid = 1, fluids-1
+            shift = iRhoN+(iFluid-1)*WNUM_E            
+
+            Rho    = W(CHF_IX[i;j;k],WRHO+shift)
+
+            Ux     = W(CHF_IX[i;j;k],WVELX+shift)
+            Uy     = W(CHF_IX[i;j;k],WVELY+shift)
+            Uz     = W(CHF_IX[i;j;k],WVELZ+shift)
+
+            P      = W(CHF_IX[i;j;k],WPRES+shift)
+
+            UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+
+            e      = p/hgamma + Rho*UxU
+
+            hu     = h*Uy
+
+            S(CHF_IX[i;j;k],URHO+shift )  = hu*Rho
+
+            S(CHF_IX[i;j;k],UMOMX+shift)  = hu*Rho*Ux
+            S(CHF_IX[i;j;k],UMOMY+shift)  = hu*Rho*Uy
+            S(CHF_IX[i;j;k],UMOMZ+shift)  = zero
+
+            S(CHF_IX[i;j;k],UENG+shift )  = hu*(e + p)
+          enddo
+          
+        CHF_ENDDO
+
+        return
+        end
+        
+        
+        subroutine SOURCEAXISYMMETRIC_CYL_MF(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_INT[iRhoN],     
+     &    CHF_CONST_INT[fluids],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t Bx, By, Bz, P, y
+        real_t BxB, h
+        integer iFluid,shift
+
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          y      = dx*(j + half)
+          h      =-dt/y
+          
+          P      = W(CHF_IX[i;j;k],WPRES)
+
+          Bx     = W(CHF_IX[i;j;k],WBX)
+          By     = W(CHF_IX[i;j;k],WBY)
+          Bz     = W(CHF_IX[i;j;k],WBZ)          
+          BxB    = d_1_8PI*(Bx*Bx + By*By + Bz*Bz)          
+          
+          S(CHF_IX[i;j;k],URHO ) = zero
+          S(CHF_IX[i;j;k],UMOMX) = zero
+          S(CHF_IX[i;j;k],UMOMY) = -h*(P + BxB)
+          S(CHF_IX[i;j;k],UMOMZ) = zero
+          S(CHF_IX[i;j;k],UENG ) = zero
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+          
+          do iFluid = 1, fluids-1
+            shift = iRhoN+(iFluid-1)*WNUM_E            
+
+            P     = W(CHF_IX[i;j;k],WPRES+shift)          
+
+            S(CHF_IX[i;j;k],URHO +shift)  = zero
+            S(CHF_IX[i;j;k],UMOMX+shift)  = zero
+            S(CHF_IX[i;j;k],UMOMY+shift)  = -h*P
+            S(CHF_IX[i;j;k],UMOMZ+shift)  = zero
+            S(CHF_IX[i;j;k],UENG +shift)  = zero
+          enddo                    
+        CHF_ENDDO
+
+        return
+        end
+
+        
+        subroutine POSTPROCESSING_MF(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[Uold],
+     &    CHF_CONST_INT[iRhoN],     
+     &    CHF_CONST_INT[fluids],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_BOX[box])
+ 
+        integer iWas
+        real_t Rho, Ux, Uy, Uz, Bx, By, Bz, P, E, invRho
+        real_t BxB, UxU
+        integer CHF_DDECL[i;j;k]
+        integer iFluid,shift
+
+#include "EosCommon.fh"
+
+        CH_assert(fluids<=5)
+
+        CHF_MULTIDO[box;i;j;k]
+          Rho    = U(CHF_IX[i;j;k],URHO)
+         
+          invRho = one / Rho
+          Ux     = U(CHF_IX[i;j;k],UMOMX)*invRho
+          Uy     = U(CHF_IX[i;j;k],UMOMY)*invRho
+          Uz     = U(CHF_IX[i;j;k],UMOMZ)*invRho
+          
+          E      = U(CHF_IX[i;j;k],UENG )
+
+          Bx     = U(CHF_IX[i;j;k],UBX)
+          By     = U(CHF_IX[i;j;k],UBY)
+          Bz     = U(CHF_IX[i;j;k],UBZ)
+          
+          BxB    = d_1_8PI*(Bx*Bx + By*By + Bz*Bz)
+          UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+
+          P      = hgamma*(E - BxB - Rho*UxU)
+
+          iWas   = 0
+          if( Rho < smallR ) then
+            Rho    = smallR
+            iWas   = 1
+          endif
+
+          if( P < smallP ) then
+            P      = smallP
+            iWas   = 1
+          endif
+
+          if( iWas == 1 ) then
+            U(CHF_IX[i;j;k],URHO ) = Rho
+
+            U(CHF_IX[i;j;k],UMOMX) = Rho*Ux
+            U(CHF_IX[i;j;k],UMOMY) = Rho*Uy
+            U(CHF_IX[i;j;k],UMOMZ) = Rho*Uz
+
+            U(CHF_IX[i;j;k],UENG ) = p/hgamma + Rho*UxU + BxB
+          endif
+          
+          if (fluids>1) then
+            iFluid = 1
+            shift  = iRhoN+(iFluid-1)*WNUM_E            
+
+            Rho    = U(CHF_IX[i;j;k],URHO+shift)
+
+            invRho = one / Rho
+            Ux     = U(CHF_IX[i;j;k],UMOMX+shift)*invRho
+            Uy     = U(CHF_IX[i;j;k],UMOMY+shift)*invRho
+            Uz     = U(CHF_IX[i;j;k],UMOMZ+shift)*invRho
+            
+            E      = U(CHF_IX[i;j;k],UENG+shift )
+            UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+            P      = hgamma*(E - Rho*UxU)
+
+            iWas   = 0
+            if( Rho < smallR ) then
+              Rho    = smallR
+              iWas   = 1
+            endif
+
+            if( P < smallP ) then
+              P      = smallP
+              iWas   = 1
+            endif
+
+            if( iWas == 1 ) then
+              U(CHF_IX[i;j;k],URHO+shift )  = Rho
+
+              U(CHF_IX[i;j;k],UMOMX+shift)  = Rho*Ux
+              U(CHF_IX[i;j;k],UMOMY+shift)  = Rho*Uy
+              U(CHF_IX[i;j;k],UMOMZ+shift)  = Rho*Uz
+
+              U(CHF_IX[i;j;k],UENG+shift )  = p/hgamma + Rho*UxU
+            endif
+          endif
+          
+          if (fluids>2) then
+            iFluid = 2
+            shift  = iRhoN+(iFluid-1)*WNUM_E            
+
+            Rho    = U(CHF_IX[i;j;k],URHO+shift)
+
+            invRho = one / Rho
+            Ux     = U(CHF_IX[i;j;k],UMOMX+shift)*invRho
+            Uy     = U(CHF_IX[i;j;k],UMOMY+shift)*invRho
+            Uz     = U(CHF_IX[i;j;k],UMOMZ+shift)*invRho
+            
+            E      = U(CHF_IX[i;j;k],UENG+shift)
+            UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+            P      = hgamma*(E - Rho*UxU)
+
+            iWas   = 0
+            if( Rho < netFluid2Dens ) then
+              Rho    = netFluid2Dens
+              iWas   = 1
+            endif
+
+            if( P < netFluid2Pres ) then
+              P      = netFluid2Pres
+              iWas   = 1
+            endif
+
+            if( iWas == 1 ) then
+              U(CHF_IX[i;j;k],URHO+shift )  = Rho
+
+              U(CHF_IX[i;j;k],UMOMX+shift)  = Rho*Ux
+              U(CHF_IX[i;j;k],UMOMY+shift)  = Rho*Uy
+              U(CHF_IX[i;j;k],UMOMZ+shift)  = Rho*Uz
+
+              U(CHF_IX[i;j;k],UENG+shift )  = p/hgamma + Rho*UxU
+            endif
+          endif
+          
+          if (fluids>3) then
+            iFluid = 3
+            shift  = iRhoN+(iFluid-1)*WNUM_E            
+
+            Rho    = U(CHF_IX[i;j;k],URHO+shift)
+
+            invRho = one / Rho
+            Ux     = U(CHF_IX[i;j;k],UMOMX+shift)*invRho
+            Uy     = U(CHF_IX[i;j;k],UMOMY+shift)*invRho
+            Uz     = U(CHF_IX[i;j;k],UMOMZ+shift)*invRho
+            
+            E      = U(CHF_IX[i;j;k],UENG+shift)
+            UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+            P      = hgamma*(E - Rho*UxU)
+
+            iWas   = 0
+            if( Rho < netFluid3Dens ) then
+              Rho    = netFluid3Dens
+              iWas   = 1
+            endif
+
+            if( P < netFluid3Pres ) then
+              P      = netFluid3Pres
+              iWas   = 1
+            endif
+
+            if( iWas == 1 ) then
+              U(CHF_IX[i;j;k],URHO+shift)  = Rho
+
+              U(CHF_IX[i;j;k],UMOMX+shift)  = Rho*Ux
+              U(CHF_IX[i;j;k],UMOMY+shift)  = Rho*Uy
+              U(CHF_IX[i;j;k],UMOMZ+shift)  = Rho*Uz
+
+              U(CHF_IX[i;j;k],UENG+shift )  = p/hgamma + Rho*UxU
+            endif
+          endif
+          
+          if (fluids>4) then
+            iFluid = 4
+            shift  = iRhoN+(iFluid-1)*WNUM_E            
+
+            Rho    = U(CHF_IX[i;j;k],URHO+shift)
+
+            invRho = one / Rho
+            Ux     = U(CHF_IX[i;j;k],UMOMX+shift)*invRho
+            Uy     = U(CHF_IX[i;j;k],UMOMY+shift)*invRho
+            Uz     = U(CHF_IX[i;j;k],UMOMZ+shift)*invRho
+            
+            E      = U(CHF_IX[i;j;k],UENG+shift)
+            UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+            P      = hgamma*(E - Rho*UxU)
+
+            iWas   = 0
+            if( Rho < netFluid2Dens ) then
+              Rho    = netFluid2Dens
+              iWas   = 1
+            endif
+
+            if( P < netFluid2Pres ) then
+              P      = netFluid2Pres
+              iWas   = 1
+            endif
+
+            if( iWas == 1 ) then
+              U(CHF_IX[i;j;k],URHO+shift)  = Rho
+
+              U(CHF_IX[i;j;k],UMOMX+shift)  = Rho*Ux
+              U(CHF_IX[i;j;k],UMOMY+shift)  = Rho*Uy
+              U(CHF_IX[i;j;k],UMOMZ+shift)  = Rho*Uz
+
+              U(CHF_IX[i;j;k],UENG+shift )  = p/hgamma + Rho*UxU
+            endif
+          endif
+
+        
+        CHF_ENDDO
+
+        return
+        end

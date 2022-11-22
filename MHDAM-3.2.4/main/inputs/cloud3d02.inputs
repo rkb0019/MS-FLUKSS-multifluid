@@ -1,0 +1,79 @@
+mhdam.problem = cloud
+
+mhdam.gamma = 1.66666666666667
+
+mhdam.verbosity = 0
+
+mhdam.max_step = 10000
+mhdam.max_time = 0.059
+
+mhdam.densityL   = 3.86859
+mhdam.velxL      = 0.0
+mhdam.velyL      = 0.0
+mhdam.velzL      = 0.0
+mhdam.pressureL  = 167.345
+mhdam.BxL        = 0.0
+mhdam.ByL        = 7.73718
+mhdam.BzL        =-7.73718
+
+mhdam.densityR   = 1.0
+mhdam.velxR      =-11.2536
+mhdam.pressureR  = 1.0
+mhdam.ByR        = 2.0
+mhdam.BzR        = 2.0
+
+mhdam.startX     = 0.6
+
+mhdam.XC         = 0.8
+mhdam.YC         = 0.5
+mhdam.ZC         = 0.5
+mhdam.R0         = 0.15
+mhdam.densityC   = 10.0
+
+mhdam.domain_length = 1.0
+mhdam.num_cells =  64 64 64
+mhdam.is_periodic = 0 1 1
+mhdam.max_level = 2
+mhdam.ref_ratio = 2 2 2 2 2 2 
+
+mhdam.regrid_interval = 2 2 2 2 2 2
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.12
+mhdam.refine_B_thresh = -1
+
+mhdam.output_density_gradient = 0
+mhdam.output_B_gradient = 0
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.limiter_RHO = 1
+mhdam.limiter_VX = 1
+mhdam.limiter_VY = 1
+mhdam.limiter_VZ = 1
+mhdam.limiter_P = 1
+mhdam.limiter_BX = 1
+mhdam.limiter_BY = 1
+mhdam.limiter_BZ = 1
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 10
+mhdam.plot_interval = 10
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = chk
+
+mhdam.cfl = 0.25
+mhdam.initial_cfl = 0.25
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1
+
+mhdam.restart_file = chk267.3d.hdf5

@@ -1,0 +1,224 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+
+        subroutine SETFREESTREAM(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auM],
+     &    CHF_CONST_REAL[auaA] )
+
+#include "EosCommon.fh"
+        real_t fsM,aA
+        common /fscm/ fsM, aA     
+
+        real_t r0, p0, umag
+                  
+        gamma      = augamma
+        fsM        = auM
+        aA         = auaA
+                
+        hgamma     = gamma - one
+        invhgamma  = one / hgamma
+
+                
+
+        r0         = one
+        p0         = one/(gamma*fsM*fsM)
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+        
+        if( smallr < 1.0D-12 ) smallr  = 1.0D-12
+        if( smallp < 1.0D-12 ) smallp  = 1.0D-12
+        
+        return
+        end      
+     
+
+      subroutine FREESTREAMSPHERICALU(
+     &    CHF_FRA[U],     
+     &    CHF_BOX[box])
+
+        real_t ke, b, e0, r, ux, uy, uz, Bx, By, Bz, p, rho        
+                
+        integer CHF_DDECL[i;j;k]
+        
+#include "EosCommon.fh"
+        real_t fsM,aA
+        common /fscm/ fsM, aA   
+        
+        rho    = one
+        ux     = one
+        uy     = zero
+        uz     = zero
+
+        p      = one/(gamma*fsM*fsM)
+
+        Bx     = aA*sqrt(d_4PI*rho)
+        By     = zero
+        Bz     = zero
+
+        b      = d_1_4PI*(Bx*Bx + By*By + Bz*Bz)
+        ke     =          ux*ux + uy*uy + uz*uz
+
+        e0     = p/hgamma + half*(ke + b)
+
+
+        CHF_MULTIDO[box;i;j;k]          
+            U(CHF_IX[i;j;k],URHO)  = rho
+
+            U(CHF_IX[i;j;k],UMOMX) = ux
+            U(CHF_IX[i;j;k],UMOMY) = uy
+            U(CHF_IX[i;j;k],UMOMZ) = uz
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+
+            U(CHF_IX[i;j;k],UBX )  = Bx
+            U(CHF_IX[i;j;k],UBY )  = By
+            U(CHF_IX[i;j;k],UBZ )  = Bz                                
+        CHF_ENDDO
+
+        return
+        end
+        
+      
+        
+      subroutine FREESTREAMPOLARW(
+     &    CHF_FRA[W],     
+     &    CHF_BOX[box],
+     &    CHF_CONST_INT[level],
+     &    CHF_USE[SphericalData])
+
+        real_t ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinPhi, cosPhi
+                
+        integer CHF_DDECL[i;j;k]
+        
+#include "EosCommon.fh"
+        real_t fsM,aA
+        common /fscm/ fsM, aA   
+
+        rho    = one
+        ux     = one
+        uy     = zero
+        uz     = zero
+
+        p      = one/(gamma*fsM*fsM)
+
+        Bx     = aA*sqrt(d_4PI*rho)
+        By     = zero
+        Bz     = zero
+
+
+        CHF_MULTIDO[box;i;j;k]
+          sinPhi = m_phic(j,ISIN,level)
+          cosPhi = m_phic(j,ICOS,level)
+          
+          W(CHF_IX[i;j;k],WRHO)  = rho
+            
+          W(CHF_IX[i;j;k],WVELR) =  ux*cosPhi+uy*sinPhi
+          W(CHF_IX[i;j;k],WVELP) = -ux*sinPhi+uy*cosPhi
+          W(CHF_IX[i;j;k],WVELZ) = zero
+
+          W(CHF_IX[i;j;k],WPRES)  = p
+
+          W(CHF_IX[i;j;k],WBX )  =  Bx*cosPhi+By*sinPhi
+          W(CHF_IX[i;j;k],WBY )  = -Bx*sinPhi+By*cosPhi
+          W(CHF_IX[i;j;k],WBZ )  = zero                                
+        CHF_ENDDO
+
+        return
+        end
+        
+        
+        subroutine FREESTREAMSPHERICALW(
+     &    CHF_FRA[W],     
+     &    CHF_BOX[box],
+     &    CHF_CONST_INT[level],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3
+        real_t ux, uy, uz, Bx, By, Bz, p, rho
+        real_t sinF, cosF, sinT, cosT
+                
+        integer CHF_DDECL[i;j;k]
+        
+#include "EosCommon.fh"
+        real_t fsM,aA
+        common /fscm/ fsM, aA   
+
+        rho    = one
+        ux     = one
+        uy     = zero
+        uz     = zero
+
+        p      = one/(gamma*fsM*fsM)
+
+        Bx     = aA*sqrt(d_4PI*rho)
+        By     = zero
+        Bz     = zero
+
+
+        CHF_MULTIDO[box;i;j;k]
+          cosF   = m_phic(j,ICOS,level)
+          sinF   = m_phic(j,ISIN,level)
+          
+          cosT   = m_thetac(k,ICOS,level)
+          sinT   = m_thetac(k,ISIN,level)
+          
+          W(CHF_IX[i;j;k],WRHO)  = rho
+          W(CHF_IX[i;j;k],WVELR) = (ux*cosF + uy*sinF)*sinT + uz*cosT
+          W(CHF_IX[i;j;k],WVELP) = -ux*sinF + uy*cosF
+          W(CHF_IX[i;j;k],WVELT) = (ux*cosF + uy*sinF)*cosT - uz*sinT
+          W(CHF_IX[i;j;k],WPRES) = p
+          W(CHF_IX[i;j;k],WBR )  = (Bx*cosF + By*sinF)*sinT + Bz*cosT
+          W(CHF_IX[i;j;k],WBP )  = -Bx*sinF + By*cosF
+          W(CHF_IX[i;j;k],WBT )  = (Bx*cosF + By*sinF)*cosT - Bz*sinT          
+        CHF_ENDDO
+#endif
+        return
+        end
+        
+        subroutine FREESTREAMCARTESIANW(
+     &    CHF_FRA[W],     
+     &    CHF_BOX[box])
+
+#if CH_SPACEDIM == 3
+        real_t ux, uy, uz, Bx, By, Bz, p, rho        
+                
+        integer CHF_DDECL[i;j;k]
+        
+#include "EosCommon.fh"
+        real_t fsM,aA
+        common /fscm/ fsM, aA   
+
+        rho    = one
+        ux     = one
+        uy     = zero
+        uz     = zero
+
+        p      = one/(gamma*fsM*fsM)
+
+        Bx     = aA*sqrt(d_4PI*rho)
+        By     = zero
+        Bz     = zero
+
+        CHF_MULTIDO[box;i;j;k]                    
+          W(CHF_IX[i;j;k],WRHO)  = rho
+          W(CHF_IX[i;j;k],WVELR) = ux
+          W(CHF_IX[i;j;k],WVELP) = uy
+          W(CHF_IX[i;j;k],WVELT) = uz
+          W(CHF_IX[i;j;k],WPRES) = p
+          W(CHF_IX[i;j;k],WBR )  = Bx
+          W(CHF_IX[i;j;k],WBP )  = By
+          W(CHF_IX[i;j;k],WBT )  = Bz          
+        CHF_ENDDO
+#endif
+        return
+        end
+        
+        
+     

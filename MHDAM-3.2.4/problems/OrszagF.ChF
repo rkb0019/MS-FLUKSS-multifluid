@@ -1,0 +1,79 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETORSZAG(
+     &    CHF_CONST_REAL[augamma])
+
+#include "EosCommon.fh"
+
+        real_t r0,p0,umag
+
+        gamma      = augamma
+        hgamma     = gamma - 1.0d0
+        invhgamma  = one / hgamma
+
+        r0         = gamma*gamma
+        p0         = gamma
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+
+        return
+        end
+
+        subroutine ORSZAGINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iCP],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t ke, b, p0, r0, e0, Ux, Uy, Bx, By
+        integer CHF_DDECL[i;j;k]
+        real_t CHF_DDECL[x;y;z]
+
+#include "EosCommon.fh"
+
+        p0   = d_1_4PI*gamma
+        r0   = p0*gamma
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx;
+          y      = (j + half)*dx;
+          z      = (k + half)*dx]
+
+          Ux     =-sin( d_2PI*y )
+          Uy     = sin( d_2PI*x )
+
+          Bx     =-sin(  d_2PI         *y )
+          By     = sin( (d_2PI + d_2PI)*x )
+
+          b      = d_1_4PI*(Bx*Bx + By*By)
+          ke     =          Ux*Ux + Uy*Uy
+
+          e0     = p0/hgamma + half*(r0*ke + b)
+
+          U(CHF_IX[i;j;k],URHO)  = r0
+
+          U(CHF_IX[i;j;k],UMOMX) = r0*Ux
+          U(CHF_IX[i;j;k],UMOMY) = r0*Uy
+          U(CHF_IX[i;j;k],UMOMZ) = zero
+
+          U(CHF_IX[i;j;k],UENG)  = e0
+
+          U(CHF_IX[i;j;k],UBX )  = Bx
+          U(CHF_IX[i;j;k],UBY )  = By
+          U(CHF_IX[i;j;k],UBZ )  = zero
+          
+          ! Dedner
+          if (iCP>0) then  
+            U(CHF_IX[i;j;k],iCP)  = zero          
+          endif
+          
+        CHF_ENDDO
+
+        return
+        end

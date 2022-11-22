@@ -1,0 +1,305 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETOBLIQUE(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auDensityL],
+     &    CHF_CONST_REAL[auPressureL],
+     &    CHF_CONST_REAL[auVelxL],
+     &    CHF_CONST_REAL[auVelyL],
+     &    CHF_CONST_REAL[auAngleSW],
+     &    CHF_CONST_REAL[auXs],
+     &    CHF_CONST_REAL[auObliqueAe],
+     &    CHF_CONST_REAL[auObliqueAv],
+     &    CHF_CONST_REAL[auObliquePsi],
+     &    CHF_CONST_REAL[auObliqueK] )
+
+#include "ObliqueCommon.fh"
+#include "EosCommon.fh"
+
+        real_t r0, p0, umag, Alpha, CA, SA, VN, VT
+
+        gamma      = augamma
+        hgamma     = gamma - one
+        invhgamma  = one/hgamma
+
+        obliqueAe  = auObliqueAe
+        obliqueAv  = auObliqueAv
+        obliquePsi = auObliquePsi
+        obliqueK   = auObliqueK
+
+        if( obliquePsi > one ) then
+          obliqueK   = obliqueK/sin( d_PI_180*obliquePsi )
+        endif
+
+        densityL   = auDensityL
+
+        pressureL  = auPressureL
+
+        velxL      = auVelxL
+        velyL      = auVelyL
+        angleSW    = auAngleSW
+        startX     = auXs
+
+        call       ObliqueShock( densityL, velxL, velyL, pressureL,
+     &                           gamma, angleSW,
+     &                           densityR, velxR, velyR, pressureR )
+
+        Alpha      = d_PI_180*angleSW
+        SA         = sin( Alpha )
+        CA         = cos( Alpha )
+
+        VN         = velxL*SA + velyL*CA
+        VT         = velxL*CA - velyL*SA
+
+        velxL      = VN
+        velyL      = VT
+
+        VN         = velxR*SA + velyR*CA
+        VT         = velxR*CA - velyR*SA
+
+        velxR      = VN
+        velyR      = VT
+
+        r0         = min( densityL,  densityR  )
+        p0         = min( pressureL, pressureR )
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+
+        return
+        end
+
+        subroutine OBLIQUEINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t ke, eL, eR
+        integer CHF_DDECL[i;j;k]
+        real_t psi, cPsi, sPsi, kx, ky, CC
+        real_t density, velx, vely, ux, uy
+        real_t CHF_DDECL[x;y;z]
+
+#include "ObliqueCommon.fh"
+#include "EosCommon.fh"
+
+        ke     = velxR*velxR + velyR*velyR
+        eR     = pressureR/hgamma + half*densityR*ke
+
+        psi    = d_PI_180*obliquePsi
+        cPsi   = cos( psi )
+        sPsi   = sin( psi )
+        kx     = obliqueK*cPsi
+        ky     = obliqueK*sPsi
+
+        ke     = sqrt( velxL*velxL + velyL*velyL )
+        ux     = obliqueAv*ke*sPsi
+        uy     = obliqueAv*ke*cPsi
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x = (i + half)*dx;
+          y = (j + half)*dx;
+          z = (k + half)*dx]
+
+          if( x < startX ) then
+            CC     = cos( d_2PI*(kx*x + ky*y) )
+            
+            density  = densityL*(one + obliqueAe*CC)
+            velx     = velxL + ux*CC
+            vely     = velyL - uy*CC
+
+            ke       = velx*velx + vely*vely
+            eL       = pressureL/hgamma + half*density*ke
+
+            U(CHF_IX[i;j;k],URHO)  = density
+
+            U(CHF_IX[i;j;k],UMOMX) = density*velx
+            U(CHF_IX[i;j;k],UMOMY) = density*vely
+            U(CHF_IX[i;j;k],UMOMZ) = zero
+
+            U(CHF_IX[i;j;k],UENG)  = eL
+          else
+            U(CHF_IX[i;j;k],URHO)  = densityR
+
+            U(CHF_IX[i;j;k],UMOMX) = densityR*velxR
+            U(CHF_IX[i;j;k],UMOMY) = densityR*velyR
+            U(CHF_IX[i;j;k],UMOMZ) = zero
+
+            U(CHF_IX[i;j;k],UENG)  = eR
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine FLUXBCOS(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_BOX[box])
+
+        real_t P, ke, e, density, velx, vely, pressure
+        integer CHF_DDECL[i;j;k]
+
+#include "ObliqueCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          if( lohisign == 1 ) then
+            density  = W(CHF_IX[i;j;k],WRHO )
+
+            velx     = W(CHF_IX[i;j;k],WVELX)
+            vely     = W(CHF_IX[i;j;k],WVELY)
+
+            pressure = W(CHF_IX[i;j;k],WPRES)
+
+            ke       = density*(velx*velx + vely*vely)
+            e        = pressure/hgamma + half*ke 
+
+            F(CHF_IX[i;j;k],URHO ) = density*velx
+            F(CHF_IX[i;j;k],UMOMX) = density*velx*velx + pressure
+            F(CHF_IX[i;j;k],UMOMY) = density*velx*vely
+            F(CHF_IX[i;j;k],UMOMZ) = zero
+            F(CHF_IX[i;j;k],UENG ) = velx*(e + pressure)
+          else
+            density  = W(CHF_IX[i-1;j;k],WRHO )
+            velx     = W(CHF_IX[i-1;j;k],WVELX)
+            vely     = W(CHF_IX[i-1;j;k],WVELY)
+
+            ke   = density*(velx*velx + vely*vely)
+
+            P    = pressureL
+            e    = pressureL/hgamma + half*ke
+
+            F(CHF_IX[i;j;k],URHO ) = density*velx
+
+            F(CHF_IX[i;j;k],UMOMX) = density*velx*velx + P
+            F(CHF_IX[i;j;k],UMOMY) = density*velx*vely
+            F(CHF_IX[i;j;k],UMOMZ) = zero
+            F(CHF_IX[i;j;k],UENG ) = velx*(e + P)
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine OBLIQUEGS(
+     &    CHF_FRA[W],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_REAL[time],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        real_t psi, cPsi, sPsi, kx, ky, kt, CC
+        real_t density, velx, vely, ke, ux, uy
+        real_t CHF_DDECL[x;y;z]
+
+#include "ObliqueCommon.fh"
+#include "EosCommon.fh"
+
+        psi    = d_PI_180*obliquePsi
+        cPsi   = cos( psi )
+        sPsi   = sin( psi )
+        kx     = obliqueK*cPsi
+        ky     = obliqueK*sPsi
+        kt     =-velxL*kx - velyL*ky
+
+        ke     = sqrt( velxL*velxL + velyL*velyL )
+        ux     = obliqueAv*ke*sPsi
+        uy     = obliqueAv*ke*cPsi
+
+        if( dir .eq. 0 ) then
+          CHF_MULTIDO[box;i;j;k]
+            if( lohisign == 1 ) then
+              W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[iboxlo0-1;j;k],WRHO )
+
+              W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[iboxlo0-1;j;k],WVELX)
+              W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[iboxlo0-1;j;k],WVELY)
+              W(CHF_IX[i;j;k],WVELZ) = zero
+
+              W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[iboxlo0-1;j;k],WPRES)
+            else
+              CHF_DTERM[
+              x = (i + half)*dx;
+              y = (j + half)*dx;
+              z = (k + half)*dx]
+
+              CC     = cos( d_2PI*(kx*x + ky*y + kt*time) )
+
+              density  = densityL*(one + obliqueAe*CC)
+              velx     = velxL + ux*CC
+              vely     = velyL - uy*CC
+
+              W(CHF_IX[i;j;k],WRHO ) = density
+
+              W(CHF_IX[i;j;k],WVELX) = velx
+              W(CHF_IX[i;j;k],WVELY) = vely
+              W(CHF_IX[i;j;k],WVELZ) = zero
+
+              W(CHF_IX[i;j;k],WPRES) = pressureL
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine ObliqueShock(
+     &    CHF_CONST_REAL[Rho1],
+     &    CHF_CONST_REAL[U1],
+     &    CHF_CONST_REAL[V1],
+     &    CHF_CONST_REAL[P1],
+     &    CHF_CONST_REAL[Gam],
+     &    CHF_CONST_REAL[ANGLE],
+     &    CHF_REAL[Rho2],
+     &    CHF_REAL[U2],
+     &    CHF_REAL[V2],
+     &    CHF_REAL[P2] )
+
+        real_t Alpha, Beta, GamM, GamP, CA, SA, M2, Q2, TB,
+     &         V, VN1, VN2, VT1, VT2
+
+#include "EosCommon.fh"
+
+        GamP   = Gam + one
+        GamM   = Gam - one
+
+        Alpha  = d_PI_180*ANGLE
+        SA     = sin( Alpha )
+        CA     = cos( Alpha )
+
+        VN1    = U1*SA + V1*CA
+        VT1    = U1*CA - V1*SA
+
+        M2     = VN1*VN1/(Gam*P1/Rho1)
+
+        P2     = P1*(two*Gam*M2 - GamM)/GamP
+        Rho2   = Rho1*(GamP*P2 + GamM*P1)/(GamP*P1 + GamM*P2)
+
+        VT2    = VT1
+        VN2    = Rho1*VN1/Rho2
+
+        Q2     = VT2*VT2 + VN2*VN2
+        V      = sqrt( Q2 )
+
+        if( abs( VT2 ) <= epsilon( one ) ) then
+          Beta   = d_PI_2
+        else
+          TB     = VN2/VT2
+          Beta   = atan( TB )
+        endif
+
+        U2     = V*cos( Beta - Alpha )
+        V2     = V*sin( Beta - Alpha )
+
+        return
+        end subroutine ObliqueShock

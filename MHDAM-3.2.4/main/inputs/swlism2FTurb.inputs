@@ -1,0 +1,81 @@
+mhdam.problem = swlism2FTurb
+
+mhdam.gamma = 1.66666666666667
+
+mhdam.verbosity = 0
+
+mhdam.max_step = 1500000
+mhdam.max_time = 1000000.0
+
+mhdam.lismN    = 0.1
+mhdam.lismV    = 2500000.0
+mhdam.lismT    = 7000.0
+mhdam.lismB    = 0.0000015
+mhdam.netN     = 0.2
+
+mhdam.XC         = 300.0
+mhdam.YC         = 0.0
+mhdam.R0         = 10.0
+mhdam.sunN       = 5.0
+mhdam.sunV       = 50000000.0
+mhdam.sunT       = 150000.0
+mhdam.initR      = 80.0
+
+# Turbulence (time steps in years)
+mhdam.TurbLISMTimeStep = 1
+mhdam.TurbSWTimeStep   = 1 
+mhdam.LISMDeviation    = 0.1
+mhdam.SWDeviation      = 0.025
+
+mhdam.coord_sys  = 1
+
+mhdam.domain_length = 1100.0
+mhdam.num_cells =  768 512 4
+#mhdam.num_cells =  400 250 4
+mhdam.is_periodic = 0 0 0
+mhdam.max_level = 0
+mhdam.ref_ratio = 2 2 2 2 2 2
+
+mhdam.regrid_interval = 2000 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.25
+mhdam.refine_B_thresh = -1
+
+mhdam.output_density_gradient = 0
+mhdam.output_B_gradient = 0
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.limiter_RHO = 4
+mhdam.limiter_VX = 4
+mhdam.limiter_VY = 4
+mhdam.limiter_VZ = 4
+mhdam.limiter_P = 4
+mhdam.limiter_BX = 4
+mhdam.limiter_BY = 4
+mhdam.limiter_BZ = 4
+
+mhdam.time_approximation = 2
+
+mhdam.flux = 1
+mhdam.entropy_fix_coeff = 0.3
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 500
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = tL
+
+mhdam.cfl = 0.25
+mhdam.initial_cfl = 0.25
+
+mhdam.max_dt_growth = 1.02
+mhdam.dt_tolerance_factor = 1.02
+
+mhdam.restart_file = tL228000.2d.hdf5
+

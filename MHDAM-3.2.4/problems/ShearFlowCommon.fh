@@ -1,0 +1,6 @@
+C
+C   Fortran parameters for the shear flow problem example:
+C
+        real_t sfRho1,sfV1,sfP1,sfRho2,sfV2,sfP2,fs_a
+        common /shearflowcm/
+     .                   sfRho1,sfV1,sfP1,sfRho2,sfV2,sfP2,fs_a

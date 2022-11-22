@@ -1,0 +1,197 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine RUSANOVF(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        integer inorm, itan1, itan2, inormB, itanB1, itanB2
+        real_t PGasL, RhoL, UL, VL, WL, RUL, RVL, RWL, BXL, BYL, BZL
+        real_t PGasR, RhoR, UR, VR, WR, RUR, RVR, RWR, BXR, BYR, BZR
+        real_t PGas,  Rho,  U,  V,  W,                 BX,  BY,  BZ
+        real_t BxBL, RUxUL, PL, EL, AL2, HL, coefRL, BXL_4PI
+        real_t BxBR, RUxUR, PR, ER, AR2, HR, coefRR, BXR_4PI
+        real_t BxBH,        P,           HAV, BXAV, DBX, DBY, DBZ
+
+        real_t aaf, af, A, A2, A2mi, A2ma
+        real_t szb, h, kk, X
+        real_t bb, bx2, by2, bz2, byz2
+        real_t eigmax
+        real_t fl1, fl2, fl3, fl4, fl5, fl6, fl7, fl8
+        real_t fr1, fr2, fr3, fr4, fr5, fr6, fr7, fr8
+        real_t du1, du2, du3, du4, du5, du6, du7, du8
+
+        integer spacedim, iVelX, iBX, iPres
+
+#include "EosCommon.fh"
+#include "RSCommon.fh"
+
+        spacedim = 3
+
+        iVelX  = iRho + 1
+        iPres  = iRho + 4
+        iBX    = iRho + 5
+
+        inorm  = iVelX +      idir
+        itan1  = iVelX + mod( idir + 1, spacedim )
+        itan2  = iVelX + mod( idir + 2, spacedim )
+
+        inormB = iBX   +      idir
+        itanB1 = iBX   + mod( idir + 1, spacedim )
+        itanB2 = iBX   + mod( idir + 2, spacedim )
+
+        CHF_MULTIDO[box;i;j;k]
+          PGasL  = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+          RhoL   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+
+          UL     =              WLeft(CHF_IX[i;j;k],inorm)
+          VL     =              WLeft(CHF_IX[i;j;k],itan1)
+          WL     =              WLeft(CHF_IX[i;j;k],itan2)
+
+          BXL    =              WLeft(CHF_IX[i;j;k],inormB)
+          BYL    =              WLeft(CHF_IX[i;j;k],itanB1)
+          BZL    =              WLeft(CHF_IX[i;j;k],itanB2)
+
+          PGasR  = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+          RhoR   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+
+          UR     =              WRight(CHF_IX[i;j;k],inorm)
+          VR     =              WRight(CHF_IX[i;j;k],itan1)
+          WR     =              WRight(CHF_IX[i;j;k],itan2)
+
+          BXR    =              WRight(CHF_IX[i;j;k],inormB)
+          BYR    =              WRight(CHF_IX[i;j;k],itanB1)
+          BZR    =              WRight(CHF_IX[i;j;k],itanB2)
+
+          RUL    = RhoL*UL
+          RVL    = RhoL*VL
+          RWL    = RhoL*WL
+
+          BxBL   = d_1_8PI*(BXL*BXL + BYL*BYL + BZL*BZL)
+          RUxUL  = half   *(RUL*UL  + RVL*VL  + RWL*WL )
+
+          PL     = PGasL + BxBL
+          EL     = PGasL/hgamma + RUxUL + BxBL
+
+          BXL_4PI  = BXL*d_1_4PI
+
+          RUR    = RhoR*UR
+          RVR    = RhoR*VR
+          RWR    = RhoR*WR
+
+          BxBR   = d_1_8PI*(BXR*BXR + BYR*BYR + BZR*BZR)
+          RUxUR  = half   *(RUR*UR  + RVR*VR  + RWR*WR )
+
+          PR     = PGasR + BxBR
+          ER     = PGasR/hgamma + RUxUR + BxBR
+
+          BXR_4PI  = BXR*d_1_4PI
+
+          if( iAveraging == 1 ) then
+            HL     = (EL + PL)/RhoL
+            HR     = (ER + PR)/RhoR
+
+            coefRL = one/(one + sqrt( RhoR/RhoL ))
+            coefRR = one - coefRL
+
+            Rho    = RhoR*coefRL + RhoL*coefRR
+            U      = UL  *coefRL + UR  *coefRR
+            V      = VL  *coefRL + VR  *coefRR
+            W      = WL  *coefRL + WR  *coefRR
+            HAV    = HL  *coefRL + HR  *coefRR
+
+            BX     = BXR *coefRL + BXL *coefRR
+            BY     = BYR *coefRL + BYL *coefRR
+            BZ     = BZR *coefRL + BZL *coefRR
+
+            BXAV   = half*(BXL  + BXR )
+
+            BX2    = BXAV*BXAV
+            BY2    = BY  *BY
+            BZ2    = BZ  *BZ
+
+            BYZ2   = BY2 + BZ2
+            BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+            kk     = half*(U*U + V*V + W*W)
+
+            DBX    = BXR - BXL
+            DBY    = BYR - BYL
+            DBZ    = BZR - BZL
+
+            X      = d_1_8PI*(DBX*DBX + DBY*DBY + DBZ*DBZ)
+     &             * coefRL*coefRL/RhoL
+
+            A2     = hgamma*(HAV - kk - d_1_4PI*(BX*BXAV + BYZ2)/Rho)
+     &             + (two - gamma)*X
+          else
+            Rho    = half*(RhoL  + RhoR )
+            U      = half*(UL    + UR   )
+            BX     = half*(BXL   + BXR  )
+            BY     = half*(BYL   + BYR  )
+            BZ     = half*(BZL   + BZR  )
+            PGas   = half*(PGasL + PGasR)
+
+            BX2    = BX*BX
+            BY2    = BY*BY
+            BZ2    = BZ*BZ
+
+            BxBH   = d_1_8PI*(BX2 + BY2 + BZ2)
+
+            A2     = gamma*PGas/Rho
+          endif
+
+          bb     = d_1_4PI*BX2/Rho
+
+          szb    = A2 + (BxBH + BxBH)/Rho
+          h      = sqrt( szb*szb - four*A2*bb )
+
+          aaf    = half*(szb + h)
+          af     = sqrt( aaf )
+
+          eigmax = abs( U ) + af
+
+          fl1    =    RUL
+          fl2    = UL*RUL       - BXL_4PI*BXL + PL
+          fl3    = UL*RVL       - BXL_4PI*BYL
+          fl4    = UL*RWL       - BXL_4PI*BZL
+          fl5    = UL*(EL + PL) - BXL_4PI*(UL*BXL + VL*BYL + WL*BZL)
+          fl6    = zero
+          fl7    = UL*BYL       - BXL*VL
+          fl8    = UL*BZL       - BXL*WL
+
+          fr1    =    RUR
+          fr2    = UR*RUR       - BXR_4PI*BXR + PR
+          fr3    = UR*RVR       - BXR_4PI*BYR
+          fr4    = UR*RWR       - BXR_4PI*BZR
+          fr5    = UR*(ER + PR) - BXR_4PI*(UR*BXR + VR*BYR + WR*BZR)
+          fr6    = zero
+          fr7    = UR*BYR       - BXR*VR
+          fr8    = UR*BZR       - BXR*WR
+
+          du1    = RhoL - RhoR
+          du2    = RUL  - RUR
+          du3    = RVL  - RVR
+          du4    = RWL  - RWR
+          du5    = EL   - ER
+          du6    = BXL  - BXR
+          du7    = BYL  - BYR
+          du8    = BZL  - BZR
+
+          Wgdnv(CHF_IX[i;j;k],iRho  )  = half*(fl1 + fr1 + eigmax*du1)
+          Wgdnv(CHF_IX[i;j;k],inorm )  = half*(fl2 + fr2 + eigmax*du2)
+          Wgdnv(CHF_IX[i;j;k],itan1 )  = half*(fl3 + fr3 + eigmax*du3)
+          Wgdnv(CHF_IX[i;j;k],itan2 )  = half*(fl4 + fr4 + eigmax*du4)
+          Wgdnv(CHF_IX[i;j;k],iPres )  = half*(fl5 + fr5 + eigmax*du5)
+          Wgdnv(CHF_IX[i;j;k],inormB)  = half*(fl6 + fr6 + eigmax*du6)
+          Wgdnv(CHF_IX[i;j;k],itanB1)  = half*(fl7 + fr7 + eigmax*du7)
+          Wgdnv(CHF_IX[i;j;k],itanB2)  = half*(fl8 + fr8 + eigmax*du8)
+        CHF_ENDDO
+
+        return
+        end

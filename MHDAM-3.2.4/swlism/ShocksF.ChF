@@ -1,0 +1,1631 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+#include "CH_assert.H"
+
+! finds the first cell in region 2 whose inner radial neighbor is
+! region 3
+      subroutine SHOCKBOUNDARY( CHF_CONST_FIA1[REG],
+     &                          CHF_FIA1[boundary],
+     &                          CHF_BOX[box])
+
+      integer CHF_DDECL[i;j;k]
+
+      CHF_MULTIDO[box;i;j;k]
+        if ((REG(CHF_IX[i;j;k]) .eq. 2) .and. (REG(CHF_IX[i-1;j;k]) .eq. 3)) then
+          boundary(CHF_IX[i;j;k]) = 1
+        endif
+      CHF_ENDDO
+
+      return
+      end
+
+! calculates shock normal based on cells one away from the region
+! boundary on either side
+      subroutine SHOCKNORMAL( CHF_CONST_FRA[W],
+     &                        CHF_BOX[box],
+     &                        CHF_FRA[normal],
+     &                        CHF_CONST_FIA1[boundary])
+
+#include "EosCommon.fh"
+
+      integer CHF_DDECL[i;j;k]
+      real_t  b1x, b1y, b1z, b2x, b2y, b2z
+      real_t  v1x, v1y, v1z, v2x, v2y, v2z
+      real_t  dvx, dvy, dvz, dbx, dby, dbz
+      real_t  nx, ny, nz, tx, ty, tz
+      real_t  b1inv, ninv
+
+      CHF_MULTIDO[box;i;j;k]
+        if (boundary(CHF_IX[i;j;k]) .eq. 1) then
+          b1x = W(CHF_IX[i-2;j;k],WBX)
+          b1y = W(CHF_IX[i-2;j;k],WBY)
+          b1z = W(CHF_IX[i-2;j;k],WBZ)
+
+          b2x = W(CHF_IX[i+1;j;k],WBX)
+          b2y = W(CHF_IX[i+1;j;k],WBY)
+          b2z = W(CHF_IX[i+1;j;k],WBZ)
+
+          v1x = W(CHF_IX[i-2;j;k],WVELX)
+          v1y = W(CHF_IX[i-2;j;k],WVELY)
+          v1z = W(CHF_IX[i-2;j;k],WVELZ)
+
+          v2x = W(CHF_IX[i+1;j;k],WVELX)
+          v2y = W(CHF_IX[i+1;j;k],WVELY)
+          v2z = W(CHF_IX[i+1;j;k],WVELZ)
+
+          dvx = v2x-v1x
+          dvy = v2y-v1y
+          dvz = v2z-v1z
+
+          dbx = b2x-b1x
+          dby = b2y-b1y
+          dbz = b2z-b1z
+
+          b1inv = 1.0/sqrt(b1x*b1x+b1y*b1y+b1z*b1z)
+
+          b1x = b1x*b1inv
+          b1y = b1y*b1inv
+          b1z = b1z*b1inv
+
+          tx = b1y*dvz-b1z*dvy
+          ty = b1z*dvx-b1x*dvz
+          tz = b1x*dvy-b1y*dvx
+
+          nx = ty*dbz-tz*dby
+          ny = tz*dbx-tx*dbz
+          nz = tx*dby-ty*dbx
+
+          ninv = 1/sqrt(nx*nx+ny*ny+nz*nz)
+
+          nx = nx*ninv
+          ny = ny*ninv
+          nz = nz*ninv
+
+          normal(CHF_IX[i;j;k],0 ) = nx
+          normal(CHF_IX[i;j;k],1 ) = ny
+          normal(CHF_IX[i;j;k],2 ) = nz
+          normal(CHF_IX[i;j;k],3 ) = b1x*nx+b1y*ny+b1z*nz  
+
+        endif
+      CHF_ENDDO
+
+      return
+      end
+
+! shock BCs for strong scattering as in Fahr and Chalov 2008
+! doesn't seem to work too well, causes wave-like structures 
+! radiating from the TS
+      subroutine STRONGSCATTER( CHF_CONST_FRA[W],
+     &                          CHF_FRA[U],
+     &                          CHF_CONST_INT[iRhoPIW],
+     &                          CHF_CONST_INT[iRhoPIU],
+     &                          CHF_CONST_FIA1[boundary],
+     &                          CHF_CONST_FRA[normal],
+     &                          CHF_BOX[box],
+     &                          CHF_CONST_INT[level],
+     &                          CHF_USE[SphericalData])
+
+#include "EosCommon.fh"
+            
+      integer CHF_DDECL[i;j;k]
+      integer dr, iPresPIW, iPresPIU
+      real_t b1x, b1y, b1z, b2x, b2y, b2z
+      real_t rho1, rho2, rhoI1, rhoI2, pI1, pI2
+      real_t rhoI, pI, rho, p2 
+      real_t s, g, B1, B2, invdr, alpha
+      real_t ru, rv, rw, invrho, uu, vv, ww, ke, bx, by, bz, b
+      
+      iPresPIW = iRhoPIW + 1
+      iPresPIU = iRhoPIU + 1
+
+      CHF_MULTIDO[box;i;j;k]
+        if (boundary(CHF_IX[i;j;k]) .eq. 1) then      
+          invdr = m_rc(i+1,level) - m_rc(i-2,level)
+          invdr = 1.0D0/invdr
+          
+          b1x = U(CHF_IX[i-2;j;k],UBX)
+          b1y = U(CHF_IX[i-2;j;k],UBY)
+          b1z = U(CHF_IX[i-2;j;k],UBZ)
+          B1  = sqrt(b1x*b1x+b1y*b1y+b1z*b1z)
+
+          b2x = U(CHF_IX[i+1;j;k],UBX)
+          b2y = U(CHF_IX[i+1;j;k],UBY)
+          b2z = U(CHF_IX[i+1;j;k],UBZ)
+          B2  = sqrt(b2x*b2x+b2y*b2y+b2z*b2z)
+
+          g = B2/B1
+
+          rho1 = U(CHF_IX[i-2;j;k],URHO)
+          rho2 = U(CHF_IX[i+1;j;k],URHO)
+
+          s = rho2/rho1
+
+          rhoI1 = U(CHF_IX[i-2;j;k],iRhoPIU)
+          rhoI2 = s*rhoI1
+
+          pI1 = U(CHF_IX[i-2;j;k],iPresPIU)
+          pI2 = s*g*pI1
+
+!interpolate PI pressure but don't let it become greater than ptot
+          alpha= invdr*(m_rc(i-1,level) - m_rc(i-2,level))
+          rhoI = (1.0D0-alpha)*rhoI1+alpha*rhoI2
+          pI   = (1.0D0-alpha)*pI1+alpha*pI2
+
+          rho  = max(U(CHF_IX[i-1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-1;j;k],UMOMX)
+          rv   = U(CHF_IX[i-1;j;k],UMOMY)
+          rw   = U(CHF_IX[i-1;j;k],UMOMZ)
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i-1;j;k],UBX)
+          by   = U(CHF_IX[i-1;j;k],UBY)
+          bz   = U(CHF_IX[i-1;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i-1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+          if (pI .ge. p2-smallp) then
+              pI = p2-smallp
+          endif
+          U(CHF_IX[i-1;j;k],iRhoPIU)  = rhoI
+          U(CHF_IX[i-1;j;k],iPresPIU) = pI
+
+          alpha = invdr*(m_rc(i,level) - m_rc(i-2,level))
+          rhoI = (1.0D0-alpha)*rhoI1+alpha*rhoI2
+          pI   = (1.0D0-alpha)*pI1+alpha*pI2
+
+          rho  = max(U(CHF_IX[i;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+          if (pI .ge. p2-smallp) then
+              pI = p2-smallp
+          endif
+          U(CHF_IX[i;j;k],iRhoPIU)  = rhoI
+          U(CHF_IX[i;j;k],iPresPIU) = pI
+
+          rho  = max(U(CHF_IX[i+1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i+1;j;k],UMOMX)
+          rv   = U(CHF_IX[i+1;j;k],UMOMY)
+          rw   = U(CHF_IX[i+1;j;k],UMOMZ)
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i+1;j;k],UBX)
+          by   = U(CHF_IX[i+1;j;k],UBY)
+          bz   = U(CHF_IX[i+1;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i+1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+          if (pI2 .ge. p2-smallp) then
+              pI2 = p2-smallp
+          endif
+
+          U(CHF_IX[i+1;j;k],iRhoPIU)  = rhoI2
+          U(CHF_IX[i+1;j;k],iPresPIU) = pI2
+        endif
+      CHF_ENDDO
+      return    
+      end
+
+! shock BCs assuming thermal SW conserves entropy across TS
+! this forces all heat to be gained by the PUIs
+! only shock BC method to work reasonably well so far
+      subroutine ZANKSCATTER( CHF_CONST_FRA[W],
+     &                          CHF_FRA[U],
+     &                          CHF_CONST_INT[iRhoPIW],
+     &                          CHF_CONST_INT[iRhoPIU],
+     &                          CHF_CONST_FIA1[boundary],
+     &                          CHF_CONST_FRA[normal],
+     &                          CHF_BOX[box],
+     &                          CHF_CONST_INT[level],
+     &                          CHF_USE[SphericalData])
+
+#include "EosCommon.fh"
+            
+      integer CHF_DDECL[i;j;k]
+      integer dr, iPresPIW, iPresPIU
+      real_t rho1, rho2, rhoI1, rhoI2, rhoI, rho
+      real_t p1, p2, pI1, pI2, pI, p
+      real_t s, g, invdr, alpha
+      real_t ru, rv, rw, invrho, uu, vv, ww, ke, bx, by, bz, b
+      
+      iPresPIW = iRhoPIW + 1
+      iPresPIU = iRhoPIU + 1
+
+      CHF_MULTIDO[box;i;j;k]
+        if (boundary(CHF_IX[i;j;k]) .eq. 1) then      
+          rho1 = max(U(CHF_IX[i-2;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-2;j;k],UMOMX)
+          rv   = U(CHF_IX[i-2;j;k],UMOMY)
+          rw   = U(CHF_IX[i-2;j;k],UMOMZ)
+          invrho = one / rho1
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i-2;j;k],UBX)
+          by   = U(CHF_IX[i-2;j;k],UBY)
+          bz   = U(CHF_IX[i-2;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p1   = hgamma*(U(CHF_IX[i-2;j;k],UENG) - half*(ke + b))
+          p1   = max(p1, smallp)
+
+          rho2 = max(U(CHF_IX[i+1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i+1;j;k],UMOMX)
+          rv   = U(CHF_IX[i+1;j;k],UMOMY)
+          rw   = U(CHF_IX[i+1;j;k],UMOMZ)
+          invrho = one / rho2
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i+1;j;k],UBX)
+          by   = U(CHF_IX[i+1;j;k],UBY)
+          bz   = U(CHF_IX[i+1;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i+1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+
+          invdr = m_rc(i+1,level) - m_rc(i-2,level)
+          invdr = 1.0D0/invdr
+
+          s = rho2/rho1
+
+          rhoI1 = U(CHF_IX[i-2;j;k],iRhoPIU)
+          rhoI2 = s*rhoI1
+
+          if (rhoI2 .ge. (rho2-smallr)) then
+              rhoI2 = rho2-smallr
+          endif
+
+          pI1 = U(CHF_IX[i-2;j;k],iPresPIU)
+! no superthermal electrons (newVVTP doesn't include superthermal electrons)
+          pI2 = p2-(s**gammaPI)*(p1-pI1)
+! below includes superthermal electrons (default)
+!          pI2 = half*(p2-(s**gammaPI)*(p1-two*pI1))
+
+!          if (pI2 .ge. (p2-smallp)) then  
+!              pI2 = p2-smallp
+!          endif
+!          pI2 = min(pI2,half*p2)
+
+          rho  = max(U(CHF_IX[i-1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-1;j;k],UMOMX)
+          rv   = U(CHF_IX[i-1;j;k],UMOMY)
+          rw   = U(CHF_IX[i-1;j;k],UMOMZ)
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i-1;j;k],UBX)
+          by   = U(CHF_IX[i-1;j;k],UBY)
+          bz   = U(CHF_IX[i-1;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i-1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+
+!interpolate PI density and then use constant entropy condition to calculate PI pressure
+          alpha= invdr*(m_rc(i-1,level) - m_rc(i-2,level))
+          rhoI = (1.0D0-alpha)*rhoI1+alpha*rhoI2
+!          pI   = (1.0D0-alpha)*pI1+alpha*pI2
+          pI   = p2-(((rho-rhoI)/(rho1-rhoI1))**gammaPI)*(p1-pI1)
+
+!          if (pI .ge. p2-smallp) then
+!              pI = p2-smallp
+!          endif
+!          pI = min(pI,half*p2-smallp)
+!          pI = p2/p1*pI1     ! commenting out, not in old version
+
+          U(CHF_IX[i-1;j;k],iRhoPIU)  = rhoI
+          U(CHF_IX[i-1;j;k],iPresPIU) = pI
+
+          rho  = max(U(CHF_IX[i;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+
+!interpolate PI density and then use constant entropy condition to calculate PI pressure
+          alpha = invdr*(m_rc(i,level) - m_rc(i-2,level))
+          rhoI = (1.0D0-alpha)*rhoI1+alpha*rhoI2
+!          pI   = (1.0D0-alpha)*pI1+alpha*pI2
+          pI   = p2-(((rho-rhoI)/(rho1-rhoI1))**gammaPI)*(p1-pI1)
+
+!          if (pI .ge. p2-smallp) then
+!              pI = p2-smallp
+!          endif
+!          pI = min(pI,half*p2-smallp)
+!          pI = p2/p1*pI1     !commented out, not in old version
+
+          U(CHF_IX[i;j;k],iRhoPIU)  = rhoI
+          U(CHF_IX[i;j;k],iPresPIU) = pI
+
+          U(CHF_IX[i+1;j;k],iRhoPIU)  = rhoI2
+          U(CHF_IX[i+1;j;k],iPresPIU) = pI2
+        endif
+      CHF_ENDDO
+      return    
+      end
+
+!same as above, but instead of interpolating make PUI pressure
+!increase at the same rate as thermal pressure
+!needs work, the right thing to do is follow streamlines      
+      subroutine ZANKSCATTER2( CHF_CONST_FRA[W],
+     &                          CHF_FRA[U],
+     &                          CHF_CONST_INT[iRhoPIW],
+     &                          CHF_CONST_INT[iRhoPIU],
+     &                          CHF_CONST_FIA1[boundary],
+     &                          CHF_CONST_FRA[normal],
+     &                          CHF_BOX[box],
+     &                          CHF_CONST_INT[level],
+     &                          CHF_USE[SphericalData])
+
+#include "EosCommon.fh"
+            
+      integer CHF_DDECL[i;j;k]
+      integer dr, iPresPIW, iPresPIU
+      real_t rho1, rho2, rhoI1, rhoI2, rhoI, rho
+      real_t p1, p2, pI1, pI2, pI, p, p2m
+      real_t s, g, invdr, alpha
+      real_t ru, rv, rw, invrho, uu, vv, ww, ke, bx, by, bz, b
+      
+      iPresPIW = iRhoPIW + 1
+      iPresPIU = iRhoPIU + 1
+
+      CHF_MULTIDO[box;i;j;k]
+        if (boundary(CHF_IX[i;j;k]) .eq. 1) then      
+          rho1 = max(U(CHF_IX[i-2;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-2;j;k],UMOMX)
+          rv   = U(CHF_IX[i-2;j;k],UMOMY)
+          rw   = U(CHF_IX[i-2;j;k],UMOMZ)
+          invrho = one / rho1
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i-2;j;k],UBX)
+          by   = U(CHF_IX[i-2;j;k],UBY)
+          bz   = U(CHF_IX[i-2;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p1   = hgamma*(U(CHF_IX[i-2;j;k],UENG) - half*(ke + b))
+          p1   = max(p1, smallp)
+
+          rho2 = max(U(CHF_IX[i-1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-1;j;k],UMOMX)
+          rv   = U(CHF_IX[i-1;j;k],UMOMY)
+          rw   = U(CHF_IX[i-1;j;k],UMOMZ)
+          invrho = one / rho2
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i-1;j;k],UBX)
+          by   = U(CHF_IX[i-1;j;k],UBY)
+          bz   = U(CHF_IX[i-1;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i-1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+
+          s = rho2/rho1
+
+          rhoI1 = U(CHF_IX[i-2;j;k],iRhoPIU)
+          rhoI2 = s*rhoI1
+
+          pI1 = U(CHF_IX[i-2;j;k],iPresPIU)
+          pI2 = p2-(s**gammaPI)*(p1-2.0D0*pI1)
+          pI2 = 0.5D0*pI2
+          
+          U(CHF_IX[i-1;j;k],iRhoPIU)  = rhoI2
+          U(CHF_IX[i-1;j;k],iPresPIU) = pI2
+
+          rho1  = rho2
+          p1    = p2
+          rhoI1 = rhoI2
+          pI1   = pI2
+
+          rho2  = max(U(CHF_IX[i;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+
+          s     = rho2/rho1
+          rhoI2 = s*rhoI1
+          pI2   = p2-(s**gammaPI)*(p1-2.0D0*pI1)
+          pI2   = 0.5D0*pI2
+          
+          U(CHF_IX[i;j;k],iRhoPIU)  = rhoI2
+          U(CHF_IX[i;j;k],iPresPIU) = pI2
+
+          rho1  = rho2
+          p1    = p2
+          rhoI1 = rhoI2
+          pI1   = pI2
+          
+          rho2 = max(U(CHF_IX[i+1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i+1;j;k],UMOMX)
+          rv   = U(CHF_IX[i+1;j;k],UMOMY)
+          rw   = U(CHF_IX[i+1;j;k],UMOMZ)
+          invrho = one / rho2
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i+1;j;k],UBX)
+          by   = U(CHF_IX[i+1;j;k],UBY)
+          bz   = U(CHF_IX[i+1;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i+1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+
+          s     = rho2/rho1
+          rhoI2 = s*rhoI1
+          pI2   = p2-(s**gammaPI)*(p1-2.0D0*pI1)
+          pI2   = 0.5D0*pI2
+
+          U(CHF_IX[i+1;j;k],iRhoPIU)  = rhoI2
+          U(CHF_IX[i+1;j;k],iPresPIU) = pI2
+        endif
+      CHF_ENDDO
+      return    
+      end
+
+! Florinski method of integrating distribution function across TS
+! got this from Shirley (Yihong Wu), also doesn't really work
+      subroutine FLORSCATTER( CHF_CONST_FRA[W],
+     &                          CHF_FRA[U],
+     &                          CHF_CONST_INT[iRhoPIW],
+     &                          CHF_CONST_INT[iRhoPIU],
+     &                          CHF_CONST_FIA1[boundary],
+     &                          CHF_CONST_FRA[normal],
+     &                          CHF_BOX[box],
+     &                          CHF_CONST_INT[level],
+     &                          CHF_USE[SphericalData])
+
+#include "EosCommon.fh"
+            
+      integer CHF_DDECL[i;j;k]
+      integer dr, iPresPIW, iPresPIU
+      real_t rho1, rho2, rhoI1, rhoI2, rhoI, rho
+      real_t p1, p2, pI1, pI2, pI, p
+      real_t s, g, invdr, alpha
+      real_t ru, rv, rw, invrho, uu, vv, ww, ke, bx, by, bz, b
+      
+      iPresPIW = iRhoPIW + 1
+      iPresPIU = iRhoPIU + 1
+
+      CHF_MULTIDO[box;i;j;k]
+        if (boundary(CHF_IX[i;j;k]) .eq. 1) then      
+          rho1 = max(U(CHF_IX[i-2;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-2;j;k],UMOMX)
+          rv   = U(CHF_IX[i-2;j;k],UMOMY)
+          rw   = U(CHF_IX[i-2;j;k],UMOMZ)
+          invrho = one / rho1
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i-2;j;k],UBX)
+          by   = U(CHF_IX[i-2;j;k],UBY)
+          bz   = U(CHF_IX[i-2;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p1   = hgamma*(U(CHF_IX[i-2;j;k],UENG) - half*(ke + b))
+          p1   = max(p1, smallp)
+
+          rho2 = max(U(CHF_IX[i+1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i+1;j;k],UMOMX)
+          rv   = U(CHF_IX[i+1;j;k],UMOMY)
+          rw   = U(CHF_IX[i+1;j;k],UMOMZ)
+          invrho = one / rho2
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i+1;j;k],UBX)
+          by   = U(CHF_IX[i+1;j;k],UBY)
+          bz   = U(CHF_IX[i+1;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i+1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+
+          invdr = m_rc(i+1,level) - m_rc(i-2,level)
+          invdr = 1.0D0/invdr
+
+          s = rho2/rho1
+
+          rhoI1 = U(CHF_IX[i-2;j;k],iRhoPIU)
+          rhoI2 = s*rhoI1
+
+          if (rhoI2 .ge. (rho2-smallr)) then
+              rhoI2 = rho2-smallr
+          endif
+
+          pI1 = U(CHF_IX[i-2;j;k],iPresPIU)
+          pI2 = (s**gammaPI)*pI1
+
+          if (pI2 .ge. (p2-smallp)) then
+              pI2 = p2-smallp
+          endif
+!interpolate PI pressure but don't let it become greater than ptot
+          alpha= invdr*(m_rc(i-1,level) - m_rc(i-2,level))
+          rhoI = (1.0D0-alpha)*rhoI1+alpha*rhoI2
+          pI   = (1.0D0-alpha)*pI1+alpha*pI2
+
+          rho  = max(U(CHF_IX[i-1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-1;j;k],UMOMX)
+          rv   = U(CHF_IX[i-1;j;k],UMOMY)
+          rw   = U(CHF_IX[i-1;j;k],UMOMZ)
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i-1;j;k],UBX)
+          by   = U(CHF_IX[i-1;j;k],UBY)
+          bz   = U(CHF_IX[i-1;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i-1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+          if (pI .ge. p2-smallp) then
+              pI = p2-smallp
+          endif
+          U(CHF_IX[i-1;j;k],iRhoPIU)  = rhoI
+          U(CHF_IX[i-1;j;k],iPresPIU) = pI
+
+          alpha = invdr*(m_rc(i,level) - m_rc(i-2,level))
+          rhoI = (1.0D0-alpha)*rhoI1+alpha*rhoI2
+          pI   = (1.0D0-alpha)*pI1+alpha*pI2
+
+          rho  = max(U(CHF_IX[i;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          invrho = one / rho
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          p2   = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+          if (pI .ge. p2-smallp) then
+              pI = p2-smallp
+          endif
+          U(CHF_IX[i;j;k],iRhoPIU)  = rhoI
+          U(CHF_IX[i;j;k],iPresPIU) = pI
+
+          U(CHF_IX[i+1;j;k],iRhoPIU)  = rhoI2
+          U(CHF_IX[i+1;j;k],iPresPIU) = pI2
+        endif
+      CHF_ENDDO
+      return    
+      end
+
+! -----------------------------------------------------------------------------------
+! shock PUI BCs using analytical expression, extracted from Gedalin's papaer by interpolating table 
+
+      subroutine VADIMBC( CHF_CONST_FRA[W],
+     &                          CHF_FRA[U],
+     &                          CHF_CONST_INT[iRhoPIW],
+     &                          CHF_CONST_INT[iRhoPIU],
+     &                          CHF_CONST_FIA1[boundary],
+     &                          CHF_CONST_FRA[normal],
+     &                          CHF_BOX[box],
+     &                          CHF_CONST_INT[level],
+     &                          CHF_USE[SphericalData])
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+            
+      integer CHF_DDECL[i;j;k]
+      integer dr, iPresPIW, iPresPIU
+      real_t rho0, rho1, rho2, rho3, rho4, rho5, rho6, rho7
+      real_t rhoI0, rhoI1, rhoI2, rhoI3, rhoI4, rhoI5, rhoI6, rhoI7, rhoI
+      real_t pI0, pI1, pI2, pI3, pI4, pI5,  p0, p1, p2, p3, p4, p5, p6 , p7
+      real_t s, s2, s3, s4, g, invdr, alpha
+      real_t ru, rv, rw, invrho, uu, vv, ww, ke, bx, by, bz, b
+      real_t rhou, V_u, V_n, V_n1, V_n2, nx, ny, nz, tx, ty, tz
+      real_t v0x, v0y, v0z, b0x, b0y, b0z
+      real_t v1x, v1y, v1z, b1x, b1y, b1z
+      real_t v2x, v2y, v2z, b2x, b2y, b2z
+      real_t v3x, v3y, v3z, b3x, b3y, b3z
+      real_t v4x, v4y, v4z, b4x, b4y, b4z
+      real_t v5x, v5y, v5z, b5x, b5y, b5z
+      real_t v6x, v6y, v6z, b6x, b6y, b6z
+      real_t v7x, v7y, v7z, b7x, b7y, b7z
+      real_t dvx, dvy, dvz, dbx, dby, dbz, b1inv, ninv
+      real_t Press1, Press2, Mach
+      real_t pdiff0, pdiff1, pdiff2, pdiff3, pdiff4, pdiff5, deltaR, Temp_d
+      real_t pRatio0, pRatio1, M_Alf, pmag1, beta_u
+
+      real_t x, y ,z
+      real_t f_nPUI, R_axis, phi_axis, theta_axis
+      real_t sinF, cosF, sinT, cosT
+
+      real_t rhodvx, rhodvy, rhodvz
+      real_t m1, m2, p_pui_p_tot_d, T_pui_T_tot_d, func
+
+      real_t Temp_iso_3, Temp_iso_2, Temp_iso_1
+
+      !coeffficients for analytical formula 
+      real_t thetaBn, Bd, Bu, BdBu, ndnu
+      real_t p00, p10, p01, p20, p02, p30, p03, p11, p21, p22, p12
+      real_t p40, p04, p31, p13, p50, p41, p14,p32, p23, p05
+      real_t Temp_perp_Gedalin, vthsq_u, vthsq_d, Temp      
+      real_t Temp_iso, Temp_iso_vadim_sim
+
+      iPresPIW = iRhoPIW + 1
+      iPresPIU = iRhoPIU + 1  
+
+
+      CHF_MULTIDO[box;i;j;k]
+        if (boundary(CHF_IX[i;j;k]) .eq. 1) then
+      
+
+!------- i-2 upstream quantities
+!upstream cell          
+        
+          rho1 = max(U(CHF_IX[i-2;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-2;j;k],UMOMX)
+          rv   = U(CHF_IX[i-2;j;k],UMOMY)
+          rw   = U(CHF_IX[i-2;j;k],UMOMZ)
+          invrho = one / rho1
+          uu  = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b1x   = U(CHF_IX[i-2;j;k],UBX)
+          b1y   = U(CHF_IX[i-2;j;k],UBY)
+          b1z   = U(CHF_IX[i-2;j;k],UBZ)
+          b    = d_1_4PI*(b1x*b1x + b1y*b1y + b1z*b1z)
+          p1   = hgamma*(U(CHF_IX[i-2;j;k],UENG) - half*(ke + b))
+          p1   = max(p1, smallp)
+          
+          v1x = W(CHF_IX[i-2;j;k],WVELX)
+          v1y = W(CHF_IX[i-2;j;k],WVELY)
+          v1z = W(CHF_IX[i-2;j;k],WVELZ)
+
+          rhoI1 = U(CHF_IX[i-2;j;k],iRhoPIU)
+
+!----- i+1 downstream quantities
+!downstream cell
+
+          rho2 = max(U(CHF_IX[i+1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i+1;j;k],UMOMX)
+          rv   = U(CHF_IX[i+1;j;k],UMOMY)
+          rw   = U(CHF_IX[i+1;j;k],UMOMZ)
+          invrho = one / rho2
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b2x   = U(CHF_IX[i+1;j;k],UBX)
+          b2y   = U(CHF_IX[i+1;j;k],UBY)
+          b2z   = U(CHF_IX[i+1;j;k],UBZ)
+          b    = d_1_4PI*(b2x*b2x + b2y*b2y + b2z*b2z)
+          p2   = hgamma*(U(CHF_IX[i+1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+          
+          v2x = W(CHF_IX[i+1;j;k],WVELX)
+          v2y = W(CHF_IX[i+1;j;k],WVELY)
+          v2z = W(CHF_IX[i+1;j;k],WVELZ)           
+
+          rhoI2 = U(CHF_IX[i+1;j;k],iRhoPIU)
+
+!----- i-shock location quantities
+
+          rho3 = max(U(CHF_IX[i;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          invrho = one / rho3
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b3x   = U(CHF_IX[i;j;k],UBX)
+          b3y   = U(CHF_IX[i;j;k],UBY)
+          b3z   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(b3x*b3x + b3y*b3y + b3z*b3z)
+          p3   = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p3   = max(p3, smallp)
+          
+          rhoI3 = U(CHF_IX[i;j;k],iRhoPIU)
+
+
+!----- i-1 -shock location quantities
+
+          rho4 = max(U(CHF_IX[i-1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-1;j;k],UMOMX)
+          rv   = U(CHF_IX[i-1;j;k],UMOMY)
+          rw   = U(CHF_IX[i-1;j;k],UMOMZ)
+          invrho = one / rho4
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b4x   = U(CHF_IX[i-1;j;k],UBX)
+          b4y   = U(CHF_IX[i-1;j;k],UBY)
+          b4z   = U(CHF_IX[i-1;j;k],UBZ)
+          b    = d_1_4PI*(b4x*b4x + b4y*b4y + b4z*b4z)
+          p4   = hgamma*(U(CHF_IX[i-1;j;k],UENG) - half*(ke + b))
+          p4   = max(p4, smallp)
+          
+          rhoI4 = U(CHF_IX[i-1;j;k],iRhoPIU)
+
+!------- i-3 upstream quantities
+
+          rho5 = max(U(CHF_IX[i-3;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-3;j;k],UMOMX)
+          rv   = U(CHF_IX[i-3;j;k],UMOMY)
+          rw   = U(CHF_IX[i-3;j;k],UMOMZ)
+          invrho = one / rho5
+          uu  = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b5x   = U(CHF_IX[i-3;j;k],UBX)
+          b5y   = U(CHF_IX[i-3;j;k],UBY)
+          b5z   = U(CHF_IX[i-3;j;k],UBZ)
+          b    = d_1_4PI*(b5x*b5x + b5y*b5y + b5z*b5z)
+          p5   = hgamma*(U(CHF_IX[i-3;j;k],UENG) - half*(ke + b))
+          p5   = max(p5, smallp)
+
+          v5x = W(CHF_IX[i-3;j;k],WVELX)
+          v5y = W(CHF_IX[i-3;j;k],WVELY)
+          v5z = W(CHF_IX[i-3;j;k],WVELZ)
+
+          rhoI5 = U(CHF_IX[i-3;j;k],iRhoPIU)
+
+
+!-----calculation of i-4 -shock location quantities
+
+          rho6 = max(U(CHF_IX[i-4;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-4;j;k],UMOMX)
+          rv   = U(CHF_IX[i-4;j;k],UMOMY)
+          rw   = U(CHF_IX[i-4;j;k],UMOMZ)
+          invrho = one / rho6
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b6x   = U(CHF_IX[i-4;j;k],UBX)
+          b6y   = U(CHF_IX[i-4;j;k],UBY)
+          b6z   = U(CHF_IX[i-4;j;k],UBZ)
+          b    = d_1_4PI*(b6x*b6x + b6y*b6y + b6z*b6z)
+          p6   = hgamma*(U(CHF_IX[i-4;j;k],UENG) - half*(ke + b))
+          p6   = max(p6, smallp)
+
+          v6x = W(CHF_IX[i-4;j;k],WVELX)
+          v6y = W(CHF_IX[i-4;j;k],WVELY)
+          v6z = W(CHF_IX[i-4;j;k],WVELZ)
+
+          rhoI6 = U(CHF_IX[i-4;j;k],iRhoPIU)
+
+
+!----- i+2 downstream quantities
+!downstream cell
+
+          rho7 = max(U(CHF_IX[i+2;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i+2;j;k],UMOMX)
+          rv   = U(CHF_IX[i+2;j;k],UMOMY)
+          rw   = U(CHF_IX[i+2;j;k],UMOMZ)
+          invrho = one / rho7
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b7x   = U(CHF_IX[i+2;j;k],UBX)
+          b7y   = U(CHF_IX[i+2;j;k],UBY)
+          b7z   = U(CHF_IX[i+2;j;k],UBZ)
+          b    = d_1_4PI*(b7x*b7x + b7y*b7y + b7z*b7z)
+          p7   = hgamma*(U(CHF_IX[i+2;j;k],UENG) - half*(ke + b))
+          p7   = max(p7, smallp)
+
+          v7x = W(CHF_IX[i+2;j;k],WVELX)
+          v7y = W(CHF_IX[i+2;j;k],WVELY)
+          v7z = W(CHF_IX[i+2;j;k],WVELZ)
+
+          rhoI7 = U(CHF_IX[i+2;j;k],iRhoPIU)
+
+!============================================================
+          Bu  = sqrt(b1x*b1x + b1y*b1y + b1z*b1z) !upstream magnetic field
+          Bd  = sqrt(b2x*b2x + b2y*b2y + b2z*b2z) !downstream magnetic field 
+
+!========================================================
+!--------Shock normal quantities calculation ---------      
+!n = (B1 X (v2 -v1)) X (B2-B1)
+
+          dvx = v2x-v1x
+          dvy = v2y-v1y
+          dvz = v2z-v1z
+
+          dbx = b2x-b1x
+          dby = b2y-b1y
+          dbz = b2z-b1z
+
+          b1inv = 1.0/sqrt(b1x*b1x+b1y*b1y+b1z*b1z)
+
+          b1x = b1x*b1inv
+          b1y = b1y*b1inv
+          b1z = b1z*b1inv
+
+          tx = b1y*dvz-b1z*dvy
+          ty = b1z*dvx-b1x*dvz
+          tz = b1x*dvy-b1y*dvx
+
+          nx = ty*dbz-tz*dby
+          ny = tz*dbx-tx*dbz
+          nz = tx*dby-ty*dbx
+
+          ninv = 1/sqrt(nx*nx+ny*ny+nz*nz)
+
+          nx = nx*ninv
+          ny = ny*ninv
+          nz = nz*ninv
+          
+         
+!----------------------------------- 
+          thetaBn = (180.0D0/3.1416D0)*acos(abs(b1x*nx+b1y*ny+b1z*nz))  !magnetic shock angle in degree
+          BdBu = Bd/Bu !magntic compression
+
+!--------shock parametr calculation -------
+
+          f_nPUI = rhoI1/ (rho1 - rhoI1)            ! density ratio of PUI and SW
+          V_u = sqrt(v1x*v1x + v1y*v1y + v1z*v1z)   ! Velocity magnitude upstream
+          M_Alf = V_u/(Bu/sqrt(4*3.1416*rho1))      ! Alfven Mach number
+          ndnu = rho2/rho1                          ! density compression
+          
+          pmag1 = Bu*Bu/(8*3.1416)                  ! upstream mag press
+          beta_u = p1/pmag1                         ! upstream plasma beta
+
+!=================================================================
+!calculating  theta, r, phi co-ordinates  on TS surface
+        
+!spherical co-ordinate values at the cell centers
+          R_axis =  m_rc(i,level)          !radius
+          sinF =    m_phic(j,ISIN,level)   !sin(phi)
+          cosF =    m_phic(j,ICOS,level)   !cos(phi)
+          sinT =    m_thetac(k,ISIN,level) !sin(theta)
+          cosT =    m_thetac(k,ICOS,level) !cos(theta)
+
+! calculation of phi and theta from sinF, cosF, sinT, cosT
+          if(sinF .ge. 0.0D0)then
+            phi_axis    =  (180.0D0/3.1416D0)*acos(cosF)    !in degree
+          else
+            phi_axis    =  (180.0D0/3.1416D0)*(-acos(cosF) + 2*3.1416D0)  
+          endif
+
+          if(sinT .ge. 0.0D0)then
+            theta_axis    =  (180.0D0/3.1416D0)*acos(cosT)    !in degree
+          else
+            theta_axis    =  (180.0D0/3.1416D0)*(- acos(cosT) + 2*3.1416D0)
+          endif
+
+!===================================================================
+!correction on poles for havingbad values and small magntic field
+!
+!          if (theta_axis .le. 10.0D0) then
+!             thetaBn = 75.0D0
+!             BdBu = 3.5D0
+!          endif
+!
+!          if (theta_axis .ge. 170.0D0) then
+!             thetaBn = 74.0D0
+!             BdBu = 3.5D0
+!          endif
+
+!===================================================================
+! -----print values---------------        
+
+!         write(*,101) R_axis, phi_axis, theta_axis, thetaBn, BdBu, f_nPUI, M_Alf, ndnu, beta_u
+!101      format(9f13.4)
+
+
+!================================================================== 
+! PUI density correction --> using same density compression of mixture density
+         
+          s2 = rho2/rho1 
+          rhoI2 = s2*rhoI1
+
+          s3 = rho3/rho1
+          rhoI3 = s3*rhoI1
+ 
+          s4 = rho4/rho1
+          rhoI4 = s4*rhoI1
+
+          if (rhoI2 .ge. (rho2-smallr)) then
+              rhoI2 = rho2-smallr
+          endif
+
+          if (rhoI3 .ge. (rho3-smallr)) then
+              rhoI3 = rho3-smallr
+          endif
+
+          if (rhoI4 .ge. (rho4-smallr)) then
+              rhoI4 = rho4-smallr
+          endif
+
+!--------------------------
+!PUI pressure correction at upstream cell i-2 using i-3
+
+          pI5 = U(CHF_IX[i-3;j;k],iPresPIU)
+          pdiff5 = p5 - pI5
+          
+          pI1 = U(CHF_IX[i-2;j;k],iPresPIU)
+          pdiff1  = p1 - pI1
+           
+
+          if (pdiff1 .le. pdiff5 ) then          
+             pI1 = p1 - pdiff5
+          endif         
+
+          U(CHF_IX[i-2;j;k],iPresPIU) = pI1
+
+
+!---------------------------------
+! Vadim's temperature profile from new table --> Td_pui/Tu_pui = f(M_Alf, beta_u) for different thetaBn)
+!coefficent values of polynomial
+
+          x = M_Alf
+          y = beta_u 
+
+
+          if(x .ge. 25) then
+             x = 25
+          endif
+
+         if (y .ge. 50) then
+             y = 50
+         endif
+
+         if (thetaBn .le. 75.0D0) then
+            thetaBn = 75.0D0
+         endif
+
+!--------------------------------
+!function for theta_Bn = 87 degree
+
+        p00 =       1.323;
+        p10 =      0.6256;
+        p01 =     -0.4073;
+        p20 =     -0.0181;
+        p11 =     0.01496;
+
+
+         Temp_iso_1 = p00 + p10*x + p01*y + p20*x**2 + p11*x*y
+
+
+!function for theta_Bn = 80 degree
+
+        p00 =       1.137;
+        p10 =      0.7026;
+        p01 =     -0.4685;
+        p20 =    -0.02123;
+        p11 =      0.0177;
+
+        Temp_iso_2 = p00 + p10*x + p01*y + p20*x**2 + p11*x*y
+
+
+!function for theta_Bn = 70 degree
+
+         p00 =       1.185 ;
+         p10 =      0.7049;
+         p01 =     -0.4705 ;
+         p20 =    -0.02106 ;
+         p11 =     0.01751;
+         
+         Temp_iso_3 = p00 + p10*x + p01*y + p20*x**2 + p11*x*y
+
+        
+!------------------------
+           if (thetaBn .ge. 80.0D0) then
+               s = (Temp_iso_1 - Temp_iso_2)/(87-80)
+               Temp_iso = Temp_iso_2 + s* (thetaBn - 80)
+           else
+               s = (Temp_iso_2 - Temp_iso_3)/(80-70)
+               Temp_iso = Temp_iso_3 + s* (thetaBn - 70)
+           endif
+
+          if (Temp_iso .le. 0.0D0) then
+             print*, "Temp_iso:", Temp_iso
+             print*, "beta_u:", y
+             print*, "M_A:", x
+             print*, "thetaBn:", thetaBn
+             call exit(123)
+          endif     
+
+!-------------------------------------
+!normalization factor
+          vthsq_u = 2.0D0*pI1/rhoI1 
+
+          vthsq_d = vthsq_u*Temp_iso
+          pI2 = 0.5D0*rhoI2*vthsq_d   !pressure at downstream
+
+!------------------------------------------
+          if (pI2 .ge. (p2 - smallp) ) then
+             pI2 = 0.99*p2
+          endif
+
+!================================================
+!updating i+1 cell
+          U(CHF_IX[i+1;j;k],iRhoPIU)  = rhoI2
+          U(CHF_IX[i+1;j;k],iPresPIU) = pI2           
+!-----------------------------------------
+!updating PUI pressure at i, and i-1     
+
+!interpolation of pressure difference         
+          pdiff1 = p1 - pI1
+          pdiff2 = p2 - pI2
+          deltaR = (m_rc(i+1,level) - m_rc(i-2,level))
+          s = (pdiff2 - pdiff1)/deltaR
+
+!updating i-1 cell-----------
+          pdiff4 = pdiff1 + s*(m_rc(i-1,level) - m_rc(i-2,level))
+          pI4 = p4 - pdiff4
+
+          if (pI4 .le. pI1) then
+              pI4 = p4 - pdiff1
+          endif
+
+          U(CHF_IX[i-1;j;k],iRhoPIU)  = rhoI4
+          U(CHF_IX[i-1;j;k],iPresPIU) = pI4
+
+
+!updating i cell----------
+          pdiff3 = pdiff1 + s*(m_rc(i,level) - m_rc(i-2,level))
+          pI3 = p3 - pdiff3
+
+          if (pI3 .le. pI4) then
+              pdiff4 = p4 - pI4
+              pI3 = p3 - pdiff4
+          endif
+
+          U(CHF_IX[i;j;k],iRhoPIU)  = rhoI3
+          U(CHF_IX[i;j;k],iPresPIU) = pI3
+
+!-----------------------------------
+
+        endif
+      CHF_ENDDO
+
+
+      return    
+      end
+
+!=======================================================================
+
+
+
+!***********************************************************************
+! TS-PUI BCs using table directly --> given by Vadim from hybrid Sim
+!***********************************************************************
+
+      subroutine VADIMBC_TABLE( CHF_CONST_FRA[W],
+     &                          CHF_FRA[U],
+     &                          CHF_CONST_INT[iRhoPIW],
+     &                          CHF_CONST_INT[iRhoPIU],
+     &                          CHF_CONST_FIA1[boundary],
+     &                          CHF_CONST_FRA[normal],
+     &                          CHF_BOX[box],
+     &                          CHF_CONST_INT[level],
+     &                          CHF_USE[SphericalData])
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+      integer CHF_DDECL[i;j;k]
+      integer dr, iPresPIW, iPresPIU
+      real_t rho0, rho1, rho2, rho3, rho4, rho5, rho6, rho7
+      real_t rhoI0, rhoI1, rhoI2, rhoI3, rhoI4, rhoI5, rhoI6, rhoI7, rhoI
+      real_t pI0, pI1, pI2, pI3, pI4, pI5,  p0, p1, p2, p3, p4, p5, p6 , p7
+      real_t s, s2, s3, s4, g, invdr, alpha
+      real_t ru, rv, rw, invrho, uu, vv, ww, ke, bx, by, bz, b
+      real_t rhou, V_u, V_n, V_n1, V_n2, nx, ny, nz, tx, ty, tz
+      real_t v0x, v0y, v0z, b0x, b0y, b0z
+      real_t v1x, v1y, v1z, b1x, b1y, b1z
+      real_t v2x, v2y, v2z, b2x, b2y, b2z
+      real_t v3x, v3y, v3z, b3x, b3y, b3z
+      real_t v4x, v4y, v4z, b4x, b4y, b4z
+      real_t v5x, v5y, v5z, b5x, b5y, b5z
+      real_t v6x, v6y, v6z, b6x, b6y, b6z
+      real_t v7x, v7y, v7z, b7x, b7y, b7z
+      real_t dvx, dvy, dvz, dbx, dby, dbz, b1inv, ninv
+      real_t Press1, Press2, Mach_u
+      real_t pdiff0, pdiff1, pdiff2, pdiff3, pdiff4, pdiff5, deltaR, Temp_d
+      real_t pRatio0, pRatio1, M_Alf, pmag1, beta_u
+
+      real_t x, y ,z
+      real_t f_nPUI, R_axis, phi_axis, theta_axis
+      real_t sinF, cosF, sinT, cosT
+
+      real_t Tratio_87, Tratio_80, Tratio_70
+
+      real_t thetaBn, Bd, Bu, BdBu, ndnu
+      real_t  vthsq_u, vthsq_d, Tratio
+
+      integer ii, jj, iMach, ibeta, ibeta_2
+
+      iPresPIW = iRhoPIW + 1
+      iPresPIU = iRhoPIU + 1
+
+
+      CHF_MULTIDO[box;i;j;k]
+        if (boundary(CHF_IX[i;j;k]) .eq. 1) then
+
+
+!------- i-2 upstream quantities
+!upstream cell
+
+          rho1 = max(U(CHF_IX[i-2;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-2;j;k],UMOMX)
+          rv   = U(CHF_IX[i-2;j;k],UMOMY)
+          rw   = U(CHF_IX[i-2;j;k],UMOMZ)
+          invrho = one / rho1
+          uu  = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b1x   = U(CHF_IX[i-2;j;k],UBX)
+          b1y   = U(CHF_IX[i-2;j;k],UBY)
+          b1z   = U(CHF_IX[i-2;j;k],UBZ)
+          b    = d_1_4PI*(b1x*b1x + b1y*b1y + b1z*b1z)
+          p1   = hgamma*(U(CHF_IX[i-2;j;k],UENG) - half*(ke + b))
+          p1   = max(p1, smallp)
+
+          v1x = W(CHF_IX[i-2;j;k],WVELX)
+          v1y = W(CHF_IX[i-2;j;k],WVELY)
+          v1z = W(CHF_IX[i-2;j;k],WVELZ)
+
+          rhoI1 = U(CHF_IX[i-2;j;k],iRhoPIU)
+
+!----- i+1 downstream quantities
+!downstream cell
+
+          rho2 = max(U(CHF_IX[i+1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i+1;j;k],UMOMX)
+          rv   = U(CHF_IX[i+1;j;k],UMOMY)
+          rw   = U(CHF_IX[i+1;j;k],UMOMZ)
+          invrho = one / rho2
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b2x   = U(CHF_IX[i+1;j;k],UBX)
+          b2y   = U(CHF_IX[i+1;j;k],UBY)
+          b2z   = U(CHF_IX[i+1;j;k],UBZ)
+          b    = d_1_4PI*(b2x*b2x + b2y*b2y + b2z*b2z)
+          p2   = hgamma*(U(CHF_IX[i+1;j;k],UENG) - half*(ke + b))
+          p2   = max(p2, smallp)
+
+          v2x = W(CHF_IX[i+1;j;k],WVELX)
+          v2y = W(CHF_IX[i+1;j;k],WVELY)
+          v2z = W(CHF_IX[i+1;j;k],WVELZ)
+
+          rhoI2 = U(CHF_IX[i+1;j;k],iRhoPIU)
+
+!----- i-shock location quantities
+
+          rho3 = max(U(CHF_IX[i;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          invrho = one / rho3
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b3x   = U(CHF_IX[i;j;k],UBX)
+          b3y   = U(CHF_IX[i;j;k],UBY)
+          b3z   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(b3x*b3x + b3y*b3y + b3z*b3z)
+          p3   = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p3   = max(p3, smallp)
+
+          rhoI3 = U(CHF_IX[i;j;k],iRhoPIU)
+
+
+!----- i-1 -shock location quantities
+
+          rho4 = max(U(CHF_IX[i-1;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-1;j;k],UMOMX)
+          rv   = U(CHF_IX[i-1;j;k],UMOMY)
+          rw   = U(CHF_IX[i-1;j;k],UMOMZ)
+          invrho = one / rho4
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b4x   = U(CHF_IX[i-1;j;k],UBX)
+          b4y   = U(CHF_IX[i-1;j;k],UBY)
+          b4z   = U(CHF_IX[i-1;j;k],UBZ)
+          b    = d_1_4PI*(b4x*b4x + b4y*b4y + b4z*b4z)
+          p4   = hgamma*(U(CHF_IX[i-1;j;k],UENG) - half*(ke + b))
+          p4   = max(p4, smallp)
+
+          rhoI4 = U(CHF_IX[i-1;j;k],iRhoPIU)
+
+!------- i-3 upstream quantities
+
+          rho5 = max(U(CHF_IX[i-3;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-3;j;k],UMOMX)
+          rv   = U(CHF_IX[i-3;j;k],UMOMY)
+          rw   = U(CHF_IX[i-3;j;k],UMOMZ)
+          invrho = one / rho5
+          uu  = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b5x   = U(CHF_IX[i-3;j;k],UBX)
+          b5y   = U(CHF_IX[i-3;j;k],UBY)
+          b5z   = U(CHF_IX[i-3;j;k],UBZ)
+          b    = d_1_4PI*(b5x*b5x + b5y*b5y + b5z*b5z)
+          p5   = hgamma*(U(CHF_IX[i-3;j;k],UENG) - half*(ke + b))
+          p5   = max(p5, smallp)
+
+          v5x = W(CHF_IX[i-3;j;k],WVELX)
+          v5y = W(CHF_IX[i-3;j;k],WVELY)
+          v5z = W(CHF_IX[i-3;j;k],WVELZ)
+
+          rhoI5 = U(CHF_IX[i-3;j;k],iRhoPIU)
+
+
+!-----calculation of i-4 -shock location quantities
+
+          rho6 = max(U(CHF_IX[i-4;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i-4;j;k],UMOMX)
+          rv   = U(CHF_IX[i-4;j;k],UMOMY)
+          rw   = U(CHF_IX[i-4;j;k],UMOMZ)
+          invrho = one / rho6
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b6x   = U(CHF_IX[i-4;j;k],UBX)
+          b6y   = U(CHF_IX[i-4;j;k],UBY)
+          b6z   = U(CHF_IX[i-4;j;k],UBZ)
+          b    = d_1_4PI*(b6x*b6x + b6y*b6y + b6z*b6z)
+          p6   = hgamma*(U(CHF_IX[i-4;j;k],UENG) - half*(ke + b))
+          p6   = max(p6, smallp)
+
+          v6x = W(CHF_IX[i-4;j;k],WVELX)
+          v6y = W(CHF_IX[i-4;j;k],WVELY)
+          v6z = W(CHF_IX[i-4;j;k],WVELZ)
+
+          rhoI6 = U(CHF_IX[i-4;j;k],iRhoPIU)
+
+
+!----- i+2 downstream quantities
+!downstream cell
+
+          rho7 = max(U(CHF_IX[i+2;j;k],URHO),smallr)
+          ru   = U(CHF_IX[i+2;j;k],UMOMX)
+          rv   = U(CHF_IX[i+2;j;k],UMOMY)
+          rw   = U(CHF_IX[i+2;j;k],UMOMZ)
+          invrho = one / rho7
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          ke   = ru*uu + rv*vv + rw*ww
+          b7x   = U(CHF_IX[i+2;j;k],UBX)
+          b7y   = U(CHF_IX[i+2;j;k],UBY)
+          b7z   = U(CHF_IX[i+2;j;k],UBZ)
+          b    = d_1_4PI*(b7x*b7x + b7y*b7y + b7z*b7z)
+          p7   = hgamma*(U(CHF_IX[i+2;j;k],UENG) - half*(ke + b))
+          p7   = max(p7, smallp)
+
+          v7x = W(CHF_IX[i+2;j;k],WVELX)
+          v7y = W(CHF_IX[i+2;j;k],WVELY)
+          v7z = W(CHF_IX[i+2;j;k],WVELZ)
+
+          rhoI7 = U(CHF_IX[i+2;j;k],iRhoPIU)
+
+!============================================================
+          Bu  = sqrt(b1x*b1x + b1y*b1y + b1z*b1z) !upstream magnetic field
+          Bd  = sqrt(b2x*b2x + b2y*b2y + b2z*b2z) !downstream magnetic field
+
+!========================================================
+!--------Shock normal calculation ---------
+!n = (B1 X (v2 -v1)) X (B2-B1)
+
+          dvx = v2x-v1x
+          dvy = v2y-v1y
+          dvz = v2z-v1z
+
+          dbx = b2x-b1x
+          dby = b2y-b1y
+          dbz = b2z-b1z
+
+          b1inv = 1.0/sqrt(b1x*b1x+b1y*b1y+b1z*b1z)
+
+          b1x = b1x*b1inv
+          b1y = b1y*b1inv
+          b1z = b1z*b1inv
+
+          tx = b1y*dvz-b1z*dvy
+          ty = b1z*dvx-b1x*dvz
+          tz = b1x*dvy-b1y*dvx
+
+          nx = ty*dbz-tz*dby
+          ny = tz*dbx-tx*dbz
+          nz = tx*dby-ty*dbx
+
+          ninv = 1/sqrt(nx*nx+ny*ny+nz*nz)
+
+          nx = nx*ninv
+          ny = ny*ninv
+          nz = nz*ninv
+
+!-----------------------------------
+          thetaBn = (180.0D0/3.1416D0)*acos(abs(b1x*nx+b1y*ny+b1z*nz))  !magnetic shock angle in degree
+          BdBu = Bd/Bu !magntic compression
+
+!--------shock parametr calculation -------
+          f_nPUI = rhoI1/ (rho1 - rhoI1)            ! density ratio of PUI and SW
+          V_u = sqrt(v1x*v1x + v1y*v1y + v1z*v1z)   ! Velocity magnitude upstream
+          Mach_u = V_u/(Bu/sqrt(4*3.1416*rho1))     ! Alfven Mach number
+          ndnu = rho2/rho1                          ! density compression
+
+          pmag1 = Bu*Bu/(8*3.1416)                  ! upstream mag press
+          beta_u = p1/pmag1                         ! upstream plasma beta
+
+!=================================================================
+!!calculating  theta, r, phi co-ordinates  on TS surface
+!! 
+!!spherical co-ordinate values at the cell centers
+!          R_axis =  m_rc(i,level)          !radius
+!          sinF =    m_phic(j,ISIN,level)   !sin(phi)
+!          cosF =    m_phic(j,ICOS,level)   !cos(phi)
+!          sinT =    m_thetac(k,ISIN,level) !sin(theta)
+!          cosT =    m_thetac(k,ICOS,level) !cos(theta)
+!
+!! calculation of phi and theta from sinF, cosF, sinT, cosT
+!          if(sinF .ge. 0.0D0)then
+!            phi_axis    =  (180.0D0/3.1416D0)*acos(cosF)    !in degree
+!          else
+!            phi_axis    =  (180.0D0/3.1416D0)*(-acos(cosF) + 2*3.1416D0)
+!          endif
+!
+!          if(sinT .ge. 0.0D0)then
+!            theta_axis    =  (180.0D0/3.1416D0)*acos(cosT)    !in degree
+!          else
+!            theta_axis    =  (180.0D0/3.1416D0)*(- acos(cosT) + 2*3.1416D0)
+!          endif
+!===================================================================
+!correction on poles for having bad values and small magntic field
+
+          if (thetaBn .le. 70.0D0) then
+             thetaBn = 70.0D0
+          endif
+!===================================================================
+! debug print
+!         write(*,101) R_axis, phi_axis, theta_axis, thetaBn, BdBu, f_nPUI, Mach_u, ndnu, beta_u
+!101      format(9f13.4)
+
+
+!==================================================================
+! PUI density correction --> using same density compression of mixture density
+
+          s2 = rho2/rho1
+          rhoI2 = s2*rhoI1
+
+          s3 = rho3/rho1
+          rhoI3 = s3*rhoI1
+
+          s4 = rho4/rho1
+          rhoI4 = s4*rhoI1
+
+          if (rhoI2 .ge. (rho2-smallr)) then
+              rhoI2 = rho2-smallr
+          endif
+
+          if (rhoI3 .ge. (rho3-smallr)) then
+              rhoI3 = rho3-smallr
+          endif
+
+          if (rhoI4 .ge. (rho4-smallr)) then
+              rhoI4 = rho4-smallr
+          endif
+
+!--------------------------
+!PUI pressure correction at upstream cell i-2 based on i-3 cell
+
+          pI5 = U(CHF_IX[i-3;j;k],iPresPIU)
+          pdiff5 = p5 - pI5
+
+          pI1 = U(CHF_IX[i-2;j;k],iPresPIU)
+          pdiff1  = p1 - pI1
+
+
+          if (pdiff1 .le. pdiff5 ) then
+             pI1 = p1 - pdiff5
+          endif
+
+          U(CHF_IX[i-2;j;k],iPresPIU) = pI1
+
+!===============================================================
+! Obtaining temperature from the table obtained by remapping Vadim's table
+
+C finding closest index of Mach and beta in the table
+        iMach = MINLOC(abs(Mach_u - Mach_table),1)
+        ibeta = MINLOC(abs(beta_u - beta_table),1)
+
+! interpolating Tratio over thetaBn  
+        if (thetaBn .ge. 80.0) then
+            Tratio_87 = Tratio_table87(iMach, ibeta)  !Tario form the table for thetaBn =87 deg
+            Tratio_80 = Tratio_table80(iMach, ibeta)  !!Tario form the table for thetaBn =80 deg
+            s = (Tratio_87 - Tratio_80)/(87-80)
+            Tratio = Tratio_87 + s*(thetaBn - 87) 
+        else
+            Tratio_80 = Tratio_table80(iMach, ibeta)
+            Tratio_70 = Tratio_table70(iMach, ibeta)
+            s = (Tratio_80 - Tratio_70)/(80-70)
+            Tratio = Tratio_80 + s*(thetaBn - 80)
+        endif
+
+!-------------------------------------------------------
+        if (Tratio .le. 1.0D0) then
+             print*, "Tratio", Tratio
+             print*, "beta_u:", beta_u
+             print*, "Mach_u:", Mach_u
+             print*, "thetaBn:", thetaBn
+             print*, ""
+         endif
+!------------------------------------------------------
+!printing data for debug
+
+          write(*,102) iMach, ibeta, Mach_u, beta_u, Mach_table(iMach), beta_table(ibeta), Tratio
+102      format(i4, i4, 5f13.4)
+         
+!==============================================================
+! check for Tratio 
+          if (Tratio .le. 0.0D0) then
+             print*, "Tratio", Tratio
+             print*, "beta_u:", beta_u
+             print*, "Mach_u:", Mach_u
+             print*, "thetaBn:", thetaBn
+             call exit(123)
+          endif
+!-------------------------------------
+!Downstream PUI press calcualtion from Temp ratio
+!v_th**2 = 2kT/m = 2*p/rho
+!ratio of downstream and upstream v_th**2 --> (vth_d/vth_u)**2 = Tratio
+
+          vthsq_u = 2.0D0*pI1/rhoI1
+
+          vthsq_d = vthsq_u*Tratio
+          pI2 = 0.5D0*rhoI2*vthsq_d
+!------------------------------------------
+          if (pI2 .ge. (p2 - smallp) ) then
+             pI2 = 0.99*p2
+          endif
+!================================================
+!updating i+1 cell
+          U(CHF_IX[i+1;j;k],iRhoPIU)  = rhoI2
+          U(CHF_IX[i+1;j;k],iPresPIU) = pI2
+!-----------------------------------------
+!updating PUI pressure at i, and i-1
+
+!interpolation of pressure difference
+          pdiff1 = p1 - pI1
+          pdiff2 = p2 - pI2
+          deltaR = (m_rc(i+1,level) - m_rc(i-2,level))
+          s = (pdiff2 - pdiff1)/deltaR
+
+!updating i-1 cell-----------
+          pdiff4 = pdiff1 + s*(m_rc(i-1,level) - m_rc(i-2,level))
+          pI4 = p4 - pdiff4
+
+          if (pI4 .le. pI1) then
+              pI4 = p4 - pdiff1
+          endif
+
+          U(CHF_IX[i-1;j;k],iRhoPIU)  = rhoI4
+          U(CHF_IX[i-1;j;k],iPresPIU) = pI4
+
+
+!updating i cell----------
+          pdiff3 = pdiff1 + s*(m_rc(i,level) - m_rc(i-2,level))
+          pI3 = p3 - pdiff3
+
+          if (pI3 .le. pI4) then
+              pdiff4 = p4 - pI4
+              pI3 = p3 - pdiff4
+          endif
+
+          U(CHF_IX[i;j;k],iRhoPIU)  = rhoI3
+          U(CHF_IX[i;j;k],iPresPIU) = pI3
+
+!-----------------------------------
+
+        endif
+      CHF_ENDDO
+
+
+      return
+      end
+!==========================================================
+
+!======================================================
+! Table load for PUI BC across TS
+      subroutine LOAD_TABLE_BC()
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+         integer ii, jj
+         integer, parameter ::  nrows =100, ncols=300
+       
+         Mach_table = (/ 2.00,     2.14,     2.29,     2.44,     2.61,     2.79,     2.99,     3.19,     3.41,     3.65,     3.90,     4.17,     4.46,     4.77,     5.10,     5.45,     5.83,     6.23,     6.66,     7.13,     7.62,     8.15,     8.71,     9.31,     9.95,    10.64,    11.38,    12.17,    13.01,    13.91,    14.87,    15.90,    17.00,    18.17,    19.43,    20.77,    22.21,    23.74,    25.39,    27.14,    29.02,    31.03,    33.17,    35.46,    37.92,    40.54,    43.34,    46.34,    49.54,    52.97,    56.63,    60.55,    64.74,    69.22,    74.00,    79.12,    84.59,    90.44,    96.70,   103.38,   110.53,   118.18,   126.35,   135.09,   144.43,   154.42,   165.10,   176.51,   188.72,   201.77,   215.73,   230.64,   246.59,   263.65,   281.88,   301.37,   322.22,   344.50,   368.32,   393.80,   421.03,   450.15,   481.28,   514.56,   550.14,   588.19,   628.87,   672.36,   718.85,   768.57,   821.72,   878.54,   939.30,  1004.26,  1073.71,  1147.96,  1227.35,  1312.23,  1402.98,  1500.00 /)
+ 
+         beta_table = (/0.50,       0.52,       0.54,       0.57,       0.59,       0.61,       0.64,       0.67,       0.69,       0.72,       0.75,       0.78,       0.82,       0.85,       0.89,       0.92,       0.96,       1.00,       1.04,       1.09,       1.13,       1.18,       1.23,       1.28,       1.33,       1.39,       1.45,       1.51,       1.57,       1.63,       1.70,       1.77,       1.85,       1.92,       2.00,       2.09,       2.17,       2.26,       2.36,       2.46,       2.56,       2.67,       2.78,       2.89,       3.01,       3.14,       3.27,       3.41,       3.55,       3.70,       3.85,       4.01,       4.18,       4.35,       4.53,       4.72,       4.92,       5.12,       5.34,       5.56,       5.79,       6.03,       6.28,       6.54,       6.82,       7.10,       7.40,       7.71,       8.03,       8.36,       8.71,       9.07,       9.45,       9.84,      10.25,      10.68,      11.13,      11.59,      12.07,      12.58,      13.10,      13.65,      14.22,      14.81,      15.42,      16.07,      16.74,      17.43,      18.16,      18.92,      19.71,      20.53,      21.38,      22.27,      23.20,      24.17,      25.18,      26.22,      27.32,      28.46,      29.64,      30.88,      32.16,      33.50,      34.90,      36.35,      37.87,      39.45,      41.09,      42.80,      44.58,      46.44,      48.38,      50.39,      52.49,      54.68,      56.96,      59.33,      61.80,      64.38,      67.06,      69.86,      72.77,      75.80,      78.96,      82.25,      85.67,      89.24,      92.96,      96.84,     100.87,     105.07,     109.45,     114.01,     118.76,     123.71,     128.87,     134.24,     139.83,     145.66,     151.73,     158.05,     164.63,     171.49,     178.64,     186.08,     193.84,     201.91,     210.33,     219.09,     228.22,     237.73,     247.63,     257.95,     268.70,     279.90,     291.56,     303.71,     316.36,     329.54,     343.27,     357.58,     372.48,     388.00,     404.16,     421.01,     438.55,     456.82,     475.86,     495.68,     516.34,     537.85,     560.26,     583.61,     607.93,     633.26,     659.64,     687.13,     715.76,     745.58,     776.65,     809.01,     842.72,     877.84,     914.41,     952.51,     992.20,    1033.55,    1076.61,    1121.47,    1168.20,    1216.88,    1267.58,    1320.40,    1375.42,    1432.73,    1492.43,    1554.61,    1619.39,    1686.86,    1757.15,    1830.37,    1906.64,    1986.08,    2068.84,    2155.04,    2244.84,    2338.37,    2435.81,    2537.30,    2643.03,    2753.15,    2867.87,    2987.37,    3111.85,    3241.51,    3376.58,    3517.27,    3663.83,    3816.49,    3975.52,    4141.17,    4313.72,    4493.46,    4680.69,    4875.73,    5078.89,    5290.51,    5510.96,    5740.59,    5979.78,    6228.95,    6488.49,    6758.85,    7040.48,    7333.84,    7639.42,    7957.74,    8289.32,    8634.72,    8994.51,    9369.29,    9759.68,   10166.35,   10589.96,   11031.21,   11490.86,   11969.66,   12468.41,   12987.94,   13529.11,   14092.84,   14680.06,   15291.74,   15928.91,   16592.63,   17284.01,   18004.20,   18754.39,   19535.84,   20349.85,   21197.79,   22081.05,   23001.12,   23959.52,   24957.86,   25997.79,   27081.06,   28209.47,   29384.89,   30609.29,   31884.71,   33213.27,   34597.19,   36038.78,   37540.43,   39104.66,   40734.06,   42431.35,   44199.37,   46041.05,   47959.48,   49957.84,   52039.47,   54207.83,   56466.55,   58819.38,   61270.25,   63823.24,   66482.60,   69252.78,   72138.39,   75144.23,   78275.31,   81536.87,   84934.32,   88473.34,   92159.82,   95999.90,  100000.00 /)
+
+
+
+
+!------reading data from table--------------------
+!for differrnt thetaBn =70, 80, 87 deg
+         open(21,file='/nobackup/rbera/run_data_fluid/table_pui_bc/Tratio_table70.dat',status='old')
+         open(22,file='/nobackup/rbera/run_data_fluid/table_pui_bc/Tratio_table80.dat',status='old')
+         open(23,file='/nobackup/rbera/run_data_fluid/table_pui_bc/Tratio_table87.dat',status='old')
+
+         do ii=1,nrows
+               read(21,*) (Tratio_table70(ii,jj), jj =1,ncols)
+               read(22,*) (Tratio_table80(ii,jj), jj =1,ncols)
+               read(23,*) (Tratio_table87(ii,jj), jj =1,ncols)
+         enddo
+
+         close(21)
+         close(22)
+         close(23)
+      
+         !print*, "LOADING TABLE"
+      return
+      end
+!====================================================
+
+
+
+
+

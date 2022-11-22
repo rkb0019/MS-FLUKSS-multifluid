@@ -1,0 +1,680 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+
+
+        subroutine GETGRAD(
+     &    CHF_FRA1[du],
+     &    CHF_CONST_FRA1[u],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[loBox],
+     &    CHF_CONST_INT[hasLo],
+     &    CHF_BOX[hiBox],
+     &    CHF_CONST_INT[hasHi],
+     &    CHF_BOX[centerBox])
+
+        integer CHF_DDECL[i   ;j   ;k   ]
+        integer CHF_DDECL[ioff;joff;koff]
+
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+
+c       Perform first difference calculation in the interior.
+
+        CHF_MULTIDO[centerBox;i;j;k]
+          du(CHF_IX[i;j;k]) = half*(u(CHF_IX[i+ioff;j+joff;k+koff])
+     &                             -u(CHF_IX[i-ioff;j-joff;k-koff]))
+        CHF_ENDDO
+
+c       Perform calculation on the cells adjacent to the domain boundary in
+c       current direction, if required.
+
+        if (hasLo .eq. 1) then
+          CHF_MULTIDO[loBox;i;j;k]
+            du(CHF_IX[i;j;k]) = (u(CHF_IX[i+ioff;j+joff;k+koff])
+     &                         - u(CHF_IX[i     ;j     ;k     ]))
+          CHF_ENDDO
+        endif
+
+        if (hasHi .eq. 1) then
+          CHF_MULTIDO[hiBox;i;j;k]
+            du(CHF_IX[i;j;k]) = (u(CHF_IX[i     ;j     ;k     ])
+     &                         - u(CHF_IX[i-ioff;j-joff;k-koff]))
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine MAGNITUDE(
+     &    CHF_FRA1[magdata],
+     &    CHF_CONST_FRA[data],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iv
+        real_t cur,sum
+
+        CHF_MULTIDO[box;i;j;k]
+          sum = zero
+
+          do iv = 0,CHF_NCOMP[data]-1
+            cur = data(CHF_IX[i;j;k],iv)
+            sum = sum + cur*cur
+          enddo
+
+          magdata(CHF_IX[i;j;k]) = sqrt(sum)
+        CHF_ENDDO
+
+        return
+        end
+
+
+        subroutine SECONDSLOPEDIFFS(
+     &    CHF_FRA[deltaWC],
+     &    CHF_FRA[deltaWL],
+     &    CHF_FRA[deltaWR],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_INT[numSlopes],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[loBox],
+     &    CHF_CONST_INT[hasLo],
+     &    CHF_BOX[hiBox],
+     &    CHF_CONST_INT[hasHi],
+     &    CHF_BOX[centerBox])
+
+        integer CHF_DDECL[i   ;j   ;k   ],lvar
+        integer CHF_DDECL[ioff;joff;koff]
+        real_t dWR,dWL
+
+c       Perform first difference calculation in the interior.
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+
+
+          CHF_MULTIDO[centerBox;i;j;k]
+          do lvar = 0,numSlopes - 1
+            dWR = W(CHF_IX[i+ioff;j+joff;k+koff],lvar)
+     &          - W(CHF_IX[i     ;j     ;k     ],lvar)
+            dWL = W(CHF_IX[i     ;j     ;k     ],lvar)
+     &          - W(CHF_IX[i-ioff;j-joff;k-koff],lvar)
+
+            deltaWR(CHF_IX[i;j;k],lvar) = dWR
+            deltaWL(CHF_IX[i;j;k],lvar) = dWL
+            deltaWC(CHF_IX[i;j;k],lvar) = half*(dWR + dWL)
+          enddo
+          CHF_ENDDO
+
+c         Perform calculation on the cells adjacent to the domain boundary in
+c         current direction, if required.
+
+          if (hasLo .ne. 0) then
+            CHF_MULTIDO[loBox;i;j;k]
+            do lvar = 0,numSlopes - 1
+              dWR = W(CHF_IX[i+ioff;j+joff;k+koff],lvar)
+     &            - W(CHF_IX[i     ;j     ;k     ],lvar)
+              deltaWC(CHF_IX[i;j;k],lvar) = dWR
+              deltaWL(CHF_IX[i;j;k],lvar) = dWR
+              deltaWR(CHF_IX[i;j;k],lvar) = dWR
+c              if (idir .eq. 1) then
+c              if (lvar .eq. WVELY) then
+c                  deltaWL(CHF_IX[i;j;k],lvar) = two *
+c     &                  W(CHF_IX[i     ;j     ;k     ],lvar)
+c              else
+c                 deltaWL(CHF_IX[i;j;k],lvar) = zero
+c              endif
+c              endif
+            enddo
+            CHF_ENDDO
+          endif
+
+          if (hasHi .ne. 0) then
+            CHF_MULTIDO[hiBox;i;j;k]
+            do lvar = 0,numSlopes - 1
+              dWL = W(CHF_IX[i     ;j     ;k     ],lvar)
+     &            - W(CHF_IX[i-ioff;j-joff;k-koff],lvar)
+              deltaWC(CHF_IX[i;j;k],lvar) = dWL
+              deltaWL(CHF_IX[i;j;k],lvar) = dWL
+              deltaWR(CHF_IX[i;j;k],lvar) = dWL
+            enddo
+            CHF_ENDDO
+          endif
+
+
+        return
+        end
+
+        subroutine FOURTHSLOPEDIFFS(
+     &    CHF_FRA[delta4WC],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FRA[delta2W],
+     &    CHF_CONST_INT[numSlopes],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[loBox],
+     &    CHF_CONST_INT[hasLo],
+     &    CHF_BOX[hiBox],
+     &    CHF_CONST_INT[hasHi],
+     &    CHF_BOX[centerBox])
+
+        integer CHF_DDECL[i   ;j   ;k   ],lvar
+        integer CHF_DDECL[ioff;joff;koff]
+        real_t dWR,dWL
+
+c       Perform first difference calculation in the interior.
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+
+        do lvar = 0,numSlopes - 1
+          CHF_MULTIDO[centerBox;i;j;k]
+            dWR =       W(CHF_IX[i+ioff;j+joff;k+koff],lvar)
+     &          - delta2W(CHF_IX[i+ioff;j+joff;k+koff],lvar)*fourth
+            dWL =       W(CHF_IX[i-ioff;j-joff;k-koff],lvar)
+     &          + delta2W(CHF_IX[i-ioff;j-joff;k-koff],lvar)*fourth
+
+            delta4WC(CHF_IX[i;j;k],lvar) = two3rd*(dWR - dWL)
+          CHF_ENDDO
+
+c         Perform calculation on the cells adjacent to the domain boundary in
+c         current direction, if required.
+
+          if (hasLo .ne. 0) then
+            CHF_MULTIDO[loBox;i;j;k]
+              delta4WC(CHF_IX[i;j;k],lvar) = delta2W(CHF_IX[i;j;k],lvar)
+            CHF_ENDDO
+          endif
+
+          if (hasHi .ne. 0) then
+            CHF_MULTIDO[hiBox;i;j;k]
+              delta4WC(CHF_IX[i;j;k],lvar) = delta2W(CHF_IX[i;j;k],lvar)
+            CHF_ENDDO
+          endif
+        enddo
+
+        return
+        end
+
+        subroutine DIVUEDGE(
+     &    CHF_FRA1[divu],
+     &    CHF_CONST_FRA1[uNorm],
+     &    CHF_CONST_FRA[duTan],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[loBox],
+     &    CHF_CONST_INT[hasLo],
+     &    CHF_BOX[hiBox],
+     &    CHF_CONST_INT[hasHi],
+     &    CHF_BOX[centerBox])
+
+        integer CHF_DDECL[i;j;k],CHF_DDECL[ioff;joff;koff]
+
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+
+        CHF_MULTIDO[centerBox;i;j;k]
+          divu(CHF_IX[i;j;k]) = uNorm(CHF_IX[i     ;j     ;k     ])
+     &                        - uNorm(CHF_IX[i-ioff;j-joff;k-koff])
+
+#if CH_SPACEDIM >=2
+          divu(CHF_IX[i;j;k]) = divu(CHF_IX[i;j;k])
+     &                        + half*(duTan(CHF_IX[i     ;j     ;k     ],0)
+     &                               +duTan(CHF_IX[i-ioff;j-joff;k-koff],0))
+#endif
+
+#if CH_SPACEDIM == 3
+          divu(CHF_IX[i;j;k]) = divu(CHF_IX[i;j;k])
+     &                        + half*(duTan(CHF_IX[i     ;j     ;k     ],1)
+     &                               +duTan(CHF_IX[i-ioff;j-joff;k-koff],1))
+#endif
+        CHF_ENDDO
+
+        if (hasLo .eq. 1) then
+           CHF_MULTIDO[loBox;i;j;k]
+             divu(CHF_IX[i;j;k]) = divu(CHF_IX[i+ioff;j+joff;k+koff])
+           CHF_ENDDO
+        endif
+
+        if (hasHi .eq. 1) then
+           CHF_MULTIDO[hiBox;i;j;k]
+             divu(CHF_IX[i;j;k]) = divu(CHF_IX[i-ioff;j-joff;k-koff])
+           CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine ARTVISC(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_FRA1[divu],
+     &    CHF_CONST_REAL[coeff],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i   ; j   ; k   ]
+        integer CHF_DDECL[ioff; joff; koff]
+        integer iv
+
+        real_t fc,dv,s1,s2
+
+#include   "EosCommon.fh"
+
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+
+        do iv = 0,CHF_NCOMP[F] - 1
+          CHF_MULTIDO[box;i;j;k]
+            fc = F   (CHF_IX[i     ;j     ;k     ],iv)
+            dv = divu(CHF_IX[i     ;j     ;k     ])
+            s1 = U   (CHF_IX[i     ;j     ;k     ],iv)
+            s2 = U   (CHF_IX[i-ioff;j-joff;k-koff],iv)
+
+            F(CHF_IX[i;j;k],iv) = fc + coeff*min(dv,zero)*(s1-s2)
+          CHF_ENDDO
+        enddo
+
+        return
+        end
+
+
+
+        subroutine AVERAGESTATE(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[UOLD],
+     &    CHF_CONST_FRA[UPr],
+     &    CHF_CONST_INT[iBGN],
+     &    CHF_CONST_INT[iEND],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iv
+
+!        do iv = iBGN, iEND
+!          CHF_MULTIDO[box;i;j;k]
+!            U(CHF_IX[i;j;k],iv) = half*(U(CHF_IX[i;j;k],iv) + UOLD(CHF_IX[i;j;k],iv))
+!          CHF_ENDDO
+!        enddo
+
+        do iv = iBGN, iEND
+          CHF_MULTIDO[box;i;j;k]
+            U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv) + 
+     &       half*(UOLD(CHF_IX[i;j;k],iv) - UPr(CHF_IX[i;j;k],iv))
+          CHF_ENDDO
+        enddo
+
+
+        return
+        end
+
+
+        subroutine GETRELGRAD(
+     &    CHF_FRA1[du],
+     &    CHF_CONST_FRA1[u],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[loBox],
+     &    CHF_CONST_INT[hasLo],
+     &    CHF_BOX[hiBox],
+     &    CHF_CONST_INT[hasHi],
+     &    CHF_BOX[centerBox])
+
+        integer CHF_DDECL[i   ;j   ;k   ]
+        integer CHF_DDECL[ioff;joff;koff]
+        real_t diff,aver,aver_abs
+
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+
+c       Perform first difference calculation in the interior.
+
+        CHF_MULTIDO[centerBox;i;j;k]
+          diff = half*(u(CHF_IX[i+ioff;j+joff;k+koff])
+     &                -u(CHF_IX[i-ioff;j-joff;k-koff]))
+          aver = half*(u(CHF_IX[i+ioff;j+joff;k+koff])
+     &                +u(CHF_IX[i-ioff;j-joff;k-koff]))
+
+          aver_abs=abs(aver)
+          if (aver_abs .lt. 1.0D-32) then
+             du(CHF_IX[i;j;k]) = 0.0
+          else
+             du(CHF_IX[i;j;k]) = diff / aver
+          endif
+c          print *,idir,'rho (',CHF_DDECL[i;j;k;],') diff=',u(CHF_IX[i+ioff;j+joff;k+koff]),'-',u(CHF_IX[i-ioff;j-joff;k-koff])
+        CHF_ENDDO
+
+c       Perform calculation on the cells adjacent to the domain boundary in
+c       current direction, if required.
+
+        if (hasLo .eq. 1) then
+          CHF_MULTIDO[loBox;i;j;k]
+            diff = (u(CHF_IX[i+ioff;j+joff;k+koff])
+     &             -u(CHF_IX[i     ;j     ;k     ]))
+            aver = half*(u(CHF_IX[i+ioff;j+joff;k+koff])
+     &                  +u(CHF_IX[i     ;j     ;k     ]))
+            aver_abs=abs(aver)
+            if (aver_abs .lt. 1.0D-32) then
+               du(CHF_IX[i;j;k]) = 0.0
+            else
+               du(CHF_IX[i;j;k]) = diff / aver
+            endif
+          CHF_ENDDO
+        endif
+
+        if (hasHi .eq. 1) then
+          CHF_MULTIDO[hiBox;i;j;k]
+            diff = (u(CHF_IX[i     ;j     ;k     ])
+     &             -u(CHF_IX[i-ioff;j-joff;k-koff]))
+            aver = half*(u(CHF_IX[i     ;j     ;k     ])
+     &                  +u(CHF_IX[i-ioff;j-joff;k-koff]))
+            du(CHF_IX[i;j;k]) = diff / aver
+            aver_abs=abs(aver)
+            if (aver_abs .lt. 1.0D-32) then
+               du(CHF_IX[i;j;k]) = 0.0
+            else
+               du(CHF_IX[i;j;k]) = diff / aver
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine GETVECTMAGNITUDE(
+     &    CHF_FRA1[VMag],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[iBGN],
+     &    CHF_CONST_INT[iEND],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iv
+        real_t cur,sum
+
+        CHF_MULTIDO[box;i;j;k]
+          sum = zero
+
+          do iv = iBGN,iEND
+            cur = U(CHF_IX[i;j;k],iv)
+            sum = sum + cur*cur
+          enddo
+
+          VMag(CHF_IX[i;j;k]) = sqrt(sum)
+        CHF_ENDDO
+
+        return
+        end
+        
+        
+        subroutine GETRELGRAD_SPHERICAL(
+     &    CHF_FRA1[modgrad],
+     &    CHF_CONST_FRA1[var],     
+     &    CHF_BOX[box],
+     &    CHF_CONST_INT[level],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k]
+        integer iv
+        real_t cur,sum
+        real_t dr,dphi,dtheta
+
+        CHF_MULTIDO[box;i;j;k]
+          sum = zero
+          
+          if     (i.eq.CHF_LBOUND[box;0])  then      
+            dr     = m_rc(i+1,level) - m_rc(i,level)
+            cur    = (var(CHF_IX[i+1;j;k]) - var(CHF_IX[i;j;k]))/dr
+          elseif (i.eq.CHF_UBOUND[box;0])  then                 
+            dr     = m_rc(i,level) - m_rc(i-1,level)
+            cur    = (var(CHF_IX[i;j;k]) - var(CHF_IX[i-1;j;k]))/dr
+          else
+            dr     = m_rc(i+1,level) - m_rc(i-1,level)
+            cur    = (var(CHF_IX[i+1;j;k]) - var(CHF_IX[i-1;j;k]))/dr
+          endif
+          sum    = cur*cur
+          
+#if CH_SPACEDIM == 3                                                               
+          dphi   = m_dphi(j/m_ref_factor(level))*m_inv_factor(level)
+          cur    = m_thetac(k,ISIN,level)*m_rc(i,level)*dphi
+          if     (j.eq.CHF_LBOUND[box;1])  then        
+            cur    = (var(CHF_IX[i;j+1;k]) - var(CHF_IX[i;j;k]))/cur
+          elseif (j.eq.CHF_UBOUND[box;1])  then                 
+            cur    = (var(CHF_IX[i;j;k]) - var(CHF_IX[i;j-1;k]))/cur
+          else
+            cur    = (var(CHF_IX[i;j+1;k]) - var(CHF_IX[i;j-1;k]))/(two*cur)
+          endif
+          sum    = sum + cur*cur
+          
+          if     (k.eq.CHF_LBOUND[box;2])  then        
+            dtheta = m_dtheta(k+1,level) + m_dtheta(k,level)
+            cur   = (var(CHF_IX[i;j;k+1]) - var(CHF_IX[i;j;k]))/(m_rc(i,level)*dtheta)
+          elseif (k.eq.CHF_UBOUND[box;2])  then                 
+            dtheta = m_dtheta(k,level) + m_dtheta(k-1,level)
+            cur   = (var(CHF_IX[i;j;k]) - var(CHF_IX[i;j;k-1]))/(m_rc(i,level)*dtheta)
+          else
+            dtheta = m_dtheta(k+1,level) + m_dtheta(k-1,level)
+            cur   = (var(CHF_IX[i;j;k+1]) - var(CHF_IX[i;j;k-1]))/(m_rc(i,level)*dtheta)
+          endif
+          sum    = sum + cur*cur
+#endif          
+          
+          if (abs(var(CHF_IX[i;j;k])).lt.1d-32) then
+            modgrad(CHF_IX[i;j;k]) = zero
+          else
+            modgrad(CHF_IX[i;j;k]) = sqrt(sum)/abs(var(CHF_IX[i;j;k]))
+          endif
+        CHF_ENDDO
+
+        return
+        end
+        
+        subroutine TRANSFORMFLUX_CYL(
+     &         CHF_FRA[F],
+     &         CHF_CONST_INT[dir],
+     &         CHF_CONST_REAL[dx],
+     &         CHF_BOX[box])
+     
+        integer CHF_DDECL[i;j;k]
+        integer iv, lbound1
+        real_t y, lbound_y
+        
+        lbound_y = one
+        lbound1 = CHF_LBOUND[box;1]
+        if (dir == 0) lbound_y =(CHF_LBOUND[box;1]+half)*dx
+        if (dir == 1) lbound_y = CHF_LBOUND[box;1]*dx
+        
+        CHF_MULTIDO[box;i;j;k]      
+          y = (j-lbound1)*dx + lbound_y  
+          do iv = 0,CHF_NCOMP[F] - 1            
+            F(CHF_IX[i;j;k],iv) = F(CHF_IX[i;j;k],iv)*y          
+          enddo            
+        CHF_ENDDO
+
+        return
+        end     
+        
+        subroutine TRANSFORMUCYL_FORWARD(
+     &     CHF_FRA[U],          
+     &     CHF_CONST_REAL[dx],
+     &     CHF_BOX[box])
+     
+        integer CHF_DDECL[i;j;k]
+        integer iv
+        real_t y
+        
+        CHF_MULTIDO[box;i;j;k]      
+          y = (j+half)*dx 
+          do iv = 0,CHF_NCOMP[U] - 1            
+            U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv)*y          
+          enddo            
+        CHF_ENDDO
+
+        return
+        end     
+ 
+        subroutine TRANSFORMUCYL_BACKWARD(
+     &     CHF_FRA[U],          
+     &     CHF_CONST_REAL[dx],
+     &     CHF_BOX[box])
+     
+        integer CHF_DDECL[i;j;k]
+        integer iv
+        real_t invy
+        
+        CHF_MULTIDO[box;i;j;k]      
+          invy = one/((j+half)*dx)
+          do iv = 0,CHF_NCOMP[U] - 1            
+            U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv)*invy          
+          enddo            
+        CHF_ENDDO
+
+        return
+        end     
+ 
+         subroutine UPDATECONS(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[F],
+     &    CHF_CONST_INT[iBgn],
+     &    CHF_CONST_INT[iEnd],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_FRA1[invvol],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer CHF_DDECL[ioff;joff;koff]
+
+        integer iv        
+!take out
+!        Real uold, u1old
+!take out
+
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+
+#ifdef NDEBUG
+! This code works fast ...
+        do iv = iBgn,iEnd
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv)
+     &      - dt*invvol(CHF_IX[i;j;k]) * (F(CHF_IX[i+ioff;j+joff;k+koff],iv)
+     &                                  - F(CHF_IX[i     ;j     ;k     ],iv))          
+        CHF_ENDDO
+        enddo
+#else
+! ... but this code is easily debugged.
+        CHF_MULTIDO[box;i;j;k]
+        do iv = iBgn,iEnd
+          U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv)
+     &      - dt*invvol(CHF_IX[i;j;k]) * (F(CHF_IX[i+ioff;j+joff;k+koff],iv)
+     &                                  - F(CHF_IX[i     ;j     ;k     ],iv))          
+        enddo
+        CHF_ENDDO        
+#endif
+       
+
+        return
+        end
+        
+        subroutine UPDATECONSHANCOCK(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[FMinus],
+     &    CHF_CONST_FRA[FPlus],
+     &    CHF_CONST_INT[iBgn],
+     &    CHF_CONST_INT[iEnd],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_FRA1[invvol],
+     &    CHF_CONST_FRA1[areas],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]        
+        integer CHF_DDECL[ioff;joff;koff]
+        integer iv        
+        
+        CHF_DTERM[
+        ioff = CHF_ID(0,idir);
+        joff = CHF_ID(1,idir);
+        koff = CHF_ID(2,idir)]
+
+#ifdef NDEBUG
+! This code works fast ...
+        do iv = iBgn,iEnd
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv)
+     &      - dt*invvol(CHF_IX[i;j;k]) *
+     &        (  areas(CHF_IX[i+ioff;j+joff;k+koff])*FPlus(CHF_IX[i;j;k],iv)
+     &         - areas(CHF_IX[i     ;j     ;k])     *FMinus(CHF_IX[i;j;k],iv))          
+        CHF_ENDDO
+        enddo
+#else
+! ... but this code is easily debugged.
+        CHF_MULTIDO[box;i;j;k]
+        do iv = iBgn,iEnd
+          U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv)
+     &      - dt*invvol(CHF_IX[i;j;k]) *
+     &        (  areas(CHF_IX[i+ioff;j+joff;k+koff])*FPlus(CHF_IX[i;j;k],iv)
+     &         - areas(CHF_IX[i     ;j     ;k])     *FMinus(CHF_IX[i;j;k],iv))          
+        enddo
+        CHF_ENDDO        
+#endif
+
+c          U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv)
+c     &      - dt*invvol(CHF_IX[i;j;k])*(FPlus (CHF_IX[i;j;k],iv)
+c     &                                - FMinus(CHF_IX[i;j;k],iv))          
+
+
+        return
+        end
+        
+        subroutine UPDATEVALUESONFACES(
+     &    CHF_FRA[WMinus],
+     &    CHF_FRA[WPlus],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FRA[WOld],
+     &    CHF_BOX[box])
+
+        integer iv, CHF_DDECL[i;j;k]
+        real_t aux
+
+        do  iv = 0,CHF_NCOMP[W] - 1
+          CHF_MULTIDO[box;i;j;k]
+c            aux    = half*(W(CHF_IX[i;j;k],iv) - WOld(CHF_IX[i;j;k],iv))
+            aux    = W(CHF_IX[i;j;k],iv) - WOld(CHF_IX[i;j;k],iv)
+            WMinus(CHF_IX[i;j;k],iv) = WMinus(CHF_IX[i;j;k],iv) + aux
+            WPlus (CHF_IX[i;j;k],iv) = WPlus (CHF_IX[i;j;k],iv) + aux
+          CHF_ENDDO
+        enddo
+
+        return
+        end
+
+
+        subroutine ADDSOURCES(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[S],
+     &    CHF_CONST_INT[iBGN],
+     &    CHF_CONST_INT[iEND],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iv
+
+        do iv = iBGN, iEND
+          CHF_MULTIDO[box;i;j;k]
+            U(CHF_IX[i;j;k],iv) = U(CHF_IX[i;j;k],iv) + S(CHF_IX[i;j;k],iv)
+          CHF_ENDDO
+        enddo
+
+        return
+        end

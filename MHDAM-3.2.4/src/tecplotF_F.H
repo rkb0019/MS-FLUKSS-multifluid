@@ -1,0 +1,104 @@
+#ifndef _TECPLOTF_F_H_
+#define _TECPLOTF_F_H_
+
+#include "FORT_PROTO.H"
+#include "CH_Timer.H"
+#include "REAL.H"
+
+extern "C"
+{
+
+#ifndef GUARDOPENTECFILE 
+#define GUARDOPENTECFILE 
+// Prototype for Fortran procedure OPENTECFILE ...
+//
+void FORTRAN_NAME( OPENTECFILE ,opentecfile )(
+      CHFp_CONST_INT(NS)
+      ,CHFp_CONST_INT(NITEMS) );
+
+#define FORT_OPENTECFILE FORTRAN_NAME( inlineOPENTECFILE, inlineOPENTECFILE)
+#define FORTNT_OPENTECFILE FORTRAN_NAME( OPENTECFILE, opentecfile)
+
+inline void FORTRAN_NAME(inlineOPENTECFILE, inlineOPENTECFILE)(
+      CHFp_CONST_INT(NS)
+      ,CHFp_CONST_INT(NITEMS) )
+{
+ CH_TIMELEAF("FORT_OPENTECFILE");
+ FORTRAN_NAME( OPENTECFILE ,opentecfile )(
+      CHFt_CONST_INT(NS)
+      ,CHFt_CONST_INT(NITEMS) );
+}
+#endif  // GUARDOPENTECFILE 
+
+#ifndef GUARDOUTPUTTECPLOT 
+#define GUARDOUTPUTTECPLOT 
+// Prototype for Fortran procedure OUTPUTTECPLOT ...
+//
+void FORTRAN_NAME( OUTPUTTECPLOT ,outputtecplot )(
+      CHFp_CONST_FRA(U)
+      ,CHFp_CONST_REAL(dx)
+      ,CHFp_BOX(box) );
+
+#define FORT_OUTPUTTECPLOT FORTRAN_NAME( inlineOUTPUTTECPLOT, inlineOUTPUTTECPLOT)
+#define FORTNT_OUTPUTTECPLOT FORTRAN_NAME( OUTPUTTECPLOT, outputtecplot)
+
+inline void FORTRAN_NAME(inlineOUTPUTTECPLOT, inlineOUTPUTTECPLOT)(
+      CHFp_CONST_FRA(U)
+      ,CHFp_CONST_REAL(dx)
+      ,CHFp_BOX(box) )
+{
+ CH_TIMELEAF("FORT_OUTPUTTECPLOT");
+ FORTRAN_NAME( OUTPUTTECPLOT ,outputtecplot )(
+      CHFt_CONST_FRA(U)
+      ,CHFt_CONST_REAL(dx)
+      ,CHFt_BOX(box) );
+}
+#endif  // GUARDOUTPUTTECPLOT 
+
+#ifndef GUARDOUTPUTTECPLOT1 
+#define GUARDOUTPUTTECPLOT1 
+// Prototype for Fortran procedure OUTPUTTECPLOT1 ...
+//
+void FORTRAN_NAME( OUTPUTTECPLOT1 ,outputtecplot1 )(
+      CHFp_CONST_FRA1(U)
+      ,CHFp_CONST_REAL(dx)
+      ,CHFp_BOX(box) );
+
+#define FORT_OUTPUTTECPLOT1 FORTRAN_NAME( inlineOUTPUTTECPLOT1, inlineOUTPUTTECPLOT1)
+#define FORTNT_OUTPUTTECPLOT1 FORTRAN_NAME( OUTPUTTECPLOT1, outputtecplot1)
+
+inline void FORTRAN_NAME(inlineOUTPUTTECPLOT1, inlineOUTPUTTECPLOT1)(
+      CHFp_CONST_FRA1(U)
+      ,CHFp_CONST_REAL(dx)
+      ,CHFp_BOX(box) )
+{
+ CH_TIMELEAF("FORT_OUTPUTTECPLOT1");
+ FORTRAN_NAME( OUTPUTTECPLOT1 ,outputtecplot1 )(
+      CHFt_CONST_FRA1(U)
+      ,CHFt_CONST_REAL(dx)
+      ,CHFt_BOX(box) );
+}
+#endif  // GUARDOUTPUTTECPLOT1 
+
+#ifndef GUARDCLOSETECFILE 
+#define GUARDCLOSETECFILE 
+// Prototype for Fortran procedure CLOSETECFILE ...
+//
+void FORTRAN_NAME( CLOSETECFILE ,closetecfile )(
+      CHFp_CONST_INT(NS) );
+
+#define FORT_CLOSETECFILE FORTRAN_NAME( inlineCLOSETECFILE, inlineCLOSETECFILE)
+#define FORTNT_CLOSETECFILE FORTRAN_NAME( CLOSETECFILE, closetecfile)
+
+inline void FORTRAN_NAME(inlineCLOSETECFILE, inlineCLOSETECFILE)(
+      CHFp_CONST_INT(NS) )
+{
+ CH_TIMELEAF("FORT_CLOSETECFILE");
+ FORTRAN_NAME( CLOSETECFILE ,closetecfile )(
+      CHFt_CONST_INT(NS) );
+}
+#endif  // GUARDCLOSETECFILE 
+
+}
+
+#endif

@@ -1,0 +1,85 @@
+mhdam.problem = FreeStreamSpherical
+
+
+mhdam.gamma = 1.66666666666667
+
+mhdam.verbosity = 1
+
+mhdam.max_step = 101
+mhdam.max_time = 1000000.0
+
+mhdam.M    = 2
+mhdam.aA   = 1
+
+mhdam.coord_sys  = 3
+
+mhdam.domain_length = 30 0 1000 3.1415926535897932384626433832795
+mhdam.num_cells =  64 96 4
+mhdam.is_periodic = 0 0 0
+mhdam.max_level = 1
+mhdam.ref_ratio = 2 2 2 2 2 2
+
+mhdam.regrid_interval = -1 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 6
+
+mhdam.refine_density_thresh = 0.25
+mhdam.refine_density_maxlevel = 1
+mhdam.refine_B_thresh = -1
+mhdam.refine_B_maxlevel = 100
+
+
+mhdam.output_density_gradient = 0
+mhdam.output_B_gradient = 0
+
+# Blocking factor. For each box B in the grids, this is the number Nref 
+# for which it is guaranteed to be true that refine(coarsen(B;Nref);Nref) == B. 
+# Default = 1. Note that this will also be the minimum possible box size.
+mhdam.block_factor = 4
+
+# Maximum length of a grid in any dimension. An input value of 0
+# means the maximum value will be infinity (no limit).
+mhdam.max_grid_size = 32
+
+# Overall grid effciency to be generated. If this number is set
+# low, the grids will tend to be larger and less filled with tags. If this number
+# is set high, the grids will tend to be smaller and more filled with tags. This
+# controls the aggressiveness of agglomeration by box merging.
+mhdam.fill_ratio = 0.75
+
+# Proper nesting buffer size. This will be the minimum number
+# of level l cells between any level l+1 cell and a level l-1 cell. Default = 1.
+mhdam.grid_buffer_size = 5
+
+mhdam.use_artificial_viscosity = 0
+mhdam.artificial_viscosity = 0.0
+
+mhdam.limiter_RHO = 1
+mhdam.limiter_VX  = 1
+mhdam.limiter_VY  = 1
+mhdam.limiter_VZ  = 1
+mhdam.limiter_P   = 1
+mhdam.limiter_BX  = 1
+mhdam.limiter_BY  = 1
+mhdam.limiter_BZ  = 1
+
+
+mhdam.time_approximation = 0
+mhdam.cfl = 0.2
+mhdam.initial_cfl = 0.1
+mhdam.max_dt_growth = 1.02
+mhdam.dt_tolerance_factor = 1.02
+
+mhdam.flux = 1
+mhdam.entropy_fix_coeff = 0.3
+
+# Keep only last "max_chk_files" checkpoints, -1 keep all checkpoints
+mhdam.max_chk_files = -1
+mhdam.checkpoint_interval = 10000
+mhdam.plot_interval = -1
+mhdam.tecplot_interval = 10
+mhdam.plot_prefix  = p
+mhdam.chk_prefix = fs
+
+#mhdam.restart_file = c1000.2d.hdf5
+
+

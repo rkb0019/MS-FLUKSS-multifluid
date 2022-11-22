@@ -1,0 +1,68 @@
+# interaction of uniformly stable fast MHD shock wave with Alfven wave
+
+mhdam.problem = fastshock
+
+mhdam.gamma = 1.666666666666667
+
+mhdam.verbosity = 0
+
+mhdam.VelModule  = 1.0
+mhdam.VelAngle   = 0.0
+mhdam.MagModule  = 2.0
+mhdam.MagAngle   = 0.0
+mhdam.PressRatio = 0.47
+mhdam.FastMach   = 0.84
+mhdam.startX     = 0.5
+mhdam.AlfvenMag  = 0.025
+mhdam.AlfvenK    = 5
+
+mhdam.max_step = 20000
+mhdam.max_time = 2.0
+
+mhdam.domain_length = 2.0
+mhdam.num_cells =  1024 512 4
+mhdam.is_periodic = 0 1 0
+mhdam.max_level = 0
+mhdam.ref_ratio = 2 2 2 2 2 2 2 2
+
+mhdam.regrid_interval = 2 2 2 2 2 2
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.05
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.char_reconstruction = 0
+mhdam.check_tvd = 1
+
+mhdam.limiter_RHO = 1
+mhdam.limiter_VX = 1
+mhdam.limiter_VY = 1
+mhdam.limiter_VZ = 1
+mhdam.limiter_P = 1
+mhdam.limiter_BX = 1
+mhdam.limiter_BY = 1
+mhdam.limiter_BZ = 1
+
+mhdam.time_approximation = 1
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 10000
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = chk
+
+# Program can extract data along coordinate lines
+mhdam.lines = 1
+mhdam.lines_interval = 20000
+mhdam.line0_coords = 0.1 0.5 1.9 0.5 # curvilinear coordinates
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1

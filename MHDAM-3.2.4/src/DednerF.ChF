@@ -1,0 +1,773 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETDEDNERCONST(
+     &    CHF_CONST_REAL[auCh],
+     &    CHF_CONST_REAL[auCp])
+
+#include "Dedner.fh"
+
+        dCh        = auCh
+        dCp        = auCp        
+        return
+        end
+        
+        
+        subroutine DEDNERSOURCETERMS(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FRA1[divBFra],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_CONST_REAL[dx],     
+     &    CHF_CONST_REAL[dt],     
+     &    CHF_BOX[box])
+
+#include "Dedner.fh"
+#include "EosCommon.fh"
+
+        integer CHF_DDECL[i; j; k]
+        integer iPsi
+        real_t coeff,dtbydx
+        real_t Bx,By,Bz,divB
+        real_t dPsi(0:CH_SPACEDIM-1)
+        
+        iPsi   = iRho + 8
+        coeff  = -dt*dCh*dCh/(dCp*dCp)
+        
+        dtbydx = dt/dx
+        
+        CHF_MULTIDO[box;i;j;k]    
+          dPsi(0) = d_1_4PI*half*(W(CHF_IX[i+1;j;k],iPsi) - W(CHF_IX[i-1;j;k],iPsi))
+          dPsi(1) = d_1_4PI*half*(W(CHF_IX[i;j+1;k],iPsi) - W(CHF_IX[i;j-1;k],iPsi))
+          
+          divB  =  divBFra(CHF_IX[i;j;k])          
+          divB  = -divB*dtbydx
+          
+          Bx    = d_1_4PI*W(CHF_IX[i;j;k],WBX)
+          By    = d_1_4PI*W(CHF_IX[i;j;k],WBY)
+          Bz    = d_1_4PI*W(CHF_IX[i;j;k],WBZ)
+
+          S(CHF_IX[i;j;k],URHO ) = zero
+          S(CHF_IX[i;j;k],UMOMX) = divB*Bx
+          S(CHF_IX[i;j;k],UMOMY) = divB*By
+          S(CHF_IX[i;j;k],UMOMZ) = divB*Bz          
+          S(CHF_IX[i;j;k],UENG)  = -dtbydx*(W(CHF_IX[i;j;k],WBX)*dPsi(0)+W(CHF_IX[i;j;k],WBY)*dPsi(1))          
+          S(CHF_IX[i;j;k],UBX)   = zero
+          S(CHF_IX[i;j;k],UBY)   = zero
+          S(CHF_IX[i;j;k],UBZ)   = zero
+          S(CHF_IX[i;j;k],iPsi)  = coeff*W(CHF_IX[i;j;k],iPsi)                              
+          S(CHF_IX[i;j;k],iPsi)  = zero
+        CHF_ENDDO
+        
+        return
+        end
+        
+        subroutine PSIPARABOLIC(
+     &    CHF_FRA[U],     
+     &    CHF_CONST_INT[iRho],
+     &    CHF_CONST_REAL[dx],     
+     &    CHF_CONST_REAL[dt],     
+     &    CHF_BOX[box])
+
+#include "Dedner.fh"
+
+        integer CHF_DDECL[i; j; k]
+        integer iPsi
+        real_t coeff        
+        
+        iPsi   = iRho + 8
+        coeff  = exp(-dt*dCh*dCh/(dCp*dCp))
+        
+        CHF_MULTIDO[box;i;j;k]    
+          U(CHF_IX[i;j;k],iPsi)    = coeff*U(CHF_IX[i;j;k],iPsi)                              
+        CHF_ENDDO
+        
+        return
+        end
+        
+        
+        subroutine DEDNER2X2F(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_BOX[box])
+
+#include "Dedner.fh"          
+        integer CHF_DDECL[i; j; k]
+                
+        real_t BXL, PsiL
+        real_t BXR, PsiR        
+        
+        real_t Aeigen1, Aeigen2, dCh2
+        
+        real_t fl1, fl2
+        real_t fr1, fr2
+        real_t du1, du2
+        real_t lu1, lu2
+        real_t ra1, ra2
+
+        real_t sp11, sp12
+        real_t sp21, sp22
+        
+        real_t so11, so12
+        real_t so21, so22
+        
+
+        integer inormB,iPsi
+                
+        inormB = WBX  + idir                
+        iPsi   = iRho + 8
+        
+        dCh2 = dCh*dCh
+
+c Right matrix        
+        sp11 = one
+        sp12 = one
+        sp21 = -dCh
+        sp22 = dCh
+
+c Left matrix                
+        so11 = half
+        so12 = -half/dCh
+        so21 = half
+        so22 = half/dCh
+        
+        CHF_MULTIDO[box;i;j;k]
+        
+          BXL    =              WLeft(CHF_IX[i;j;k],inormB)
+          PsiL   =              WLeft(CHF_IX[i;j;k],iPsi)        
+          
+          BXR    =              WRight(CHF_IX[i;j;k],inormB)
+          PsiR   =              WRight(CHF_IX[i;j;k],iPsi)          
+        
+          Aeigen1 =  dCh
+          Aeigen2 =  dCh
+          
+          fl1 = PsiL
+          fl2 = dCh2*BXL
+          
+          fr1 = PsiR
+          fr2 = dCh2*BXR
+          
+          du1    = BXL  - BXR          
+          du2    = PsiL - PsiR
+                    
+          lu1    = Aeigen1*(so11*du1 + so12*du2)
+          lu2    = Aeigen2*(so21*du1 + so22*du2)
+                    
+          ra1    = sp11*lu1 + sp12*lu2
+          ra2    = sp21*lu1 + sp22*lu2          
+                    
+          Wgdnv(CHF_IX[i;j;k],inormB)  = half*(fl1 + fr1 + ra1)          
+          Wgdnv(CHF_IX[i;j;k],iPsi)    = half*(fl2 + fr2 + ra2)
+                              
+        CHF_ENDDO
+        
+        return
+        end
+          
+          
+        
+
+
+        subroutine DEDNER9X9F(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_BOX[box])
+     
+        integer CHF_DDECL[i; j; k]
+        integer inorm, itan1, itan2, inormB, itanB1, itanB2
+        real_t PGasL, RhoL, UL, VL, WL, RUL, RVL, RWL, BXL, BYL, BZL
+        real_t PGasR, RhoR, UR, VR, WR, RUR, RVR, RWR, BXR, BYR, BZR
+        real_t PGas,  Rho,  U,  V,  W,                 BX,  BY,  BZ
+        real_t BxBL, RUxUL, PL, EL, AL2, HL, coefRL
+        real_t BxBR, RUxUR, PR, ER, AR2, HR, coefRR
+        real_t BxBH,        P,           HAV, BXAV, DBX, DBY, DBZ
+        real_t PsiL, PsiR
+
+        real_t aas, as, aaf, af, alf, als, c, cc, ccmi, ccma, dfs, X
+        real_t hyy, hyz, hzz, szb, h, kk, sih, z, del, dell2
+        real_t b, bb, bx2, by2, bz2, byz2, sqPiRho, sq2PiRho, dCh2
+        real_t Aeigen1, Aeigen2, Aeigen3, Aeigen4, Aeigen5, Aeigen6
+        real_t Aeigen7
+        real_t  eigen1,  eigen2,  eigen3,  eigen4,  eigen5,  eigen6
+        real_t  eigen7,  eigmax
+        real_t fl1, fl2, fl3, fl4, fl5, fl6, fl7
+        real_t fr1, fr2, fr3, fr4, fr5, fr6, fr7
+        real_t du1, du2, du3, du4, du5, du6, du7
+        real_t lu1, lu2, lu3, lu4, lu5, lu6, lu7
+        real_t ra1, ra2, ra3, ra4, ra5, ra6, ra7
+
+        real_t sp11, sp12, sp13, sp14, sp15, sp16, sp17
+        real_t sp21, sp22, sp23, sp24, sp25, sp26, sp27
+        real_t sp31, sp32, sp33, sp34, sp35, sp36, sp37
+        real_t sp41, sp42, sp43, sp44, sp45, sp46, sp47
+        real_t sp51, sp52, sp53, sp54, sp55, sp56, sp57
+        real_t sp61, sp62, sp63, sp64, sp65, sp66, sp67
+        real_t sp71, sp72, sp73, sp74, sp75, sp76, sp77        
+
+        real_t so11, so12, so13, so14, so15, so16, so17
+        real_t so21, so22, so23, so24, so25, so26, so27
+        real_t so31, so32, so33, so34, so35, so36, so37
+        real_t so41, so42, so43, so44, so45, so46, so47
+        real_t so51, so52, so53, so54, so55, so56, so57
+        real_t so61, so62, so63, so64, so65, so66, so67
+        real_t so71, so72, so73, so74, so75, so76, so77        
+
+        integer spacedim, iVelX, iBX, iPres, iPsi
+
+#include "EosCommon.fh"
+#include "RSCommon.fh"
+#include "Dedner.fh"     
+
+        spacedim = 3
+
+        iVelX  = iRho + 1
+        iPres  = iRho + 4
+        iBX    = iRho + 5
+
+        inorm  = iVelX +      idir
+        itan1  = iVelX + mod( idir + 1, spacedim )
+        itan2  = iVelX + mod( idir + 2, spacedim )
+
+        inormB = iBX   +      idir
+        itanB1 = iBX   + mod( idir + 1, spacedim )
+        itanB2 = iBX   + mod( idir + 2, spacedim )
+        
+        iPsi   = iRho + 8
+        dCh2   = dCh*dCh
+
+        CHF_MULTIDO[box;i;j;k]
+          PGasL  = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+          RhoL   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+
+          UL     =              WLeft(CHF_IX[i;j;k],inorm)
+          VL     =              WLeft(CHF_IX[i;j;k],itan1)
+          WL     =              WLeft(CHF_IX[i;j;k],itan2)
+
+          BXL    =              WLeft(CHF_IX[i;j;k],inormB)
+          BYL    =              WLeft(CHF_IX[i;j;k],itanB1)
+          BZL    =              WLeft(CHF_IX[i;j;k],itanB2)
+          
+          PsiL   =              WLeft(CHF_IX[i;j;k],iPsi)        
+
+          PGasR  = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+          RhoR   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+
+          UR     =              WRight(CHF_IX[i;j;k],inorm)
+          VR     =              WRight(CHF_IX[i;j;k],itan1)
+          WR     =              WRight(CHF_IX[i;j;k],itan2)
+
+          BXR    =              WRight(CHF_IX[i;j;k],inormB)
+          BYR    =              WRight(CHF_IX[i;j;k],itanB1)
+          BZR    =              WRight(CHF_IX[i;j;k],itanB2)
+          
+          PsiR   =              WRight(CHF_IX[i;j;k],iPsi)          
+
+          RUL    = RhoL*UL
+          RVL    = RhoL*VL
+          RWL    = RhoL*WL
+
+          BxBL   = d_1_8PI*(BXL*BXL + BYL*BYL + BZL*BZL)
+          RUxUL  = half   *(RUL*UL  + RVL*VL  + RWL*WL )
+
+          PL     = PGasL + BxBL
+          EL     = PGasL/hgamma + RUxUL + BxBL
+
+          AL2    = gamma*PGasL/RhoL
+
+          RUR    = RhoR*UR
+          RVR    = RhoR*VR
+          RWR    = RhoR*WR
+
+          BxBR   = d_1_8PI*(BXR*BXR + BYR*BYR + BZR*BZR)
+          RUxUR  = half   *(RUR*UR  + RVR*VR  + RWR*WR )
+
+          PR     = PGasR + BxBR
+          ER     = PGasR/hgamma + RUxUR + BxBR
+
+          AR2    = gamma*PGasR/RhoR
+
+          if( AL2 > AR2 ) then
+            ccmi   = AR2
+            ccma   = AL2
+          else
+            ccmi   = AL2
+            ccma   = AR2
+          endif
+          
+c Begin calculating Dedner's flux          
+
+          Aeigen1 =  dCh
+          Aeigen2 =  dCh
+          
+          fl1 = PsiL
+          fl2 = dCh2*BXL
+          
+          fr1 = PsiR
+          fr2 = dCh2*BXR
+          
+          du1    = BXL  - BXR          
+          du2    = PsiL - PsiR
+          
+          ! Right matrix        
+          sp11 = one
+          sp12 = one
+          sp21 = -dCh
+          sp22 = dCh
+
+          ! Left matrix                
+          so11 = half
+          so12 = -half/dCh
+          so21 = half
+          so22 = half/dCh
+                    
+          lu1    = Aeigen1*(so11*du1 + so12*du2)
+          lu2    = Aeigen2*(so21*du1 + so22*du2)
+                    
+          ra1    = sp11*lu1 + sp12*lu2
+          ra2    = sp21*lu1 + sp22*lu2          
+                    
+          Wgdnv(CHF_IX[i;j;k],inormB)  = half*(fl1 + fr1 + ra1)          
+          Wgdnv(CHF_IX[i;j;k],iPsi)    = half*(fl2 + fr2 + ra2)
+          
+          BX     = Wgdnv(CHF_IX[i;j;k],iPsi)/dCh2
+          
+c          Wgdnv(CHF_IX[i;j;k],inormB)  = zero          
+c          BX     = half*(BXL  + BXR )
+
+c End calculating Dedner's flux     
+          
+
+          if( iAveraging == 1 ) then
+            HL     = (EL + PL)/RhoL
+            HR     = (ER + PR)/RhoR
+
+            coefRL = one/(one + sqrt( RhoR/RhoL ))
+            coefRR = one - coefRL
+
+            Rho    = RhoR*coefRL + RhoL*coefRR
+            U      = UL  *coefRL + UR  *coefRR
+            V      = VL  *coefRL + VR  *coefRR
+            W      = WL  *coefRL + WR  *coefRR
+            HAV    = HL  *coefRL + HR  *coefRR
+
+c           BX     = BXR *coefRL + BXL *coefRR
+            BY     = BYR *coefRL + BYL *coefRR
+            BZ     = BZR *coefRL + BZL *coefRR
+
+            BXAV   = half*(BXL  + BXR )
+
+            BX2    = BXAV*BXAV
+            BY2    = BY  *BY
+            BZ2    = BZ  *BZ
+
+            BYZ2   = BY2 + BZ2
+            BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+            kk     = half*(U*U + V*V + W*W)
+
+            DBX    = BXR - BXL
+            DBY    = BYR - BYL
+            DBZ    = BZR - BZL
+
+            X      = d_1_8PI*(DBX*DBX + DBY*DBY + DBZ*DBZ)
+     &             * coefRL*coefRL/RhoL
+
+            cc     = hgamma*(HAV - kk - d_1_4PI*(BX*BXAV + BYZ2)/Rho)
+     &             + (two - gamma)*X
+          else
+            Rho    = half*(RhoL + RhoR)
+            U      = half*(UL   + UR  )
+            V      = half*(VL   + VR  )
+            W      = half*(WL   + WR  )
+c           BX     = half*(BXL  + BXR )
+            BY     = half*(BYL  + BYR )
+            BZ     = half*(BZL  + BZR )
+            P      = half*(PL   + PR  )
+
+            BX2    = BX*BX
+            BY2    = BY*BY
+            BZ2    = BZ*BZ
+
+            BYZ2   = BY2 + BZ2
+            BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+            kk     = half*(U*U + V*V + W*W)
+
+            PGas   = P - BxBH
+            cc     = gamma*PGas/Rho
+          endif
+               
+          bb     = d_1_4PI*BX2/Rho
+          b      = sqrt( bb )
+  
+          if( cc < ccmi ) cc    = ccmi
+          if( cc > ccma ) cc    = ccma
+          c      = sqrt( cc )
+
+          if( BYZ2 < smallB*smallB ) then
+            hyy    = d_SQRT_2
+            hzz    = d_SQRT_2
+
+            if( bb > cc ) then
+              aaf    = bb
+              aas    = cc
+              af     = b
+              as     = c
+            else
+              aaf    = cc
+              aas    = bb
+              af     = c
+              as     = b
+            endif
+          else
+            hyz    = sqrt( BYZ2 )
+            hyy    = BY/hyz
+            hzz    = BZ/hyz
+
+            szb    = cc + (BxBH + BxBH)/Rho
+            h      = sqrt( szb*szb - four*cc*bb )
+            aas    = half*(szb - h)
+
+            if( aas <= zero ) then
+              aas    = zero
+              as     = zero
+            else if( aas >= cc ) then
+              aas    = cc
+              as     = c
+            else
+              as     = sqrt( aas )
+            endif
+
+            aaf    = half*(szb + h)
+            if( aaf <= cc ) then
+              aaf    = cc
+              af     = c
+            else
+              af     = sqrt( aaf )
+            endif
+          endif
+
+          if( iLaxFriedrix == 1 ) then
+            eigmax   = abs( U ) + af
+
+            Aeigen1  = eigmax
+            Aeigen2  = eigmax
+            Aeigen3  = eigmax
+            Aeigen4  = eigmax
+            Aeigen5  = eigmax
+            Aeigen6  = eigmax
+            Aeigen7  = eigmax            
+          else
+            eigen1 = U            
+            eigen2 = U + b
+            eigen3 = U - b
+            eigen4 = U + af
+            eigen5 = U - af
+            eigen6 = U + as
+            eigen7 = U - as
+
+            eigmax = abs( U ) + abs( V ) + abs( W ) + af
+
+            del    = del2*eigmax
+            dell2  = del*del
+
+            z      = abs( eigen1 )
+            if( z >= del ) then
+              Aeigen1  = z
+            else
+              Aeigen1  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen2 )
+            if( z >= del ) then
+              Aeigen2  = z
+            else
+              Aeigen2  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen3 )
+            if( z >= del ) then
+              Aeigen3  = z
+            else
+              Aeigen3  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen4 )
+            if( z >= del ) then
+              Aeigen4  = z
+            else
+              Aeigen4  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen5 )
+            if( z >= del ) then
+              Aeigen5  = z
+            else
+              Aeigen5  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen6 )
+            if( z >= del ) then
+              Aeigen6  = z
+            else
+              Aeigen6  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen7 )
+            if( z >= del ) then
+              Aeigen7  = z
+            else
+              Aeigen7  = half*(z*z + dell2)/del
+            endif
+            
+          endif
+
+          dfs    = aaf - aas
+          if( dfs < 1.0D-8 ) then
+            alf    = one
+            als    = zero
+          else if( (cc - aas) <= zero ) then
+            alf    = zero
+            als    = one
+          else if( (aaf - cc) <= zero ) then
+            alf    = one
+            als    = zero
+          else
+            alf    = sqrt( (cc  - aas)/dfs )
+            als    = sqrt( (aaf - cc )/dfs )
+          endif
+
+          sih    =-one
+          if( BX >= zero ) sih   = one
+
+          fl1    =    RUL
+          fl2    = UL*RUL       - BXL*BXL*d_1_4PI + PL
+          fl3    = UL*RVL       - BXL*BYL*d_1_4PI
+          fl4    = UL*RWL       - BXL*BZL*d_1_4PI
+          fl5    = UL*(EL + PL) - BXL*(UL*BXL + VL*BYL + WL*BZL)*d_1_4PI
+          fl6    = UL*BYL       - BXL*VL
+          fl7    = UL*BZL       - BXL*WL
+
+          fr1    =    RUR
+          fr2    = UR*RUR       - BXR*BXR*d_1_4PI + PR
+          fr3    = UR*RVR       - BXR*BYR*d_1_4PI
+          fr4    = UR*RWR       - BXR*BZR*d_1_4PI
+          fr5    = UR*(ER + PR) - BXR*(UR*BXR + VR*BYR + WR*BZR)*d_1_4PI          
+          fr6    = UR*BYR       - BXR*VR
+          fr7    = UR*BZR       - BXR*WR
+
+          du1    = RhoL - RhoR
+          du2    = RUL  - RUR
+          du3    = RVL  - RVR
+          du4    = RWL  - RWR
+          du5    = EL   - ER          
+          du6    = BYL  - BYR
+          du7    = BZL  - BZR
+
+          du5    =-hgamma*(-kk*du1 +   U*du2 +  V*du3 +  W*du4 - du5
+     .                             + (BY*du6 + BZ*du7)*d_1_4PI)
+
+          du2    = (-U*du1 + du2)/Rho
+          du3    = (-V*du1 + du3)/Rho
+          du4    = (-W*du1 + du4)/Rho
+
+          sqPiRho  = sqrt( d_PI *Rho )
+          sq2PiRho = sqrt( d_2PI*Rho )
+
+          sp11   = one
+          sp12   = zero
+          sp13   = zero         
+          sp14   = Rho*alf
+          sp15   = Rho*alf
+          sp16   = Rho*als
+          sp17   = Rho*als
+
+          sp21   = zero
+          sp22   = zero
+          sp23   = zero          
+          sp24   = alf*af
+          sp25   =-alf*af
+          sp26   = als*as
+          sp27   =-als*as
+
+          sp31   = zero          
+          sp32   =-hzz*d_SQRT_2
+          sp33   =-hzz*d_SQRT_2
+          sp34   =-als*as*hyy*sih
+          sp35   = als*as*hyy*sih
+          sp36   = alf*af*hyy*sih
+          sp37   =-alf*af*hyy*sih
+
+          sp41   = zero          
+          sp42   = hyy*d_SQRT_2
+          sp43   = hyy*d_SQRT_2
+          sp44   =-als*as*hzz*sih
+          sp45   = als*as*hzz*sih
+          sp46   = alf*af*hzz*sih
+          sp47   =-alf*af*hzz*sih
+
+          sp51   = zero
+          sp52   = zero
+          sp53   = zero          
+          sp54   = alf*Rho*cc
+          sp55   = alf*Rho*cc
+          sp56   = als*Rho*cc
+          sp57   = als*Rho*cc
+
+
+          sp61   = zero          
+          sp62   = hzz*sq2PiRho*sih
+          sp63   =-hzz*sq2PiRho*sih
+          sp64   = two*als*sqPiRho*c*hyy
+          sp65   = two*als*sqPiRho*c*hyy
+          sp66   =-two*alf*sqPiRho*c*hyy
+          sp67   =-two*alf*sqPiRho*c*hyy
+
+          sp71   = zero          
+          sp72   =-hyy*sq2PiRho*sih
+          sp73   = hyy*sq2PiRho*sih
+          sp74   = two*als*sqPiRho*c*hzz
+          sp75   = two*als*sqPiRho*c*hzz
+          sp76   =-two*alf*sqPiRho*c*hzz
+          sp77   =-two*alf*sqPiRho*c*hzz
+
+c Left matrix
+          so11   = one  
+          so12   = zero
+          so13   = zero
+          so14   = zero
+          so15   =-one/cc
+          so16   = zero
+          so17   = zero          
+          
+          so21   = zero
+          so22   = zero
+          so23   =-hzz*d_SQRT_2
+          so24   = hyy*d_SQRT_2
+          so25   = zero          
+          so26   = half*hzz*sih/sq2PiRho
+          so27   =-half*hyy*sih/sq2PiRho
+
+          so31   = zero
+          so32   = zero
+          so33   =-hzz*d_SQRT_2
+          so34   = hyy*d_SQRT_2
+          so35   = zero          
+          so36   =-half*hzz*sih/sq2PiRho
+          so37   = half*hyy*sih/sq2PiRho
+
+          so41   = zero
+          so42   = half*alf*af/cc
+          so43   =-half*als*as*hyy*sih/cc
+          so44   =-half*als*as*hzz*sih/cc
+          so45   = half*alf/(cc*Rho)          
+          so46   = 0.25D0*als*hyy/(c*sqPiRho)
+          so47   = 0.25D0*als*hzz/(c*sqPiRho)
+
+          so51   = zero
+          so52   =-half*alf*af/cc
+          so53   = half*als*as*hyy*sih/cc
+          so54   = half*als*as*hzz*sih/cc
+          so55   = half*alf/(cc*Rho)          
+          so56   = 0.25D0*als*hyy/(c*sqPiRho)
+          so57   = 0.25D0*als*hzz/(c*sqPiRho)
+
+          so61   = zero
+          so62   = half*als*as/cc
+          so63   = half*alf*af*hyy*sih/cc
+          so64   = half*alf*af*hzz*sih/cc
+          so65   = half*als/(Rho*cc)          
+          so66   =-0.25D0*alf*hyy/(c*sqPiRho)
+          so67   =-0.25D0*alf*hzz/(c*sqPiRho)
+
+          so71   = zero
+          so72   =-half*als*as/cc
+          so73   =-half*alf*af*hyy*sih/cc
+          so74   =-half*alf*af*hzz*sih/cc
+          so75   = half*als/(Rho*cc)          
+          so76   =-0.25D0*alf*hyy/(c*sqPiRho)
+          so77   =-0.25D0*alf*hzz/(c*sqPiRho)
+
+c Lambda*L*du
+
+          lu1    = Aeigen1*(so11*du1 + so12*du2 + so13*du3 + so14*du4
+     .                    + so15*du5 + so16*du6 + so17*du7)
+          lu2    = Aeigen2*(so21*du1 + so22*du2 + so23*du3 + so24*du4
+     .                    + so25*du5 + so26*du6 + so27*du7)
+          lu3    = Aeigen3*(so31*du1 + so32*du2 + so33*du3 + so34*du4
+     .                    + so35*du5 + so36*du6 + so37*du7)
+          lu4    = Aeigen4*(so41*du1 + so42*du2 + so43*du3 + so44*du4
+     .                    + so45*du5 + so46*du6 + so47*du7)
+          lu5    = Aeigen5*(so51*du1 + so52*du2 + so53*du3 + so54*du4
+     .                    + so55*du5 + so56*du6 + so57*du7)
+          lu6    = Aeigen6*(so61*du1 + so62*du2 + so63*du3 + so64*du4
+     .                    + so65*du5 + so66*du6 + so67*du7)
+          lu7    = Aeigen7*(so71*du1 + so72*du2 + so73*du3 + so74*du4
+     .                    + so75*du5 + so76*du6 + so77*du7)          
+
+          ra1    = sp11*lu1 + sp12*lu2 + sp13*lu3 + sp14*lu4
+     .           + sp15*lu5 + sp16*lu6 + sp17*lu7
+          ra2    = sp21*lu1 + sp22*lu2 + sp23*lu3 + sp24*lu4
+     .           + sp25*lu5 + sp26*lu6 + sp27*lu7
+          ra3    = sp31*lu1 + sp32*lu2 + sp33*lu3 + sp34*lu4
+     .           + sp35*lu5 + sp36*lu6 + sp37*lu7
+          ra4    = sp41*lu1 + sp42*lu2 + sp43*lu3 + sp44*lu4
+     .           + sp45*lu5 + sp46*lu6 + sp47*lu7
+          ra5    = sp51*lu1 + sp52*lu2 + sp53*lu3 + sp54*lu4
+     .           + sp55*lu5 + sp56*lu6 + sp57*lu7
+          ra6    = sp61*lu1 + sp62*lu2 + sp63*lu3 + sp64*lu4
+     .           + sp65*lu5 + sp66*lu6 + sp67*lu7
+          ra7    = sp71*lu1 + sp72*lu2 + sp73*lu3 + sp74*lu4
+     .           + sp75*lu5 + sp76*lu6 + sp77*lu7
+          
+          ra5    = ra1*kk     + Rho    *(U *ra2 + V *ra3 + W *ra4)
+     .           + ra5/hgamma + d_1_4PI*(BY*ra6 + BZ*ra7)
+          ra2    = U*ra1 + Rho*ra2
+          ra3    = V*ra1 + Rho*ra3
+          ra4    = W*ra1 + Rho*ra4
+
+          Wgdnv(CHF_IX[i;j;k],iRho  )  = half*(fl1 + fr1 + ra1)
+          Wgdnv(CHF_IX[i;j;k],inorm )  = half*(fl2 + fr2 + ra2)
+          Wgdnv(CHF_IX[i;j;k],itan1 )  = half*(fl3 + fr3 + ra3)
+          Wgdnv(CHF_IX[i;j;k],itan2 )  = half*(fl4 + fr4 + ra4)
+          Wgdnv(CHF_IX[i;j;k],iPres )  = half*(fl5 + fr5 + ra5)          
+          Wgdnv(CHF_IX[i;j;k],itanB1)  = half*(fl6 + fr6 + ra6)
+          Wgdnv(CHF_IX[i;j;k],itanB2)  = half*(fl7 + fr7 + ra7)
+
+        CHF_ENDDO
+
+        return
+        end
+        
+        
+        subroutine SOURCEAXISYMMETRICDEDNER(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        
+        real_t y,h,By
+
+#include "EosCommon.fh"
+#include "Dedner.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          y      = dx*(j + half)
+          h      =-dt/y    
+          By     = W(CHF_IX[i;j;k],WBY)               
+          S(CHF_IX[i;j;k],UBZ+1) = h*dCh*dCh*By          
+        CHF_ENDDO
+
+        return
+        end
+        

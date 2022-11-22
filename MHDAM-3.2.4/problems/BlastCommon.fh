@@ -1,0 +1,14 @@
+C
+C   Fortran parameters for the Blast problem:
+C
+        
+        real_t Blastp0, Blastp1
+        real_t BlastXc, BlastYc, BlastZc
+        real_t BlastBx, BlastBy
+        real_t Blastr0        
+        common /blastcm/
+     &  Blastp0, Blastp1,
+     &  BlastXc, BlastYc, BlastZc,
+     &  BlastBx, BlastBy,
+     &  Blastr0        
+     

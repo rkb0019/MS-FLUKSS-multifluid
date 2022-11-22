@@ -1,0 +1,246 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine OPENTECFILE(
+     &    CHF_CONST_INT[NS],
+     &    CHF_CONST_INT[NITEMS])
+
+        character(len=12) :: sFile
+        logical :: bExists, bOpened
+        integer :: ios
+
+#include "tecplot.fh"
+
+        if( iUnit < 11 .or. iUnit > 1000 ) iUnit   = 11
+
+        inquire( unit = iUnit, exist = bExists, opened = bOpened, iostat = ios)
+
+        if( bExists .eqv. .true. ) then
+          if( bOpened .eqv. .true. ) then
+            close( unit = iUnit, status = 'keep' )
+          endif
+        endif
+
+        sFile  = char( 0 )
+        if( NS > 999999 ) then
+          write  ( sFile, '(a1,i7.7,a4)' ) 'm', NS, '.plt'
+        else
+          write  ( sFile, '(a2,i6.6,a4)' ) 'mh', NS, '.plt'
+        endif
+
+        open   ( unit = iUnit, file = sFile, status = 'unknown' )
+
+        write  ( iUnit,*) 'TITLE="Tecplot Output"'
+        if( NITEMS .eq. 2 ) then
+          write  ( iUnit,*) 'VARIABLES="X" "Y" "Density" "Gradient"'
+        else if ( NITEMS .eq. 3 ) then
+          write  ( iUnit,*)
+     &   'VARIABLES="X" "Y" "Density" "U" "T"'
+        else
+          write  ( iUnit,*)
+     &   'VARIABLES="X" "Y" "Density" "RU" "RV" "RW" "E" "BX" "BY" "BZ"'        
+        endif
+
+        return
+        end
+
+        subroutine OUTPUTTECPLOT(
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+#include "tecplot.fh"
+
+        integer CHF_DDECL[i;j;k]
+        integer CHF_DDECL[nx;ny;nz]
+
+        real_t x(iboxlo0:iboxhi0+1)
+        real_t y(iboxlo1:iboxhi1+1)
+
+        CHF_DTERM[
+        nx   = iboxhi0 - iboxlo0 + 1;
+        ny   = iboxhi1 - iboxlo1 + 1;
+        nz   = iboxhi2 - iboxlo2 + 1]
+
+        write  (iUnit,*) 'ZONE DATAPACKING=BLOCK, VARLOCATION=([3-10]=CELLCENTERED), I=',
+     &                   nx+1, ', J=', ny+1
+
+        do i = iboxlo0, iboxhi0+1
+          x(i) = i*dx
+        enddo
+
+        do j = iboxlo1, iboxhi1+1
+          y(j) = j*dx
+        enddo
+
+        do j = iboxlo1, iboxhi1+1
+          write  (iUnit,50) (x(i),i=iboxlo0, iboxhi0+1)
+        enddo
+
+        do j = iboxlo1, iboxhi1+1
+          do i = iboxlo0, iboxhi0+1
+            x(i) = y(j)
+          enddo
+
+          write  (iUnit,50) (x(i),i=iboxlo0, iboxhi0+1)
+        enddo
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k],URHO),i = iboxlo0,iboxhi0)
+        enddo 
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k],UMOMX),i = iboxlo0,iboxhi0)
+        enddo
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k],UMOMY),i = iboxlo0,iboxhi0)
+        enddo
+
+! Added when I debugged transfer data for monte carlo method
+
+        return
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k],UMOMZ),i = iboxlo0,iboxhi0)
+        enddo
+        
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k],UENG),i = iboxlo0,iboxhi0)
+        enddo
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k],UBX),i = iboxlo0,iboxhi0)
+        enddo
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k],UBY),i = iboxlo0,iboxhi0)
+        enddo
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k],UBZ),i = iboxlo0,iboxhi0)
+        enddo
+
+50      format(32(1x,1pe13.6))
+
+        return
+        end
+
+        subroutine OUTPUTTECPLOT1(
+     &    CHF_CONST_FRA1[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+#include "tecplot.fh"
+
+        integer CHF_DDECL[i;j;k]
+        integer CHF_DDECL[nx;ny;nz]
+
+        real_t x(iboxlo0:iboxhi0+1)
+        real_t y(iboxlo1:iboxhi1+1)
+
+        CHF_DTERM[
+        nx   = iboxhi0 - iboxlo0 + 1;
+        ny   = iboxhi1 - iboxlo1 + 1;
+        nz   = iboxhi2 - iboxlo2 + 1]
+
+        write  (iUnit,*) 'ZONE DATAPACKING=BLOCK, VARLOCATION=([3-4]=CELLCENTERED), I=',
+     &                   nx+1, ', J=', ny+1
+
+        do i = iboxlo0, iboxhi0+1
+          x(i) = i*dx
+        enddo
+
+        do j = iboxlo1, iboxhi1+1
+          y(j) = j*dx
+        enddo
+
+        do j = iboxlo1, iboxhi1+1
+          write  (iUnit,50) (x(i),i=iboxlo0, iboxhi0+1)
+        enddo
+
+        do j = iboxlo1, iboxhi1+1
+          do i = iboxlo0, iboxhi0+1
+            x(i) = y(j)
+          enddo
+
+          write  (iUnit,50) (x(i),i=iboxlo0, iboxhi0+1)
+        enddo
+
+        do j = iboxlo1,iboxhi1
+          write  (iUnit,50) (U(CHF_IX[i;j;k]),i = iboxlo0,iboxhi0)
+        enddo
+
+        j      = iboxlo1
+        do   i = iboxlo0, iboxhi0
+          if( i == iboxlo0 ) then
+            x(i) = sqrt(        (U(CHF_IX[i+1;j  ;k]) - U(CHF_IX[i  ;j  ;k]))**2 +
+     &                          (U(CHF_IX[i  ;j+1;k]) - U(CHF_IX[i  ;j  ;k]))**2 )/dx
+          else if( i == iboxhi0 ) then
+            x(i) = sqrt(        (U(CHF_IX[i  ;j  ;k]) - U(CHF_IX[i-1;j  ;k]))**2 +
+     &                          (U(CHF_IX[i  ;j+1;k]) - U(CHF_IX[i  ;j  ;k]))**2 )/dx
+          else
+            x(i) = sqrt( 0.25D0*(U(CHF_IX[i+1;j  ;k]) - U(CHF_IX[i-1;j  ;k]))**2 +
+     &                          (U(CHF_IX[i  ;j+1;k]) - U(CHF_IX[i  ;j  ;k]))**2 )/dx
+          endif
+        enddo
+        write  (iUnit,50) (x(i),i=iboxlo0, iboxhi0)
+
+        do j = iboxlo1+1,iboxhi1-1
+          do   i = iboxlo0, iboxhi0
+            if( i == iboxlo0 ) then
+              x(i) = sqrt(        (U(CHF_IX[i+1;j  ;k]) - U(CHF_IX[i  ;j  ;k]))**2 +
+     &                     0.25D0*(U(CHF_IX[i  ;j+1;k]) - U(CHF_IX[i  ;j-1;k]))**2 )/dx
+            else if( i == iboxhi0 ) then
+              x(i) = sqrt(        (U(CHF_IX[i  ;j  ;k]) - U(CHF_IX[i-1;j  ;k]))**2 +
+     &                     0.25D0*(U(CHF_IX[i  ;j+1;k]) - U(CHF_IX[i  ;j-1;k]))**2 )/dx
+            else
+              x(i) = sqrt( 0.25D0*(U(CHF_IX[i+1;j  ;k]) - U(CHF_IX[i-1;j  ;k]))**2 +
+     &                     0.25D0*(U(CHF_IX[i  ;j+1;k]) - U(CHF_IX[i  ;j-1;k]))**2 )/dx
+            endif
+          enddo
+
+          write  (iUnit,50) (x(i),i=iboxlo0, iboxhi0)
+        enddo
+
+        j      = iboxhi1
+        do   i = iboxlo0, iboxhi0
+          if( i == iboxlo0 ) then
+            x(i) = sqrt(        (U(CHF_IX[i+1;j  ;k]) - U(CHF_IX[i  ;j  ;k]))**2 +
+     &                          (U(CHF_IX[i  ;j  ;k]) - U(CHF_IX[i  ;j-1;k]))**2 )/dx
+          else if( i == iboxhi0 ) then
+            x(i) = sqrt(        (U(CHF_IX[i  ;j  ;k]) - U(CHF_IX[i-1;j  ;k]))**2 +
+     &                          (U(CHF_IX[i  ;j  ;k]) - U(CHF_IX[i  ;j-1;k]))**2 )/dx
+          else
+            x(i) = sqrt( 0.25D0*(U(CHF_IX[i+1;j  ;k]) - U(CHF_IX[i-1;j  ;k]))**2 +
+     &                          (U(CHF_IX[i  ;j  ;k]) - U(CHF_IX[i  ;j-1;k]))**2 )/dx
+          endif
+        enddo
+        write  (iUnit,50) (x(i),i=iboxlo0, iboxhi0)
+
+50      format(32(1x,1pe13.6))
+
+        return
+        end
+
+        subroutine CLOSETECFILE(
+     &    CHF_CONST_INT[NS])
+
+        logical :: bExists, bOpened
+        integer :: ios
+
+#include "tecplot.fh"
+
+        if( iUnit < 11 .or. iUnit > 1000 ) iUnit   = 11
+
+        inquire( unit = iUnit, exist = bExists, opened = bOpened, iostat = ios )
+
+        if( bExists .eqv. .true. ) then
+          if( bOpened .eqv. .true. ) then
+            close( unit = iUnit, status = 'keep' )
+          endif
+        endif
+
+        return
+        end

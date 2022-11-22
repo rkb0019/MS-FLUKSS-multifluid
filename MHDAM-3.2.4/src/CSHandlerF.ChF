@@ -1,0 +1,19 @@
+
+       subroutine MULTIPLYFLUXESBYAREA(
+     &   CHF_FRA[F],
+     &   CHF_CONST_INT[iBgn],
+     &   CHF_CONST_INT[iEnd],
+     &   CHF_CONST_FRA1[areas],
+     &   CHF_BOX[box])
+        
+        integer CHF_DDECL[i;j;k]        
+        integer iv
+        
+        do iv = iBgn,iEnd
+        CHF_MULTIDO[box;i;j;k]
+          F(CHF_IX[i;j;k],iv) = F(CHF_IX[i;j;k],iv)*areas(CHF_IX[i;j;k])     
+        CHF_ENDDO
+        enddo
+        
+        return        
+        end 

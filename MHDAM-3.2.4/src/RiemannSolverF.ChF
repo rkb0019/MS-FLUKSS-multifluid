@@ -1,0 +1,19 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETRSCONST(
+     &    CHF_CONST_REAL[auDel2],
+     &    CHF_CONST_REAL[auSmallB],
+     &    CHF_CONST_INT[auAver],
+     &    CHF_CONST_INT[auLF])
+
+#include "RSCommon.fh"
+
+        del2         = auDel2
+        smallB       = auSmallB
+        iAveraging   = auAver
+        iLaxFriedrix = auLF
+
+        return
+        end
+

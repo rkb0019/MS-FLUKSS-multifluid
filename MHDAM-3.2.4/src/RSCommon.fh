@@ -1,0 +1,6 @@
+C
+C   Riemann solver Fortran constants and small/cutoff values.
+C
+        real_t smallB, del2
+        integer iAveraging, iLaxFriedrix
+        common /RiemSol/ del2, smallB, iAveraging, iLaxFriedrix

@@ -1,0 +1,911 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+      subroutine recalculateB(
+     &           CHF_FRA[U],
+     &           CHF_CONST_FRA[UOld],
+     &           CHF_CONST_FRA1[EX],
+     &           CHF_CONST_FRA1[EY],
+     &           CHF_CONST_FRA1[EZ],
+     &           CHF_CONST_INT[iBX],
+     &           CHF_CONST_REAL[dx],
+     &           CHF_CONST_REAL[dt],
+     &           CHF_BOX[BBox]
+     &                       )
+     
+        integer CHF_DDECL[i; j; k], iBY, iBZ
+        real_t rho, p, ke, uu, vv, ww, ru, rv, rw, e
+        real_t bx, by, bz, b, invrho, HX
+        
+#include "EosCommon.fh"
+
+        HX     = half*dt/dx
+        iBY    = iBX + 1
+        iBZ    = iBX + 2
+
+        CHF_MULTIDO[BBox;i;j;k]
+
+          bx   = U(CHF_IX[i;j;k],iBX)
+          by   = U(CHF_IX[i;j;k],iBY)
+          bz   = U(CHF_IX[i;j;k],iBZ)
+          b    = d_1_8PI*(bx*bx + by*by + bz*bz)
+
+          e    = U(CHF_IX[i;j;k],UENG) - b
+
+#if CH_SPACEDIM >= 2
+          bx = UOLD(CHF_IX[i;j;k],iBX)
+     &           - HX*(EZ(CHF_IX[i+1;j+1;k  ]) + EZ(CHF_IX[i  ;j+1;k  ])
+     &           -     EZ(CHF_IX[i+1;j  ;k  ]) - EZ(CHF_IX[i  ;j  ;k  ]))
+
+          by = UOLD(CHF_IX[i;j;k],iBY)
+     &           + HX*(EZ(CHF_IX[i+1;j+1;k  ]) + EZ(CHF_IX[i+1;j  ;k  ])
+     &           -     EZ(CHF_IX[i  ;j+1;k  ]) - EZ(CHF_IX[i  ;j  ;k  ]))
+#endif
+
+#if CH_SPACEDIM == 3
+          bx   = bx
+     &         + HX*(EY(CHF_IX[i+1;j  ;k+1]) + EY(CHF_IX[i  ;j  ;k+1])
+     &         -     EY(CHF_IX[i+1;j  ;k  ]) - EY(CHF_IX[i  ;j  ;k  ]))
+
+          by   = by
+     &         - HX*(EX(CHF_IX[i  ;j+1;k+1]) + EX(CHF_IX[i  ;j  ;k+1])
+     &         -     EX(CHF_IX[i  ;j+1;k  ]) - EX(CHF_IX[i  ;j  ;k  ]))
+
+          bz   = UOLD(CHF_IX[i;j;k],iBZ)
+     &         - HX*(EY(CHF_IX[i+1;j  ;k+1]) + EY(CHF_IX[i+1;j  ;k  ])
+     &         -     EY(CHF_IX[i  ;j  ;k+1]) - EY(CHF_IX[i  ;j  ;k  ]) 
+     &         -    (EX(CHF_IX[i  ;j+1;k+1]) + EX(CHF_IX[i  ;j+1;k  ])
+     &         -     EX(CHF_IX[i  ;j  ;k+1]) - EX(CHF_IX[i  ;j  ;k  ])))
+#endif
+
+          b    = d_1_8PI*(bx*bx + by*by + bz*bz)
+
+          U(CHF_IX[i;j;k],UENG)  = e + b
+
+          U(CHF_IX[i;j;k],iBX) = bx
+          U(CHF_IX[i;j;k],iBY) = by
+          U(CHF_IX[i;j;k],iBZ) = bz
+        CHF_ENDDO
+
+        return
+
+      end subroutine recalculateB
+
+
+      subroutine electricFieldBS(
+     &           CHF_CONST_FRA[F],
+     &           CHF_CONST_FRA[G],
+     &           CHF_CONST_FRA[H],
+     &           CHF_FRA1[EX],
+     &           CHF_FRA1[EY],
+     &           CHF_FRA1[EZ],
+     &           CHF_CONST_INT[iBX],
+     &           CHF_BOX[BBox]
+     &                          )
+     
+        integer CHF_DDECL[i; j; k], iBY, iBZ, iE
+        
+        real_t  H2, H3, H4, EE
+        parameter (H2 = 0.500000000000000000000000000000000000D0 )
+        parameter (H3 = 0.333333333333333333333333333333333333D0 )
+        parameter (H4 = 0.250000000000000000000000000000000000D0 )
+
+        iBY    = iBX + 1
+        iBZ    = iBY + 1
+
+#if CH_SPACEDIM == 2
+        do   j = iBBoxlo1+1, iBBoxhi1
+          do   i = iBBoxlo0+1, iBBoxhi0
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          enddo
+        enddo
+c                                                                  Left boundary
+        i      = iBBoxlo0
+        if( iGlo0 < i ) then
+c                                                      There isn't left boundary
+          do   j = iBBoxlo1+1, iBBoxhi1
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          enddo
+c                                                             Left-bottom corner
+          j      = iBBoxlo1
+          if( iFlo1 < j ) then
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          else
+            EZ(i,j)  = H3*(G(i-1,j,iBX) + G(i,j,iBX)                - F(i,j,iBY))
+          endif
+c                                                                Left-top corner
+          j      = iBBoxhi1 + 1
+          if( iFhi1 >= j ) then
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          else
+            EZ(i,j)  = H3*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY)             )
+          endif
+        else
+c                                                     Left boundary is presented
+          do   j = iBBoxlo1+1, iBBoxhi1
+            EZ(i,j)  = H3*(               G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          enddo
+c                                                             Left-bottom corner
+          j      = iBBoxlo1
+          if( iFlo1 < j ) then
+            EZ(i,j)  = H3*(               G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          else
+            EZ(i,j)  = H2*(G(i,j,iBX) - F(i,j,iBY))
+          endif
+c                                                                Left-top corner
+          j      = iBBoxhi1 + 1
+          if( iFhi1 >= j ) then
+            EZ(i,j)  = H3*(               G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          else
+            EZ(i,j)  = H2*(G(i,j,iBX) - F(i,j-1,iBY))
+          endif
+        endif
+
+c                                                                 Right boundary
+        i      = iBBoxhi0 + 1
+        if( iGhi0 >= i ) then
+c                                                     There isn't right boundary
+          do   j = iBBoxlo1+1, iBBoxhi1
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          enddo
+c                                                            Right-bottom corner
+          j      = iBBoxlo1
+          if( iFlo1 < j ) then
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          else
+            EZ(i,j)  = H3*(G(i-1,j,iBX) + G(i,j,iBX)                - F(i,j,iBY))
+          endif
+c                                                               Right-top corner
+          j      = iBBoxhi1 + 1
+          if( iFhi1 >= j ) then
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          else
+            EZ(i,j)  = H3*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY)             )
+          endif
+        else
+c                                                    Right boundary is presented
+          do   j = iBBoxlo1+1, iBBoxhi1
+            EZ(i,j)  = H3*(G(i-1,j,iBX)              - F(i,j-1,iBY) - F(i,j,iBY))
+          enddo
+c                                                            Right-bottom corner
+          j      = iBBoxlo1
+          if( iFlo1 < j ) then
+            EZ(i,j)  = H3*(G(i-1,j,iBX)              - F(i,j-1,iBY) - F(i,j,iBY))
+          else
+            EZ(i,j)  = H2*(G(i-1,j,iBX) - F(i,j,iBY))
+          endif
+c                                                               Right-top corner
+          j      = iBBoxhi1 + 1
+          if( iFhi1 >= j ) then
+            EZ(i,j)  = H3*(G(i-1,j,iBX)              - F(i,j-1,iBY) - F(i,j,iBY))
+          else
+            EZ(i,j)  = H2*(G(i-1,j,iBX) - F(i,j-1,iBY))
+          endif
+        endif
+
+c                                                                Bottom boundary
+        j      = iBBoxlo1
+        if( iFlo1 < j ) then
+c                                                    There isn't bottom boundary
+          do   i = iBBoxlo0+1, iBBoxhi0
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          enddo
+        else
+c                                                   Bottom boundary is presented
+          do   i = iBBoxlo0+1, iBBoxhi0
+            EZ(i,j)  = H3*(G(i-1,j,iBX) + G(i,j,iBX)                - F(i,j,iBY)) 
+          enddo
+        endif
+
+c                                                                  Topt boundary
+        j      = iBBoxhi1 + 1
+        if( iFhi1 >= j ) then
+c                                                       There isn't top boundary
+          do   i = iBBoxlo0+1, iBBoxhi0
+            EZ(i,j)  = H4*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY) - F(i,j,iBY))
+          enddo
+        else
+c                                                      Top boundary is presented
+          do   i = iBBoxlo0+1, iBBoxhi0
+            EZ(i,j)  = H3*(G(i-1,j,iBX) + G(i,j,iBX) - F(i,j-1,iBY)             )
+          enddo
+        endif
+#else
+        do   k = iBBoxlo2, iBBoxhi2+1
+          do   j = iBBoxlo1, iBBoxhi1+1
+            do   i = iBBoxlo0, iBBoxhi0
+              iE     = 0
+              EE     = zero
+
+              if( iHlo1 < j ) then
+                EE     = EE + H(i,j-1,k,iBY)
+                iE     = iE + 1
+              endif
+
+              if( iHhi1 >= j ) then
+                EE     = EE + H(i,j,k,iBY)
+                iE     = iE + 1
+              endif
+ 
+              if( iGlo2 < k ) then
+                EE     = EE - G(i,j,k-1,iBZ)
+                iE     = iE + 1
+              endif
+
+              if( iGhi2 >= k ) then
+                EE     = EE - G(i,j,k,iBZ)
+                iE     = iE + 1
+              endif
+
+              EX(i,j,k)  = EE/iE
+             enddo
+          enddo
+        enddo
+
+        do   k = iBBoxlo2, iBBoxhi2+1
+          do   j = iBBoxlo1, iBBoxhi1
+            do   i = iBBoxlo0, iBBoxhi0+1
+              iE     = 0
+              EE     = zero
+
+              if( iHlo0 < i ) then
+                EE     = EE - H(i-1,j,k,iBX)
+                iE     = iE + 1
+              endif
+
+              if( iHhi0 >= i ) then
+                EE     = EE - H(i,j,k,iBX)
+                iE     = iE + 1
+              endif
+
+              if( iFlo2 < k ) then
+                EE     = EE + F(i,j,k-1,iBZ)
+                iE     = iE + 1
+              endif
+
+              if( iFhi2 >= k ) then
+                EE     = EE + F(i,j,k,iBZ)
+                iE     = iE + 1
+              endif
+
+              EY(i,j,k)  = EE/iE
+             enddo
+          enddo
+        enddo
+
+        do   k = iBBoxlo2, iBBoxhi2
+          do   j = iBBoxlo1, iBBoxhi1+1
+            do   i = iBBoxlo0, iBBoxhi0+1
+              iE     = 0
+              EE     = zero
+
+              if( iGlo0 < i ) then
+                EE     = EE + G(i-1,j,k,iBX)
+                iE     = iE + 1
+              endif
+
+              if( iGhi0 >= i ) then
+                EE     = EE + G(i,j,k,iBX)
+                iE     = iE + 1
+              endif
+
+              if( iFlo1 < j ) then
+                EE     = EE - F(i,j-1,k,iBY)
+                iE     = iE + 1
+              endif
+
+              if( iFhi1 >= j ) then
+                EE     = EE - F(i,j,k,iBY)
+                iE     = iE + 1
+              endif
+
+              EZ(i,j,k)  = EE/iE
+            enddo
+          enddo
+        enddo
+#endif
+ 
+        return
+
+      end subroutine electricFieldBS
+
+      subroutine electricFieldGS0(
+     &           CHF_CONST_FRA[W],
+     &           CHF_CONST_FRA[F],
+     &           CHF_CONST_FRA[G],
+     &           CHF_CONST_FRA[H],
+     &           CHF_FRA1[EX],
+     &           CHF_FRA1[EY],
+     &           CHF_FRA1[EZ],
+     &           CHF_CONST_INT[iUX],
+     &           CHF_CONST_INT[iBX],
+     &           CHF_BOX[BBox]
+     &                           )
+     
+        integer CHF_DDECL[i; j; k], iBY, iBZ, iE, iUY, iUZ
+        integer i00, i01, i10, i11
+
+        real_t  DED1_00, DED2_00, DED1_01, DED2_01
+        real_t  DED1_10, DED2_10, DED1_11, DED2_11
+        real_t  EE, EQ, DEDD
+
+        iBY    = iBX + 1
+        iBZ    = iBY + 1
+
+        iUY    = iUX + 1
+        iUZ    = iUY + 1
+
+#if CH_SPACEDIM == 2
+        do   j = iBBoxlo1, iBBoxhi1+1
+          do   i = iBBoxlo0, iBBoxhi0+1
+            iE     = 0
+            EE     = zero
+
+            if( (iGlo0 < i) .and. (iFlo1 < j) ) then
+              EQ     = W(i-1,j-1,iUY)*W(i-1,j-1,iBX) - W(i-1,j-1,iUX)*W(i-1,j-1,iBY)
+
+              DED1_00  =-F(i  ,j-1,iBY) - EQ
+              DED2_00  = G(i-1,j  ,iBX) - EQ
+              i00      = 1
+            else
+              DED1_00  = zero
+              DED2_00  = zero
+              i00      = 0
+            endif
+
+            if( (iGhi0 >= i) .and. (iFlo1 < j) ) then
+              EQ     = W(i,j-1,iUY)*W(i,j-1,iBX) - W(i,j-1,iUX)*W(i,j-1,iBY)
+
+              DED1_10  = EQ         + F(i,j-1,iBY)
+              DED2_10  = G(i,j,iBX) - EQ
+              i10      = 1
+            else
+              DED1_10  = zero
+              DED2_10  = zero
+              i10      = 0
+            endif
+
+            if( (iGlo0 < i) .and. (iFhi1 >= j) ) then
+              EQ     = W(i-1,j,iUY)*W(i-1,j,iBX) - W(i-1,j,iUX)*W(i-1,j,iBY)
+
+              DED1_01  =-F(i,j,iBY) - EQ
+              DED2_01  = EQ         - G(i-1,j,iBX)
+              i01      = 1
+            else
+              DED1_01  = zero
+              DED2_01  = zero
+              i01      = 0
+            endif
+
+            if( (iGhi0 >= i) .and. (iFhi1 >= j) ) then
+              EQ     = W(i,j,iUY)*W(i,j,iBX) - W(i,j,iUX)*W(i,j,iBY)
+
+              DED1_11  = EQ + F(i,j,iBY)
+              DED2_11  = EQ - G(i,j,iBX)
+              i11      = 1
+            else
+              DED1_11  = zero
+              DED2_11  = zero
+              i11      = 0
+            endif
+
+            if( iGlo0 < i ) then
+              DEDD   = (DED1_01 + DED1_00)/(i01 + i00)
+              EE     = EE + G(i-1,j,iBX) + DEDD
+              iE     = iE + 1
+            endif
+
+            if( iGhi0 >= i ) then
+              DEDD   = (DED1_10 + DED1_11)/(i10 + i11)
+              EE     = EE + G(i,j,iBX) - DEDD
+              iE     = iE + 1
+            endif
+
+            if( iFlo1 < j ) then
+              DEDD   = (DED2_00 + DED2_10)/(i00 + i10)
+              EE     = EE - F(i,j-1,iBY) + DEDD
+              iE     = iE + 1
+            endif
+
+            if( iFhi1 >= j ) then
+              DEDD   = (DED2_01 + DED2_11)/(i01 + i11)
+              EE     = EE - F(i,j,iBY) - DEDD
+              iE     = iE + 1
+            endif
+
+            EX(i,j)  = EE/iE
+          enddo
+        enddo
+#else
+        do   k = iBBoxlo2, iBBoxhi2+1
+          do   j = iBBoxlo1, iBBoxhi1+1
+            do   i = iBBoxlo0, iBBoxhi0
+              iE     = 0
+              EE     = zero
+
+              if( iHlo1 < j ) then
+                EE     = EE + H(i,j-1,k,iBY)
+                iE     = iE + 1
+              endif
+
+              if( iHhi1 >= j ) then
+                EE     = EE + H(i,j,k,iBY)
+                iE     = iE + 1
+              endif
+ 
+              if( iGlo2 < k ) then
+                EE     = EE - G(i,j,k-1,iBZ)
+                iE     = iE + 1
+              endif
+
+              if( iGhi2 >= k ) then
+                EE     = EE - G(i,j,k,iBZ)
+                iE     = iE + 1
+              endif
+
+              EX(i,j,k)  = EE/iE
+             enddo
+          enddo
+        enddo
+
+        do   k = iBBoxlo2, iBBoxhi2+1
+          do   j = iBBoxlo1, iBBoxhi1
+            do   i = iBBoxlo0, iBBoxhi0+1
+              iE     = 0
+              EE     = zero
+
+              if( iHlo0 < i ) then
+                EE     = EE - H(i-1,j,k,iBX)
+                iE     = iE + 1
+              endif
+
+              if( iHhi0 >= i ) then
+                EE     = EE - H(i,j,k,iBX)
+                iE     = iE + 1
+              endif
+
+              if( iFlo2 < k ) then
+                EE     = EE + F(i,j,k-1,iBZ)
+                iE     = iE + 1
+              endif
+
+              if( iFhi2 >= k ) then
+                EE     = EE + F(i,j,k,iBZ)
+                iE     = iE + 1
+              endif
+
+              EY(i,j,k)  = EE/iE
+             enddo
+          enddo
+        enddo
+
+        do   k = iBBoxlo2, iBBoxhi2
+          do   j = iBBoxlo1, iBBoxhi1+1
+            do   i = iBBoxlo0, iBBoxhi0+1
+              iE     = 0
+              EE     = zero
+
+              if( (iGlo0 < i) .and. (iFlo1 < j) ) then
+                EQ     = W(i-1,j-1,k,iUY)*W(i-1,j-1,k,iBX) - W(i-1,j-1,k,iUX)*W(i-1,j-1,k,iBY)
+
+                DED1_00  =-F(i  ,j-1,k,iBY) - EQ
+                DED2_00  = G(i-1,j  ,k,iBX) - EQ
+                i00      = 1
+              else
+                DED1_00  = zero
+                DED2_00  = zero
+                i00      = 0
+              endif
+
+              if( (iGhi0 >= i) .and. (iFlo1 < j) ) then
+                EQ     = W(i,j-1,k,iUY)*W(i,j-1,k,iBX) - W(i,j-1,k,iUX)*W(i,j-1,k,iBY)
+
+                DED1_10  = EQ           + F(i,j-1,k,iBY)
+                DED2_10  = G(i,j,k,iBX) - EQ
+                i10      = 1
+              else
+                DED1_10  = zero
+                DED2_10  = zero
+                i10      = 0
+              endif
+
+              if( (iGlo0 < i) .and. (iFhi1 >= j) ) then
+                EQ     = W(i-1,j,k,iUY)*W(i-1,j,k,iBX) - W(i-1,j,k,iUX)*W(i-1,j,k,iBY)
+
+                DED1_01  =-F(i,j,k,iBY) - EQ
+                DED2_01  = EQ           - G(i-1,j,k,iBX)
+                i01      = 1
+              else
+                DED1_01  = zero
+                DED2_01  = zero
+                i01      = 0
+              endif
+
+              if( (iGhi0 >= i) .and. (iFhi1 >= j) ) then
+                EQ     = W(i,j,k,iUY)*W(i,j,k,iBX) - W(i,j,k,iUX)*W(i,j,k,iBY)
+
+                DED1_11  = EQ + F(i,j,k,iBY)
+                DED2_11  = EQ - G(i,j,k,iBX)
+                i11      = 1
+              else
+                DED1_11  = zero
+                DED2_11  = zero
+                i11      = 0
+              endif
+
+              if( iGlo0 < i ) then
+                DEDD   = (DED1_01 + DED1_00)/(i01 + i00)
+                EE     = EE + G(i-1,j,k,iBX) + DEDD
+                iE     = iE + 1
+              endif
+
+              if( iGhi0 >= i ) then
+                DEDD   = (DED1_10 + DED1_11)/(i10 + i11)
+                EE     = EE + G(i,j,k,iBX) - DEDD
+                iE     = iE + 1
+              endif
+
+              if( iFlo1 < j ) then
+                DEDD   = (DED2_00 + DED2_10)/(i00 + i10)
+                EE     = EE - F(i,j-1,k,iBY) + DEDD
+                iE     = iE + 1
+              endif
+
+              if( iFhi1 >= j ) then
+                DEDD   = (DED2_01 + DED2_11)/(i01 + i11)
+                EE     = EE - F(i,j,k,iBY) - DEDD
+                iE     = iE + 1
+              endif
+
+              EX(i,j,k)  = EE/iE
+            enddo
+          enddo
+        enddo
+#endif
+ 
+        return
+
+      end subroutine electricFieldGS0
+
+      subroutine electricFieldGS1(
+     &           CHF_CONST_FRA[W],
+     &           CHF_CONST_FRA[F],
+     &           CHF_CONST_FRA[G],
+     &           CHF_CONST_FRA[H],
+     &           CHF_FRA1[EX],
+     &           CHF_FRA1[EY],
+     &           CHF_FRA1[EZ],
+     &           CHF_CONST_INT[iUX],
+     &           CHF_CONST_INT[iBX],
+     &           CHF_BOX[BBox]
+     &                           )
+     
+        integer CHF_DDECL[i; j; k], iBY, iBZ, iE, iUY, iUZ
+        integer i00, i01, i10, i11, iPL, iMN
+
+        real_t  DED1_00, DED2_00, DED1_01, DED2_01
+        real_t  DED1_10, DED2_10, DED1_11, DED2_11
+        real_t  EE, EQ, DEDD
+
+        iBY    = iBX + 1
+        iBZ    = iBY + 1
+
+        iUY    = iUX + 1
+        iUZ    = iUY + 1
+
+#if CH_SPACEDIM == 2
+        do   j = iBBoxlo1, iBBoxhi1+1
+          do   i = iBBoxlo0, iBBoxhi0+1
+            iE     = 0
+            EE     = zero
+
+            if( (iGlo0 < i) .and. (iFlo1 < j) ) then
+              EQ     = W(i-1,j-1,iUY)*W(i-1,j-1,iBX) - W(i-1,j-1,iUX)*W(i-1,j-1,iBY)
+
+              DED1_00  =-F(i  ,j-1,iBY) - EQ
+              DED2_00  = G(i-1,j  ,iBX) - EQ
+              i00      = 1
+            else
+              DED1_00  = zero
+              DED2_00  = zero
+              i00      = 0
+            endif
+
+            if( (iGhi0 >= i) .and. (iFlo1 < j) ) then
+              EQ     = W(i,j-1,iUY)*W(i,j-1,iBX) - W(i,j-1,iUX)*W(i,j-1,iBY)
+
+              DED1_10  = EQ         + F(i,j-1,iBY)
+              DED2_10  = G(i,j,iBX) - EQ
+              i10      = 1
+            else
+              DED1_10  = zero
+              DED2_10  = zero
+              i10      = 0
+            endif
+
+            if( (iGlo0 < i) .and. (iFhi1 >= j) ) then
+              EQ     = W(i-1,j,iUY)*W(i-1,j,iBX) - W(i-1,j,iUX)*W(i-1,j,iBY)
+
+              DED1_01  =-F(i,j,iBY) - EQ
+              DED2_01  = EQ         - G(i-1,j,iBX)
+              i01      = 1
+            else
+              DED1_01  = zero
+              DED2_01  = zero
+              i01      = 0
+            endif
+
+            if( (iGhi0 >= i) .and. (iFhi1 >= j) ) then
+              EQ     = W(i,j,iUY)*W(i,j,iBX) - W(i,j,iUX)*W(i,j,iBY)
+
+              DED1_11  = EQ + F(i,j,iBY)
+              DED2_11  = EQ - G(i,j,iBX)
+              i11      = 1
+            else
+              DED1_11  = zero
+              DED2_11  = zero
+              i11      = 0
+            endif
+
+            if( iGlo0 < i ) then
+              iMN      = i00
+              iPL      = i01
+              if( iMN*G(i-1,j,0) > zero ) then
+                iPL    = 0
+              else if( iPL*G(i-1,j,0) < zero ) then
+                iMN    = 0
+              endif
+              DEDD   = (iPL*DED1_01 + iMN*DED1_00)/(iPL + iMN)
+              EE     = EE + G(i-1,j,iBX) + DEDD
+              iE     = iE + 1
+            endif
+
+            if( iGhi0 >= i ) then
+              iMN      = i10
+              iPL      = i11
+              if( iMN*G(i,j,0) > zero ) then
+                iPL    = 0
+              else if( iPL*G(i,j,0) < zero ) then
+                iMN    = 0
+              endif
+              DEDD   = (iMN*DED1_10 + iPL*DED1_11)/(iMN + iPL)
+              EE     = EE + G(i,j,iBX) - DEDD
+              iE     = iE + 1
+            endif
+
+            if( iFlo1 < j ) then
+              iMN      = i00
+              iPL      = i10
+              if( iMN*F(i,j-1,0) > zero ) then
+                iPL    = 0
+              else if( iPL*F(i,j-1,0) < zero ) then
+                iMN    = 0
+              endif
+              DEDD   = (iMN*DED2_00 + iPL*DED2_10)/(iMN + iPL)
+              EE     = EE - F(i,j-1,iBY) + DEDD
+              iE     = iE + 1
+            endif
+
+            if( iFhi1 >= j ) then
+              iMN      = i01
+              iPL      = i11
+              if( iMN*F(i,j,0) > zero ) then
+                iPL    = 0
+              else if( iPL*F(i,j,0) < zero ) then
+                iMN    = 0
+              endif
+              DEDD   = (iMN*DED2_01 + iPL*DED2_11)/(iMN + iPL)
+              EE     = EE - F(i,j,iBY) - DEDD
+              iE     = iE + 1
+            endif
+
+            EX(i,j)  = EE/iE
+          enddo
+        enddo
+#else
+        do   k = iBBoxlo2, iBBoxhi2+1
+          do   j = iBBoxlo1, iBBoxhi1+1
+            do   i = iBBoxlo0, iBBoxhi0
+              iE     = 0
+              EE     = zero
+
+              if( iHlo1 < j ) then
+                EE     = EE + H(i,j-1,k,iBY)
+                iE     = iE + 1
+              endif
+
+              if( iHhi1 >= j ) then
+                EE     = EE + H(i,j,k,iBY)
+                iE     = iE + 1
+              endif
+ 
+              if( iGlo2 < k ) then
+                EE     = EE - G(i,j,k-1,iBZ)
+                iE     = iE + 1
+              endif
+
+              if( iGhi2 >= k ) then
+                EE     = EE - G(i,j,k,iBZ)
+                iE     = iE + 1
+              endif
+
+              EX(i,j,k)  = EE/iE
+             enddo
+          enddo
+        enddo
+
+        do   k = iBBoxlo2, iBBoxhi2+1
+          do   j = iBBoxlo1, iBBoxhi1
+            do   i = iBBoxlo0, iBBoxhi0+1
+              iE     = 0
+              EE     = zero
+
+              if( iHlo0 < i ) then
+                EE     = EE - H(i-1,j,k,iBX)
+                iE     = iE + 1
+              endif
+
+              if( iHhi0 >= i ) then
+                EE     = EE - H(i,j,k,iBX)
+                iE     = iE + 1
+              endif
+
+              if( iFlo2 < k ) then
+                EE     = EE + F(i,j,k-1,iBZ)
+                iE     = iE + 1
+              endif
+
+              if( iFhi2 >= k ) then
+                EE     = EE + F(i,j,k,iBZ)
+                iE     = iE + 1
+              endif
+
+              EY(i,j,k)  = EE/iE
+             enddo
+          enddo
+        enddo
+
+        do   k = iBBoxlo2, iBBoxhi2
+          do   j = iBBoxlo1, iBBoxhi1+1
+            do   i = iBBoxlo0, iBBoxhi0+1
+              iE     = 0
+              EE     = zero
+
+              if( (iGlo0 < i) .and. (iFlo1 < j) ) then
+                EQ     = W(i-1,j-1,k,iUY)*W(i-1,j-1,k,iBX) - W(i-1,j-1,k,iUX)*W(i-1,j-1,k,iBY)
+
+                DED1_00  =-F(i  ,j-1,k,iBY) - EQ
+                DED2_00  = G(i-1,j  ,k,iBX) - EQ
+                i00      = 1
+              else
+                DED1_00  = zero
+                DED2_00  = zero
+                i00      = 0
+              endif
+
+              if( (iGhi0 >= i) .and. (iFlo1 < j) ) then
+                EQ     = W(i,j-1,k,iUY)*W(i,j-1,k,iBX) - W(i,j-1,k,iUX)*W(i,j-1,k,iBY)
+
+                DED1_10  = EQ           + F(i,j-1,k,iBY)
+                DED2_10  = G(i,j,k,iBX) - EQ
+                i10      = 1
+              else
+                DED1_10  = zero
+                DED2_10  = zero
+                i10      = 0
+              endif
+
+              if( (iGlo0 < i) .and. (iFhi1 >= j) ) then
+                EQ     = W(i-1,j,k,iUY)*W(i-1,j,k,iBX) - W(i-1,j,k,iUX)*W(i-1,j,k,iBY)
+
+                DED1_01  =-F(i,j,k,iBY) - EQ
+                DED2_01  = EQ           - G(i-1,j,k,iBX)
+                i01      = 1
+              else
+                DED1_01  = zero
+                DED2_01  = zero
+                i01      = 0
+              endif
+
+              if( (iGhi0 >= i) .and. (iFhi1 >= j) ) then
+                EQ     = W(i,j,k,iUY)*W(i,j,k,iBX) - W(i,j,k,iUX)*W(i,j,k,iBY)
+
+                DED1_11  = EQ + F(i,j,k,iBY)
+                DED2_11  = EQ - G(i,j,k,iBX)
+                i11      = 1
+              else
+                DED1_11  = zero
+                DED2_11  = zero
+                i11      = 0
+              endif
+
+              if( iGlo0 < i ) then
+                DEDD   = (DED1_01 + DED1_00)/(i01 + i00)
+                EE     = EE + G(i-1,j,k,iBX) + DEDD
+                iE     = iE + 1
+              endif
+
+              if( iGhi0 >= i ) then
+                DEDD   = (DED1_10 + DED1_11)/(i10 + i11)
+                EE     = EE + G(i,j,k,iBX) - DEDD
+                iE     = iE + 1
+              endif
+
+              if( iFlo1 < j ) then
+                DEDD   = (DED2_00 + DED2_10)/(i00 + i10)
+                EE     = EE - F(i,j-1,k,iBY) + DEDD
+                iE     = iE + 1
+              endif
+
+              if( iFhi1 >= j ) then
+                DEDD   = (DED2_01 + DED2_11)/(i01 + i11)
+                EE     = EE - F(i,j,k,iBY) - DEDD
+                iE     = iE + 1
+              endif
+
+              EX(i,j,k)  = EE/iE
+            enddo
+          enddo
+        enddo
+#endif
+ 
+        return
+
+      end subroutine electricFieldGS1
+
+      subroutine checkDivB(
+     &                      CHF_CONST_FRA[U],
+     &                      CHF_CONST_INT[iBX],
+     &                      CHF_BOX[BBox]
+     &                    )
+     
+        integer CHF_DDECL[i; j; k], iBY, iBZ
+        real_t  maxDivB, divB
+        real_t, parameter :: minDivB   = 1.0D-10
+
+        iBY    = iBX + 1
+        iBZ    = iBY + 1
+
+        maxDivB  = zero
+        
+#if CH_SPACEDIM == 2
+        do   j = iBBoxlo1, iBBoxhi1-1
+          do   i = iBBoxlo0, iBBoxhi0-1
+            divB   = (U(i+1,j,iBX) + U(i+1,j+1,iBX) - U(i,j,iBX) - U(i,j+1,iBX))
+     &             + (U(i,j+1,iBY) + U(i+1,j+1,iBY) - U(i,j,iBY) - U(i+1,j,iBY))
+
+            if( abs( divB ) > minDivB ) then
+              print *,' div(B) = ',divB,'  i = ',i,'  j = ',j
+            endif
+
+            maxDivB  = max( maxDivB, abs( divB ) )
+           enddo
+        enddo
+#endif
+
+#if CH_SPACEDIM == 3
+        do   k = iBBoxlo2, iBBoxhi2-1
+          do   j = iBBoxlo1, iBBoxhi1-1
+            do   i = iBBoxlo0, iBBoxhi0-1
+              divB   = (U(i+1,j,k  ,iBX) + U(i+1,j+1,k  ,iBX)
+     &               +  U(i+1,j,k+1,iBX) + U(i+1,j+1,k+1,iBX))
+     &               - (U(i  ,j,k  ,iBX) + U(i  ,j+1,k  ,iBX)
+     &               +  U(i  ,j,k+1,iBX) + U(i  ,j+1,k+1,iBX))
+     &               + (U(i,j+1,k  ,iBY) + U(i+1,j+1,k  ,iBY)
+     &               +  U(i,j+1,k+1,iBY) + U(i+1,j+1,k+1,iBY))
+     &               - (U(i,j  ,k  ,iBY) + U(i+1,j  ,k  ,iBY)
+     &               +  U(i,j  ,k+1,iBY) + U(i+1,j  ,k+1,iBY))
+     &               + (U(i,j  ,k+1,iBZ) + U(i+1,j  ,k+1,iBZ)
+     &               +  U(i,j+1,k+1,iBZ) + U(i+1,j+1,k+1,iBZ))
+     &               - (U(i,j  ,k  ,iBZ) + U(i+1,j  ,k  ,iBZ)
+     &               +  U(i,j+1,k  ,iBZ) + U(i+1,j+1,k  ,iBZ))
+ 
+              maxDivB  = max( maxDivB, abs( divB ) )
+            enddo
+          enddo
+        enddo
+#endif
+        return
+
+      end subroutine checkDivB
+

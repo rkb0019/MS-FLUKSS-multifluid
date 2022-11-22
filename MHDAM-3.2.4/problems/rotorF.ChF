@@ -1,0 +1,109 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETROTOR(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[aurotorU],
+     &    CHF_CONST_REAL[aurotorP],
+     &    CHF_CONST_REAL[aurotorR],
+     &    CHF_CONST_REAL[aurotorB],
+     &    CHF_CONST_REAL[aurotorXC],
+     &    CHF_CONST_REAL[aurotorYC],
+     &    CHF_CONST_REAL[aurotorR0],
+     &    CHF_CONST_REAL[aurotorR1] )
+
+#include "rotorCommon.fh"
+#include "EosCommon.fh"
+
+        real_t r0,p0,umag
+
+        gamma      = augamma
+        hgamma     = gamma - 1.0d0
+        invhgamma  = one / hgamma
+
+        rotorU     = aurotorU
+        rotorP     = aurotorP
+        rotorR     = aurotorR
+        rotorB     = aurotorB
+        rotorXC    = aurotorXC
+        rotorYC    = aurotorYC
+        rotorR0    = aurotorR0
+        rotorR1    = aurotorR1
+
+        r0         = one
+        p0         = rotorP
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = 1.0D-2*small*r0
+        smallu     = 1.0D-2*small*umag
+        smallp     = 1.0D-2*small*r0*half*umag*umag
+
+        return
+        end
+
+        subroutine ROTORINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iCP],
+     &    CHF_CONST_REAL[dx],     
+     &    CHF_BOX[box])
+
+        real_t ke, b, p0, r0, e0, Ux, Uy, Bx, By, r, f
+        integer CHF_DDECL[i;j;k]
+        real_t CHF_DDECL[x;y;z]
+
+#include "rotorCommon.fh"
+#include "EosCommon.fh"
+
+        p0   = rotorP
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - rotorXC;
+          y      = (j + half)*dx - rotorYC;
+          z      = (k + half)*dx]
+
+          r      = sqrt( x*x + y*y )
+
+          if( r >= rotorR1 ) then
+            f      = zero
+          else if( r <= rotorR0 ) then
+            f      = one
+          else
+            f      = (rotorR1 - r)/(rotorR1 - rotorR0)
+          endif
+
+          r0     = one + (rotorR - one)*f
+
+          Ux     =-rotorU*f*y/rotorR0
+          Uy     = rotorU*f*x/rotorR0
+
+          Bx     = rotorB
+          By     = zero
+
+          b      = d_1_4PI*(Bx*Bx + By*By)
+          ke     =          Ux*Ux + Uy*Uy
+
+          e0     = p0/hgamma + half*(r0*ke + b)
+
+          U(CHF_IX[i;j;k],URHO)  = r0
+
+          U(CHF_IX[i;j;k],UMOMX) = r0*Ux
+          U(CHF_IX[i;j;k],UMOMY) = r0*Uy
+          U(CHF_IX[i;j;k],UMOMZ) = zero
+
+          U(CHF_IX[i;j;k],UENG)  = e0
+
+          U(CHF_IX[i;j;k],UBX )  = Bx
+          U(CHF_IX[i;j;k],UBY )  = By
+          U(CHF_IX[i;j;k],UBZ )  = zero
+          
+          ! Dedner
+          if (iCP>0) then  
+            U(CHF_IX[i;j;k],iCP)  = zero          
+          endif
+
+        CHF_ENDDO
+
+        return
+        end

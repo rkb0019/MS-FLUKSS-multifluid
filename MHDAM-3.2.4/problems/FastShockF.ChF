@@ -1,0 +1,698 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETFASTSHOCK(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auVelModuleL],
+     &    CHF_CONST_REAL[auVelAngleL],
+     &    CHF_CONST_REAL[auMagModuleL],
+     &    CHF_CONST_REAL[auMagAngleL],
+     &    CHF_CONST_REAL[auPressRatioL],
+     &    CHF_CONST_REAL[auFastMachL],
+     &    CHF_CONST_REAL[auXs],
+     &    CHF_CONST_REAL[auAlfvenMag],
+     &    CHF_CONST_REAL[auAlfvenK])
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        real_t r0, p0, umag, phiVel, phiB
+
+        gamma      = augamma
+        hgamma     = gamma - one
+        invhgamma  = one / hgamma
+
+        phiVel     = auVelAngleL*d_PI_180
+        phiB       = auMagAngleL*d_PI_180
+
+        call   SteadyFastShock( auVelModuleL, phiVel,
+     &                          auMagModuleL, phiB,
+     &                          auPressRatioL,
+     &                          auFastMachL,
+     &                          gamma,
+     &                          densityR, velxR, velyR, BxR, ByR,
+     &                          pressureR,
+     &                          densityL, velxL, velyL, BxL, ByL,
+     &                          pressureL )
+
+        write(6,*)' densityL  =', densityL
+        write(6,*)' pressureL =', pressureL
+        write(6,*)' velxL     =', velxL
+        write(6,*)' velyL     =', velyL
+        write(6,*)' BxL       =', BxL
+        write(6,*)' ByL       =', ByL
+        write(6,*)' densityR  =', densityR
+        write(6,*)' pressureR =', pressureR
+        write(6,*)' velxR     =', velxR
+        write(6,*)' velyR     =', velyR
+        write(6,*)' BxR       =', BxR
+        write(6,*)' ByR       =', ByR
+        write(6,*)' AlfvenMag =', auAlfvenMag
+        write(6,*)' auAlfvenK =', auAlfvenK
+
+        velzL      = zero
+        velzR      = zero
+        BzL        = zero
+        BzR        = zero
+        startX     = auXs
+
+        ref_V      = auAlfvenMag
+        ref_N      = auAlfvenK
+
+        r0         = min( densityL,  densityR  )
+        p0         = min( pressureL, pressureR )
+
+        umag       = sqrt( gamma*p0/r0 )
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+
+        return
+        end
+
+        subroutine FASTSHOCKINIT(
+     &             CHF_FRA[U],
+     &             CHF_CONST_REAL[dx],
+     &             CHF_BOX[box])
+
+        real_t ke, b
+        integer CHF_DDECL[i;j;k]
+        integer iRHO, iUMX, iUMY, iUMZ, iE, iBX, iBY, iBZ
+        real_t eL, eR, A, kappa, kx, ky, Bz, cPsi, sPsi
+        real_t velx, vely, velz, magx, magy, magz, beta, carg
+        real_t CHF_DDECL[x;y;z]
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        iRHO = URHO
+        iUMX = iRHO + 1
+        iUMY = iRHO + 2
+        iUMZ = iRHO + 3
+        iE   = iRHO + 4
+        iBX  = iRHO + 5
+        iBY  = iRHO + 6
+        iBZ  = iRHO + 7
+
+        b    = d_1_4PI*(BxR  *BxR   + ByR  *ByR   + BzR  *BzR  )
+        ke   =          velxR*velxR + velyR*velyR + velzR*velzR
+
+        eR   = pressureR/hgamma + half*(densityR*ke + b)
+
+        Bz   = sqrt( BxL*BxL + ByL*ByL )
+
+        cPsi  = BxL/Bz
+        sPsi  = ByL/Bz
+
+        A     = ref_V
+        kappa = ref_N
+        if( abs( sPsi ) > 1.0D-6 ) then
+          kappa = kappa/sPsi
+        endif
+
+        kx    = kappa*cPsi
+        ky    = kappa*sPsi
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x = (i + half)*dx;
+          y = (j + half)*dx;
+          z = (k + half)*dx]
+
+          if( x < startX ) then
+            beta = d_2PI*(kx*x + ky*y)
+            carg = cos( beta )
+
+            velx = velxL - A*sPsi*carg
+            vely = velyL + A*cPsi*carg
+            velz =         A*sin( beta )
+
+            magx = BxL - A*sqrt( d_4PI*densityL )*sPsi*carg
+            magy = ByL + A*sqrt( d_4PI*densityL )*cPsi*carg
+            magz =       A*sqrt( d_4PI*densityL )*sin( beta )
+
+            b    = d_1_4PI*(magx*magx + magy*magy + magz*magz)
+            ke   =          velx*velx + vely*vely + velz*velz
+
+            eL   = pressureL/hgamma + half*(densityL*ke + b)
+
+            U(CHF_IX[i;j;k],iRHO)  = densityL
+
+            U(CHF_IX[i;j;k],iUMX)  = densityL*velx
+            U(CHF_IX[i;j;k],iUMY)  = densityL*vely
+            U(CHF_IX[i;j;k],iUMZ)  = densityL*velz
+
+            U(CHF_IX[i;j;k],iE  )  = eL
+
+            U(CHF_IX[i;j;k],iBX )  = magx
+            U(CHF_IX[i;j;k],iBY )  = magy
+            U(CHF_IX[i;j;k],iBZ )  = magz
+          else
+            U(CHF_IX[i;j;k],iRHO)  = densityR
+
+            U(CHF_IX[i;j;k],iUMX)  = densityR*velxR
+            U(CHF_IX[i;j;k],iUMY)  = densityR*velyR
+            U(CHF_IX[i;j;k],iUMZ)  = densityR*velzR
+
+            U(CHF_IX[i;j;k],iE  )  = eR
+
+            U(CHF_IX[i;j;k],iBX )  = BxR
+            U(CHF_IX[i;j;k],iBY )  = ByR
+            U(CHF_IX[i;j;k],iBZ )  = BzR
+          endif
+
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine FASTSHOCKBC(
+     &             CHF_FRA[F],
+     &             CHF_FRA1[Bn],
+     &             CHF_CONST_FRA[W],
+     &             CHF_CONST_INT[lohisign],
+     &             CHF_CONST_REAL[dx],
+     &             CHF_CONST_REAL[time],
+     &             CHF_CONST_INT[dir],
+     &             CHF_BOX[box])
+
+        real_t P, b, bu, ke, e, Bx, By, Bz
+        real_t density, velx, vely, velz, pressure
+        integer CHF_DDECL[i;j;k]
+        real_t A, AA, kappa, kx, ky, kt, cPsi, sPsi
+        real_t magx, magy, magz, beta, carg
+        real_t CHF_DDECL[x;y;z]
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        Bz     = sqrt( BxL*BxL + ByL*ByL )
+
+        cPsi   = BxL/Bz
+        sPsi   = ByL/Bz
+
+        A      = ref_V
+        AA     = A*sqrt( d_4PI*densityL )
+        kappa  = ref_N
+        if( abs( sPsi ) > 1.0D-6 ) then
+          kappa  = kappa/sPsi
+        endif
+
+        kx     = kappa*cPsi
+        ky     = kappa*sPsi
+        kt     = (BxL*kx + ByL*ky)/sqrt( d_4PI*densityL ) - velxL*kx - velyl*ky
+
+        CHF_MULTIDO[box;i;j;k]
+          if( lohisign == 1 ) then
+            density  = W(CHF_IX[i;j;k],WRHO )
+
+            velx     = W(CHF_IX[i;j;k],WVELX)
+            vely     = W(CHF_IX[i;j;k],WVELY)
+            velz     = W(CHF_IX[i;j;k],WVELZ)
+
+            pressure = W(CHF_IX[i;j;k],WPRES)
+
+            Bx       = W(CHF_IX[i;j;k],WBX  )
+            By       = W(CHF_IX[i;j;k],WBY  )
+            Bz       = W(CHF_IX[i;j;k],WBZ  )
+
+            b        = d_1_8PI*(Bx  *Bx   + By  *By   + Bz  *Bz  )
+            ke       = density*(velx*velx + vely*vely + velz*velz)
+            bu       =          Bx  *velx + By  *vely + Bz  *velz
+
+            P        = pressure + b
+            e        = pressure/hgamma + half*ke + b 
+
+            F(CHF_IX[i;j;k],URHO ) = density*velx
+
+            F(CHF_IX[i;j;k],UMOMX) = density*velx*velx - d_1_4PI*Bx*Bx + P
+            F(CHF_IX[i;j;k],UMOMY) = density*velx*vely - d_1_4PI*Bx*By
+            F(CHF_IX[i;j;k],UMOMZ) = density*velx*velz - d_1_4PI*Bx*Bz
+
+            F(CHF_IX[i;j;k],UENG ) = velx*(e + P) - d_1_4PI*Bx*bu
+
+            F(CHF_IX[i;j;k],UBX)   = zero
+            F(CHF_IX[i;j;k],UBY)   = velx*By - vely*Bx
+            F(CHF_IX[i;j;k],UBZ)   = velx*Bz - velz*Bx
+          else
+            CHF_DTERM[
+            x      = i*dx;
+            y      = j*dx;
+            z      = k*dx]
+
+            beta   = d_2PI*(kx*x + ky*y + kt*time)
+            carg   = cos( beta )
+
+            velx   = velxL - A*sPsi*carg
+            vely   = velyL + A*cPsi*carg
+            velz   =         A*sin( beta )
+
+            magx   = BxL - AA*sPsi*carg
+            magy   = ByL + AA*cPsi*carg
+            magz   =       AA*sin( beta )
+
+            b    = d_1_8PI *(magx*magx + magy*magy + magz*magz)
+            ke   = densityL*(velx*velx + vely*vely + velz*velz)
+            bu   =           magx*velx + magy*vely + magz*velz
+
+            P    = pressureL + b
+            e    = pressureL/hgamma + half*ke + b 
+
+            F(CHF_IX[i;j;k],URHO ) = densityL*velx
+
+            F(CHF_IX[i;j;k],UMOMX) = densityL*velx*velx - d_1_4PI*magx*magx + p
+            F(CHF_IX[i;j;k],UMOMY) = densityL*velx*vely - d_1_4PI*magx*magy
+            F(CHF_IX[i;j;k],UMOMZ) = densityL*velx*velz - d_1_4PI*magx*magz
+
+            F(CHF_IX[i;j;k],UENG ) = velx*(e + P) - d_1_4PI*magx*bu
+
+            F(CHF_IX[i;j;k],UBX)   = zero
+            F(CHF_IX[i;j;k],UBY)   = velx*magy - vely*magx
+            F(CHF_IX[i;j;k],UBZ)   = velx*magz - velz*magx
+
+            Bn(CHF_IX[i;j;k])      = magx
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine FASTSHOCKGS(
+     &             CHF_FRA[W],
+     &             CHF_CONST_INT[lohisign],
+     &             CHF_CONST_INT[dir],
+     &             CHF_CONST_REAL[dx],
+     &             CHF_CONST_REAL[time],
+     &             CHF_BOX[box])
+        
+        integer CHF_DDECL[i;j;k], ii
+        real_t A, AA, kappa, kx, ky, kt, Bz, cPsi, sPsi
+        real_t velx, vely, velz, magx, magy, magz, beta, carg
+        real_t CHF_DDECL[x;y;z]
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        Bz     = sqrt( BxL*BxL + ByL*ByL )
+
+        cPsi   = BxL/Bz
+        sPsi   = ByL/Bz
+
+        A      = ref_V
+        AA     = A*sqrt( d_4PI*densityL )
+        kappa  = ref_N
+        if( abs( sPsi ) > 1.0D-6 ) then
+          kappa  = kappa/sPsi
+        endif
+
+        kx     = kappa*cPsi
+        ky     = kappa*sPsi
+        kt     = (BxL*kx + ByL*ky)/sqrt( d_4PI*densityL ) - velxL*kx - velyl*ky
+
+        if( dir .eq. 0 ) then
+          CHF_MULTIDO[box;i;j;k]
+            if( lohisign == 1 ) then
+              W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[iboxlo0-1;j;k],WRHO )
+
+              W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[iboxlo0-1;j;k],WVELX)
+              W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[iboxlo0-1;j;k],WVELY)
+              W(CHF_IX[i;j;k],WVELZ) = zero
+
+              W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[iboxlo0-1;j;k],WPRES)
+
+              W(CHF_IX[i;j;k],WBX  ) = W(CHF_IX[iboxlo0-1;j;k],WBX  )
+              W(CHF_IX[i;j;k],WBY  ) = W(CHF_IX[iboxlo0-1;j;k],WBY  )
+              W(CHF_IX[i;j;k],WBZ  ) = W(CHF_IX[iboxlo0-1;j;k],WBZ  )
+            else
+              CHF_DTERM[
+              x      = (i + half)*dx;
+              y      = (j + half)*dx;
+              z      = (k + half)*dx]
+
+              beta   = d_2PI*(kx*x + ky*y + kt*time)
+              carg   = cos( beta )
+
+              velx   = velxL - A*sPsi*carg
+              vely   = velyL + A*cPsi*carg
+              velz   =         A*sin( beta )
+
+              magx   = BxL - AA*sPsi*carg
+              magy   = ByL + AA*cPsi*carg
+              magz   =       AA*sin( beta )
+
+              W(CHF_IX[i;j;k],WRHO ) = densityL
+
+              W(CHF_IX[i;j;k],WVELX) = velx
+              W(CHF_IX[i;j;k],WVELY) = vely
+              W(CHF_IX[i;j;k],WVELZ) = velz
+
+              W(CHF_IX[i;j;k],WPRES) = pressureL
+
+              W(CHF_IX[i;j;k],WBX  ) = magx
+              W(CHF_IX[i;j;k],WBY  ) = magy
+              W(CHF_IX[i;j;k],WBZ  ) = magz
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine SteadyFastShock(
+     &             CHF_CONST_REAL[UL],
+     &             CHF_CONST_REAL[phi_UL],
+     &             CHF_CONST_REAL[BL],
+     &             CHF_CONST_REAL[phi_BL],
+     &             CHF_CONST_REAL[QL],
+     &             CHF_CONST_REAL[M_0xL],
+     &             CHF_CONST_REAL[gamma],
+     &             CHF_REAL[RhoL],
+     &             CHF_REAL[u_xL],
+     &             CHF_REAL[u_yL],
+     &             CHF_REAL[B_xL],
+     &             CHF_REAL[B_yL],
+     &             CHF_REAL[pL],
+     &             CHF_REAL[RhoR],
+     &             CHF_REAL[u_xR],
+     &             CHF_REAL[u_yR],
+     &             CHF_REAL[B_xR],
+     &             CHF_REAL[B_yR],
+     &             CHF_REAL[pR] )
+
+        real_t d_1_4PI
+        parameter (d_1_4PI  = 0.079577471545947667884441881686257181D0 )
+
+        real_t  :: l, l2, m, m2, Q2, Q4, H, a0, a1, a2, a3, ML, ML2,
+     &             x1r, x1i, x2r, x2i, x3r, x3i, xi, R
+        integer :: iErr        
+
+!<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>!
+
+        u_xL   = UL*cos( phi_UL )
+        u_yL   = UL*sin( phi_UL )
+
+        m      =    sin( phi_BL )
+        l      =    cos( phi_BL )
+
+        m2     = m*m
+        l2     = l*l
+
+        B_xL   = BL*l
+        B_yL   = BL*m
+
+        Q2     = QL*QL
+        Q4     = Q2*Q2
+
+        pL     = d_1_4PI*BL*BL/(gamma*Q2)
+
+        H      = one + Q2
+        H      = H + sqrt( H*H - four*Q2*l2 )
+
+        RhoL   = half*gamma*pL*H*M_0xL*M_0xL/(u_xL*u_xL)
+
+        ML     = M_0xL*sqrt( half*H )
+        ML2    = ML*ML
+
+        a0     =-(gamma + one)*(ML2 - l2*Q2)**2
+        a1     = (ML2 - l2*Q2)*(two + (gamma - one)*ML2 + gamma*Q2*m2
+     &         - (gamma + one)*Q2*l2)
+        a2     = ((gamma - one)*Q4*l2 - (gamma - two)*q2*ML2)*m2
+        a3     = Q4*l2*m2
+
+        call   poCubic( a0, a1, a2, a3, x1r, x1i, x2r, x2i, x3r, x3i,
+     &                  iErr )
+
+        write(6,*)' x1r  =', x1r
+        write(6,*)' x1i  =', x1i
+        write(6,*)' x2r  =', x2r
+        write(6,*)' x2i  =', x2i
+        write(6,*)' x3r  =', x3r
+        write(6,*)' x3i  =', x3i
+
+        if( (abs( x1i ) <= epsilon( x1i )) .and.
+     &      (zero < x1r) .and. (x1r < one) ) then
+          xi     = x1r
+        else if( (abs( x2i ) <= epsilon( x2i )) .and.
+     &      (zero < x2r) .and. (x2r < one) ) then
+          xi     = x2r
+        else if( (abs( x3i ) <= epsilon( x3i )) .and.
+     &      (zero < x3r) .and. (x3r < one) ) then
+          xi     = x3r
+        else
+          iErr   =-10
+        endif
+
+        R      = (one - l2*(one - xi)*Q2/ML2)/xi
+
+        RhoR   = RhoL/R
+
+        pR     = gamma*pL*((one - R)*ML2 + one/gamma
+     &         + half*(one - xi*xi)*m2*Q2)
+
+        u_xR   = R*u_xL
+        u_yR   = u_yL - u_xL*(one - xi)*Q2*l*m/ML2
+
+        B_xR   = B_xL
+        B_yR   = xi*B_yL
+
+        end subroutine SteadyFastShock
+
+        subroutine poCubic(
+     &             CHF_CONST_REAL[a0],
+     &             CHF_CONST_REAL[a1],
+     &             CHF_CONST_REAL[a2],
+     &             CHF_CONST_REAL[a3],
+     &             CHF_REAL[x1r],
+     &             CHF_REAL[x1i],
+     &             CHF_REAL[x2r],
+     &             CHF_REAL[x2i],
+     &             CHF_REAL[x3r],
+     &             CHF_REAL[x3i],
+     &             CHF_INT[iRetCode] )
+
+        real_t, parameter :: dRADIX    = two
+        real_t, parameter :: dOneT     = one/three
+        real_t, parameter :: dTwoT     = two/three
+
+        real_t d_PI, d_SQRT3_2
+        parameter( d_PI      = 3.14159265358979323846264338327950288D0 )
+        parameter( d_SQRT3_2 = 0.866025403784438646763723170752936183D0 )
+
+        real_t            :: a, aa, b, bb, c, cosa, d1, d2,
+     &                       d3, p, q, qq, sp, temp
+
+!<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>!
+
+        iRetCode = 0
+        x1i    = zero
+        x2i    = zero
+        x3i    = zero
+        if( a3 /= zero ) then
+!                                                              // Cubic equation
+          if( a0 == zero ) then
+            x1r    = zero
+            x1i    = zero
+            call   poQuadratic( a1, a2, a3, x2r, x2i, x3r, x3i,
+     &                          iRetCode )
+            iRetCode = 0
+            return
+          endif
+
+          a      = a2/(three*a3)
+          b      = a1/a3
+          c      = a0/a3
+
+          aa     = a*a
+          p      = dOneT*b - aa
+          q      = a*(aa - half*b) + half*c
+          qq     = p*p*p + q*q
+          if( qq >= zero ) then
+            aa     = zero
+            bb     = zero
+            if( p == zero ) then
+              temp   = q + q
+              if( temp >= zero ) then
+                aa     =-(temp)**dOneT
+              else
+                aa     = (-temp)**dOneT
+              endif
+            else
+              qq     = sqrt( qq )
+              if( p > zero ) then
+                aa     = (qq - q)**dOneT
+              else
+                if( q >= zero ) then
+                  aa     =-(q - qq)**dOneT
+                else
+                  aa     = (qq - q)**dOneT
+                endif
+              endif
+              bb     =-p/aa
+            endif
+            x1r    = aa + bb
+            x2r    = -half*x1r
+            x3r    = x2r
+            x2i    = d_SQRT3_2*(aa - bb)
+            x3i    = -x2i
+          else
+            sp     = sqrt( -p )
+
+            cosa   = q/(sp*p)
+            aa     = atan2( sqrt( one - cosa ), sqrt( one + cosa ) )
+            if( a < zero ) aa     = aa + d_PI
+            aa     = dTwoT*aa
+
+            temp   = sp + sp
+            x1r    = temp*cos( aa )
+
+            call   poQuadratic( x1r*x1r + three*p, x1r, one, x2r, x2i,
+     &                          x3r, x3i, iRetCode )
+          endif
+          x1r    = x1r - a
+          x2r    = x2r - a
+          x3r    = x3r - a
+          if( qq < zero ) then
+!                                               All real roots. Reordering roots
+            d1     = x1r
+            if( d1 < zero ) d1      =-d1
+            d2     = x2r
+            if( d2 < zero ) d2      =-d2
+            d3     = x3r
+            if( d3 < zero ) d3      =-d3
+
+            if( d1 < d2 ) then
+              if( d2 > d3 ) then
+                temp   = x3r
+                x3r    = x2r
+                if( d1 <= d3 ) then
+                  x2r    = temp
+                else
+                  x2r    = x1r
+                  x1r    = temp
+                endif
+              endif
+            else
+              if( d1 <= d3 ) then
+                temp   = x1r
+                x1r    = x2r
+                x2r    = temp
+              else
+                temp   = x3r
+                x3r    = x1r
+                if( d3 <= d2 ) then
+                  x1r    = temp
+                else
+                  x1r    = x2r
+                  x2r    = temp
+                endif
+              endif
+            endif
+          endif
+        else
+!                                                             Quadratic equation
+          call   poQuadratic( a0, a1, a2, x1r, x1i, x2r, x2i, iRetCode )
+          if( iRetCode == 0 ) iRetCode   = 3
+        endif
+
+        end subroutine poCubic
+
+        subroutine poQuadratic(
+     &             CHF_CONST_REAL[a],
+     &             CHF_CONST_REAL[b],
+     &             CHF_CONST_REAL[c],
+     &             CHF_REAL[ReSmallRoot],
+     &             CHF_REAL[ImSmallRoot],
+     &             CHF_REAL[ReLargeRoot],
+     &             CHF_REAL[ImLargeRoot],
+     &             CHF_INT[iRetCode] )
+
+        real_t, parameter :: dRADIX    = two
+
+        real_t :: dRNLGRX
+        parameter( dRNLGRX = 0.693147180559945309417232121458176568D0)
+
+        integer           :: is
+        real_t            :: a0, b0, b1, c0, d, d1, dd, dScale, s
+
+!<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>!
+
+        iRetCode = 0
+!                       put the coefficients in temporary to save execution time
+        a0     = a
+        b1     =-b
+        c0     = c
+!                                                     check for a==0.0 or c==0.0
+        if( c0 == zero ) then
+          if( b1 == zero ) then
+            iRetCode = -1
+            if( a0 == zero ) iRetCode   = 1
+          else
+!                                                               Linear equations
+            iRetCode   = 2
+            ReSmallRoot  = a0/b1
+            ImSmallRoot  = zero
+          endif
+        else
+          if( a0 == zero ) then
+            ReSmallRoot  = zero
+            ImSmallRoot  = zero
+            ReLargeRoot  = b1/c0
+            ImLargeRoot  = zero
+          else
+!  Scaling to avoid overflow or underflow. Scale the coefficients so that a*c is
+!  approximately one. The scale factor sqrt(a*c) fits this  requirement  but may
+!  cause overflow or underflow in  the  scaling  procedure.  Let  a=2.0**ia  and
+!  c=2.0**ic. The scale factor, dScale, is defined  by  the  following  formula,
+!  dScale=2.0**is, where is=entier((ia+ic+1)/2) and entier is  the  mathematical
+!  greatest integer function.
+            is     = (log( abs( a0 ) ) + log( abs( c0 ) ) + dRNLGRX)
+     &             /(dRNLGRX + dRNLGRX)
+            dScale = dRADIX**is
+!               If the scale factor < deps*abs(b1) do not scale the coefficients
+            d1     = abs( b1 )
+            d      = dScale + d1
+            d      = d      - d1
+            if( d == zero ) then
+              ReSmallRoot  = a0/b1
+              ImSmallRoot  = zero
+              ReLargeRoot  = b1/c0
+              ImLargeRoot  = zero
+              if( abs( ReLargeRoot ) < abs( ReSmallRoot ) ) then
+                ReSmallRoot  = -ReLargeRoot
+              endif
+            else
+!         if abs(b1) >= deps*scale factor then scale b0. Otherwise set b0 = zero
+              b0     = zero
+              d      = d1 + dScale
+              d      = d  - dScale
+              if( d /= zero ) b0    = (b1/dScale)*half
+              a0     = a0/dScale
+              c0     = c0/dScale
+!                                              solve a0*z**2 - 2.0*b0*z + c0=0.0
+              dd     = b0*b0 - a0*c0
+              if( dd > zero ) then
+!                                                            distinct real roots
+                s      = sqrt( dd )
+                if( b0 < zero ) s      = -s
+                b1     = s + b0
+                ReSmallRoot  = a0/b1
+                ImSmallRoot  = zero
+                ReLargeRoot  = b1/c0
+                ImLargeRoot  = zero
+                if( abs( ReLargeRoot ) < abs( ReSmallRoot ) ) then
+                  ReSmallRoot  = -ReLargeRoot
+                endif
+              else
+!                                                    coincident or complex roots
+                s      = sqrt(-dd )
+                ReLargeRoot  = b0/c0
+                ImLargeRoot  = abs( s/c0 )
+                ReSmallRoot  = ReLargeRoot
+                ImSmallRoot  =-ImLargeRoot
+              endif
+            endif
+          endif
+        endif
+
+        end subroutine poQuadratic

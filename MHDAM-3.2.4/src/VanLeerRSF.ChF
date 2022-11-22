@@ -1,0 +1,236 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine VANLEERF(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        integer inorm, itan1, itan2
+        real_t PGasL, RhoL, UL, VL, WL, RUL, RVL, RWL
+        real_t PGasR, RhoR, UR, VR, WR, RUR, RVR, RWR
+        real_t RUxUL, EL, AL2, AL, H, HU, UA
+        real_t RUxUR, ER, AR2, AR
+        real_t fl1, fl2, fl3, fl4, fl5
+        real_t fr1, fr2, fr3, fr4, fr5
+
+        integer spacedim, iVelX, iPres
+
+#include "EosCommon.fh"
+#include "RSCommon.fh"
+
+        spacedim = 3
+
+        iVelX  = iRho + 1
+        iPres  = iRho + 4
+
+        inorm  = iVelX +      idir
+        itan1  = iVelX + mod( idir + 1, spacedim )
+        itan2  = iVelX + mod( idir + 2, spacedim )
+
+        CHF_MULTIDO[box;i;j;k]
+          PGasL  = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+          RhoL   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+
+          UL     =              WLeft(CHF_IX[i;j;k],inorm)
+          VL     =              WLeft(CHF_IX[i;j;k],itan1)
+          WL     =              WLeft(CHF_IX[i;j;k],itan2)
+
+          RUL    = RhoL*UL
+          RVL    = RhoL*VL
+          RWL    = RhoL*WL
+
+          RUxUL  = half   *(RUL*UL  + RVL*VL  + RWL*WL )
+
+          EL     = PGasL/hgamma + RUxUL
+
+          AL2    = gamma*PGasL/RhoL
+          AL     = sqrt( AL2 )
+          if( UL .le. -AL ) then
+            fr1    = zero
+            fr2    = zero
+            fr3    = zero
+            fr4    = zero
+            fr5    = zero
+          else
+            if( UL .ge. AL ) then
+              fr1    = RhoL*UL
+              fr2    = fr1*UL + PGasL
+              fr3    = fr1*VL
+              fr4    = fr1*WL
+              fr5    = UL*(EL + PGasL)
+            else
+              UA     = (-UL + (AL + AL))/gamma
+              H      = (EL + PGasL)/RhoL
+
+              HU     = UL + AL
+              fr1    = 0.25D0*RhoL*HU*HU/AL
+              fr2    = fr1*(UL + UA)
+              fr3    = fr1*(VL     )
+              fr4    = fr1*(WL     )
+              fr5    = fr1*(H      )
+            endif
+          endif
+
+          PGasR  = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+          RhoR   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+
+          UR     =              WRight(CHF_IX[i;j;k],inorm)
+          VR     =              WRight(CHF_IX[i;j;k],itan1)
+          WR     =              WRight(CHF_IX[i;j;k],itan2)
+
+          RUR    = RhoR*UR
+          RVR    = RhoR*VR
+          RWR    = RhoR*WR
+
+          RUxUR  = half   *(RUR*UR  + RVR*VR  + RWR*WR )
+
+          ER     = PGasR/hgamma + RUxUR
+
+          AR2    = gamma*PGasR/RhoR
+          AR     = sqrt( AR2 )
+          if( UR .ge. AR ) then
+            fl1    = zero
+            fl2    = zero
+            fl3    = zero
+            fl4    = zero
+            fl5    = zero
+          else
+            if( UR .le. -AR ) then
+              fl1    = RhoR*UR
+              fl2    = fl1*UR + PGasR
+              fl3    = fl1*VR
+              fl4    = fl1*WR
+              fl5    = UR*(ER + PGasR)
+            else
+              UA     = (-UR - (AR + AR))/gamma
+              H      = (ER + PGasR)/RhoR
+
+              HU     = UR - AR
+              fl1    =-0.25D0*RhoR*HU*HU/AR
+              fl2    = fl1*(UR + UA)
+              fl3    = fl1*(VR     )
+              fl4    = fl1*(WR     )
+              fl5    = fl1*(H      )
+            endif
+          endif
+
+          Wgdnv(CHF_IX[i;j;k],iRho  )  = fl1 + fr1
+          Wgdnv(CHF_IX[i;j;k],inorm )  = fl2 + fr2
+          Wgdnv(CHF_IX[i;j;k],itan1 )  = fl3 + fr3
+          Wgdnv(CHF_IX[i;j;k],itan2 )  = fl4 + fr4
+          Wgdnv(CHF_IX[i;j;k],iPres )  = fl5 + fr5
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine VANLEERRS(
+     &    CHF_CONST_REAL[PGasL],
+     &    CHF_CONST_REAL[RhoL],
+     &    CHF_CONST_REAL[UL],
+     &    CHF_CONST_REAL[VL],
+     &    CHF_CONST_REAL[WL],
+     &    CHF_CONST_REAL[PGasR],
+     &    CHF_CONST_REAL[RhoR],
+     &    CHF_CONST_REAL[UR],
+     &    CHF_CONST_REAL[VR],
+     &    CHF_CONST_REAL[WR],
+     &    CHF_REAL[FLUXRHO],
+     &    CHF_REAL[FLUXRUX],
+     &    CHF_REAL[FLUXRUY],
+     &    CHF_REAL[FLUXRUZ],
+     &    CHF_REAL[FLUXE  ] )
+
+        real_t RUL, RVL, RWL, RUxUL, EL, AL2, AL
+        real_t RUR, RVR, RWR, RUxUR, ER, AR2, AR
+        real_t H, HU, UA
+        real_t fl1, fl2, fl3, fl4, fl5
+        real_t fr1, fr2, fr3, fr4, fr5
+
+#include "EosCommon.fh"
+
+        RUL    = RhoL*UL
+        RVL    = RhoL*VL
+        RWL    = RhoL*WL
+
+        RUxUL  = half*(RUL*UL + RVL*VL + RWL*WL)
+
+        EL     = PGasL/hgamma + RUxUL
+
+        AL2    = gamma*PGasL/RhoL
+        AL     = sqrt( AL2 )
+        if( UL .le. -AL ) then
+          fr1    = zero
+          fr2    = zero
+          fr3    = zero
+          fr4    = zero
+          fr5    = zero
+        else
+          if( UL .ge. AL ) then
+            fr1    = RhoL*UL
+            fr2    = fr1*UL + PGasL
+            fr3    = fr1*VL
+            fr4    = fr1*WL
+            fr5    = UL*(EL + PGasL)
+          else
+            UA     = (-UL + (AL + AL))/gamma
+            H      = (EL + PGasL)/RhoL
+
+            HU     = UL + AL
+            fr1    = 0.25D0*RhoL*HU*HU/AL
+            fr2    = fr1*(UL + UA)
+            fr3    = fr1*(VL     )
+            fr4    = fr1*(WL     )
+            fr5    = fr1*(H      )
+          endif
+        endif
+
+        RUR    = RhoR*UR
+        RVR    = RhoR*VR
+        RWR    = RhoR*WR
+
+        RUxUR  = half*(RUR*UR + RVR*VR + RWR*WR)
+
+        ER     = PGasR/hgamma + RUxUR
+
+        AR2    = gamma*PGasR/RhoR
+        AR     = sqrt( AR2 )
+        if( UR .ge. AR ) then
+          fl1    = zero
+          fl2    = zero
+          fl3    = zero
+          fl4    = zero
+          fl5    = zero
+        else
+          if( UR .le. -AR ) then
+            fl1    = RhoR*UR
+            fl2    = fl1*UR + PGasR
+            fl3    = fl1*VR
+            fl4    = fl1*WR
+            fl5    = UR*(ER + PGasR)
+          else
+            UA     = (-UR - (AR + AR))/gamma
+            H      = (ER + PGasR)/RhoR
+
+            HU     = UR - AR
+            fl1    =-0.25D0*RhoR*HU*HU/AR
+            fl2    = fl1*(UR + UA)
+            fl3    = fl1*(VR     )
+            fl4    = fl1*(WR     )
+            fl5    = fl1*(H      )
+          endif
+        endif
+
+        FLUXRHO  = fl1 + fr1
+        FLUXRUX  = fl2 + fr2
+        FLUXRUY  = fl3 + fr3
+        FLUXRUZ  = fl4 + fr4
+        FLUXE    = fl5 + fr5
+
+        return
+        end

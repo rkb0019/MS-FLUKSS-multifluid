@@ -1,0 +1,113 @@
+C
+C     Implement solid wall conserved variable boundary fluxes and primitive
+C     variable boundary slopes
+C
+
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SOLIDBC(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[Wextrap],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_BOX[box])
+
+        real_t p,rho,unorm,speed
+        integer CHF_DDECL[i;j;k]
+
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          p = Wextrap(CHF_IX[i;j;k],WPRES)
+          rho = max(Wextrap(CHF_IX[i;j;k],WRHO),smallr)
+          unorm = Wextrap(CHF_IX[i;j;k],WVELX + dir)
+
+          speed = sqrt(gamma*p/rho)
+
+          F(CHF_IX[i;j;k],URHO) = zero
+
+          F(CHF_IX[i;j;k],UMOMX) = zero
+          F(CHF_IX[i;j;k],UMOMY) = zero
+          F(CHF_IX[i;j;k],UMOMZ) = zero
+
+          F(CHF_IX[i;j;k],UMOMX + dir) = p + lohisign * rho * unorm * speed
+          F(CHF_IX[i;j;k],UENG) = zero
+
+          F(CHF_IX[i;j;k],UBX) = zero
+          F(CHF_IX[i;j;k],UBY) = zero
+          F(CHF_IX[i;j;k],UBZ) = zero
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine SLOPEBCS(
+     &    CHF_FRA[dW],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_BOX[loBox],
+     &    CHF_CONST_INT[hasLo],
+     &    CHF_BOX[hiBox],
+     &    CHF_CONST_INT[hasHi])
+
+        integer CHF_DDECL[i;j;k],CHF_DDECL[ioff;joff;koff]
+        integer CHF_DDECL[inorm;itan1;itan2],spacedim
+        real_t dvhi,dvlo,dvmin
+
+        spacedim = CH_SPACEDIM
+
+        CHF_DTERM[
+        ioff = CHF_ID(0,dir);
+        joff = CHF_ID(1,dir);
+        koff = CHF_ID(2,dir)]
+
+        CHF_DTERM[
+        inorm = WVELX + dir;
+        itan1 = WVELX + mod(dir + 1,spacedim);
+        itan2 = WVELX + mod(dir + 2,spacedim)]
+
+        if (hasLo .eq. 1) then
+          CHF_MULTIDO[loBox;i;j;k]
+            dW(CHF_IX[i;j;k],WRHO) = zero
+            dW(CHF_IX[i;j;k],WPRES) = zero
+
+            dvhi = W(CHF_IX[i + ioff;j + joff;k + koff],inorm) -
+     &             W(CHF_IX[i       ;j       ;k       ],inorm)
+            dvlo = W(CHF_IX[i;j;k],inorm)*two
+
+            dvmin = min(two*abs(dvhi),abs(dvlo))*sign(one,dvlo)
+
+            if (dvlo*dvhi .lt. zero) dvmin = zero
+
+            CHF_DTERM[
+            dW(CHF_IX[i;j;k],inorm) = dvmin;
+            dW(CHF_IX[i;j;k],itan1) = zero;
+            dW(CHF_IX[i;j;k],itan2) = zero]
+          CHF_ENDDO
+        endif
+
+        if (hasHi .eq. 1) then
+          CHF_MULTIDO[hiBox;i;j;k]
+            dW(CHF_IX[i;j;k],WRHO) = zero
+            dW(CHF_IX[i;j;k],WPRES) = zero
+
+            dvhi = W(CHF_IX[i       ;j       ;k       ],inorm) -
+     &             W(CHF_IX[i - ioff;j - joff;k - koff],inorm)
+            dvlo = W(CHF_IX[i;j;k],inorm)*two
+
+            dvmin = min(two*abs(dvhi),abs(dvlo))*sign(one,dvlo)
+
+            if (dvlo*dvhi .lt. zero) dvmin = zero
+
+            CHF_DTERM[
+            dW(CHF_IX[i;j;k],inorm) = dvmin;
+            dW(CHF_IX[i;j;k],itan1) = zero;
+            dW(CHF_IX[i;j;k],itan2) = zero]
+          CHF_ENDDO
+        endif
+
+        return
+        end

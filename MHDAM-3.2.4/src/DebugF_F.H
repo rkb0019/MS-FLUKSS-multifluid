@@ -1,0 +1,70 @@
+#ifndef _DEBUGF_F_H_
+#define _DEBUGF_F_H_
+
+#include "FORT_PROTO.H"
+#include "CH_Timer.H"
+#include "REAL.H"
+
+extern "C"
+{
+
+#ifndef GUARDVIEWBOXDATA 
+#define GUARDVIEWBOXDATA 
+// Prototype for Fortran procedure VIEWBOXDATA ...
+//
+void FORTRAN_NAME( VIEWBOXDATA ,viewboxdata )(
+      CHFp_FRA(Ph) );
+
+#define FORT_VIEWBOXDATA FORTRAN_NAME( inlineVIEWBOXDATA, inlineVIEWBOXDATA)
+#define FORTNT_VIEWBOXDATA FORTRAN_NAME( VIEWBOXDATA, viewboxdata)
+
+inline void FORTRAN_NAME(inlineVIEWBOXDATA, inlineVIEWBOXDATA)(
+      CHFp_FRA(Ph) )
+{
+ CH_TIMELEAF("FORT_VIEWBOXDATA");
+ FORTRAN_NAME( VIEWBOXDATA ,viewboxdata )(
+      CHFt_FRA(Ph) );
+}
+#endif  // GUARDVIEWBOXDATA 
+
+#ifndef GUARDVIEWBOXDATACONST 
+#define GUARDVIEWBOXDATACONST 
+// Prototype for Fortran procedure VIEWBOXDATACONST ...
+//
+void FORTRAN_NAME( VIEWBOXDATACONST ,viewboxdataconst )(
+      CHFp_CONST_FRA(Ph) );
+
+#define FORT_VIEWBOXDATACONST FORTRAN_NAME( inlineVIEWBOXDATACONST, inlineVIEWBOXDATACONST)
+#define FORTNT_VIEWBOXDATACONST FORTRAN_NAME( VIEWBOXDATACONST, viewboxdataconst)
+
+inline void FORTRAN_NAME(inlineVIEWBOXDATACONST, inlineVIEWBOXDATACONST)(
+      CHFp_CONST_FRA(Ph) )
+{
+ CH_TIMELEAF("FORT_VIEWBOXDATACONST");
+ FORTRAN_NAME( VIEWBOXDATACONST ,viewboxdataconst )(
+      CHFt_CONST_FRA(Ph) );
+}
+#endif  // GUARDVIEWBOXDATACONST 
+
+#ifndef GUARDVIEWFIABOX 
+#define GUARDVIEWFIABOX 
+// Prototype for Fortran procedure VIEWFIABOX ...
+//
+void FORTRAN_NAME( VIEWFIABOX ,viewfiabox )(
+      CHFp_CONST_FIA(Ph) );
+
+#define FORT_VIEWFIABOX FORTRAN_NAME( inlineVIEWFIABOX, inlineVIEWFIABOX)
+#define FORTNT_VIEWFIABOX FORTRAN_NAME( VIEWFIABOX, viewfiabox)
+
+inline void FORTRAN_NAME(inlineVIEWFIABOX, inlineVIEWFIABOX)(
+      CHFp_CONST_FIA(Ph) )
+{
+ CH_TIMELEAF("FORT_VIEWFIABOX");
+ FORTRAN_NAME( VIEWFIABOX ,viewfiabox )(
+      CHFt_CONST_FIA(Ph) );
+}
+#endif  // GUARDVIEWFIABOX 
+
+}
+
+#endif

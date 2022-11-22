@@ -1,0 +1,155 @@
+#ifndef  FreeStreamSpherical_H_
+#define  FreeStreamSpherical_H_
+
+
+#include "LevelData.H"
+#include "FArrayBox.H"
+#include "Vector.H"
+#include "RealVect.H"
+#include "AMRIO.H"
+
+#include "PhysProblem.H"
+
+class PatchMHDAM;
+
+/// SW and LISM interaction problem
+/**
+   Parameters:
+     a_gamma          - Gamma for polytropic, gamma-law gas
+ */
+class FreeStreamSpherical : public PhysProblem
+{ 
+public:
+  /// Null constructor
+  /**
+   */
+  FreeStreamSpherical();
+        
+  /// Destructor
+  /**
+   */
+  ~FreeStreamSpherical() {};
+    
+  
+  /// Input parameters
+  /**
+   */
+  virtual void input( ParmParse & parser, int verbosity );
+  
+  /// Sets parameters in a common block used by Fortran routines
+  /**
+   */
+  void setFortranCommon();
+  
+  /// Set the flag m_isFortranCommonSet to true
+  /**
+     Set the flag m_isFortranCommonSet to true so that new IBCs made with
+     new_PhysProblem() will have this flag set without calling setFortranCommon()
+     (this is a clumsy design and should be improved).
+   */
+  void setFortranCommonSet();  
+  
+  
+  /// Define the object
+  /**
+     Set the problem domain index space and the grid spacing for this object.
+   */
+  virtual void define(const ProblemDomain& a_domain,                      
+                      const int            a_level);
+    
+  /// Factory method - this object is its own factory
+  /**
+     Return a pointer to a new PhysProblem object with m_isDefined = false (i.e.,
+     its define() must be called before it is used) and m_isFortranCommonSet
+     set to value of m_isFortranCommonset in the current (factory) object.
+   */
+  virtual PhysProblem *new_PhysProblem();
+  
+  /// Copy method 
+  /**
+     Copy all data from a_PP to this instance.
+   */
+  virtual void copy_PhysProblem(const PhysProblem* a_PP);
+
+  virtual ePhysicalModel physicalModel( void ) const { return PhysProblem::PP_MHDPM;}
+    
+      
+  /// Fill ghost cells
+  /**
+   */
+  virtual void fillGhostCells(       FArrayBox&      a_W,
+                               const FArrayBox&      a_U,
+                               const int&            a_dir,
+                               const Real&           a_time );
+
+  /// Set boundary fluxes
+  /**
+   */
+  virtual void fluxBC(       FArrayBox&      a_F,
+                             FArrayBox&      a_Bn,
+                       const FArrayBox&      a_WMinus,
+                       const FArrayBox&      a_WPlus,
+                       const int&            a_dir,
+                       const Side::LoHiSide& a_side,
+                       const Real&           a_time);
+                       
+  /// Set up initial conditions
+  /**
+   */
+  virtual void initialize(LevelData<FArrayBox>& a_U);
+  
+                               
+  
+  /// Return boundary condition flags for all boundaries
+  /**
+   */
+  virtual void getBCFlags( eBoundaryConditions leftBC,
+                           eBoundaryConditions rightBC,
+                           eBoundaryConditions bottomBC,
+                           eBoundaryConditions topBC,
+                           eBoundaryConditions frontBC,
+                           eBoundaryConditions behindBC );
+
+  /// Return the boundary condition flag for given boundary
+  /**
+   */
+  virtual eBoundaryConditions getBCFlags( int a_dir, Side::LoHiSide a_sd );
+                               
+  
+                              
+                                
+                           
+  /// Creates tagged cells for dynamic mesh refinement
+  /**
+    Problem specific cells tagging
+   */
+  virtual void tagCells(const FArrayBox&  a_U,
+                        const Box&        a_box,
+                              IntVectSet& a_tags);
+                              
+                              
+    /// Problem specific postprocessing
+  /**
+   */
+  virtual void postprocessing(       FArrayBox & a_U,
+                               const FArrayBox & a_W,
+                               const Real      & a_dt,
+                               const Real      & a_time,                               
+                               const Box       & a_box);
+
+
+                                
+
+
+protected:
+  // True if the Fortran common block has been set
+  bool m_isFortranCommonSet;
+
+  // Free stream parameters
+  Real     m_gamma;
+  Real     m_M;
+  Real     m_aA;      
+      
+};
+
+#endif

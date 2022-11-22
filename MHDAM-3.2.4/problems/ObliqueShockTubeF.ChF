@@ -1,0 +1,350 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETOBLIQUESHOCKTUBE(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auDensityL],
+     &    CHF_CONST_REAL[auDensityR],
+     &    CHF_CONST_REAL[auPressureL],
+     &    CHF_CONST_REAL[auPressureR],
+     &    CHF_CONST_REAL[auVelxL],
+     &    CHF_CONST_REAL[auVelxR],
+     &    CHF_CONST_REAL[auVelyL],
+     &    CHF_CONST_REAL[auVelyR],
+     &    CHF_CONST_REAL[auVelzL],
+     &    CHF_CONST_REAL[auVelzR],
+     &    CHF_CONST_REAL[auBxL],
+     &    CHF_CONST_REAL[auBxR],
+     &    CHF_CONST_REAL[auByL],
+     &    CHF_CONST_REAL[auByR],
+     &    CHF_CONST_REAL[auBzL],
+     &    CHF_CONST_REAL[auBzR],
+     &    CHF_CONST_REAL[auXs],
+     &    CHF_CONST_REAL[auYs])
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        real_t r0,p0,umag
+
+        gamma      = augamma
+        hgamma     = gamma - 1.0d0
+        invhgamma  = one / hgamma
+
+        densityL   = auDensityL
+        densityR   = auDensityR
+
+        pressureL  = auPressureL
+        pressureR  = auPressureR
+
+        velxL      = auVelxL
+        velxR      = auVelxR
+        velyL      = auVelyL
+        velyR      = auVelyR
+        velzL      = auVelzL
+        velzR      = auVelzR
+        BxL        = auBxL
+        BxR        = auBxR
+        ByL        = auByL
+        ByR        = auByR
+        BzL        = auBzL
+        BzR        = auBzR
+        startX     = auXs
+        startY     = auYs        
+
+        r0         = min( densityL,  densityR  )
+        p0         = min( pressureL, pressureR )
+
+        umag       = sqrt(gamma*p0/r0)
+
+        smallr     = small*r0
+        smallu     = small*umag
+        smallp     = small*r0*half*umag*umag
+
+        return
+        end
+
+        subroutine OBLIQUESHOCKTUBEINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[tanangle],
+     &    CHF_CONST_INT[iCP],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t ke, b
+        integer CHF_DDECL[i;j;k]
+        real_t eL, eR
+        real_t CHF_DDECL[x;y;z]
+        
+        real_t rp_angle
+        real_t x1,y1,a11,a12,a21,a22,det
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+
+        rp_angle = atan(tanangle)
+
+        x1   = startX - 10D0*cos(rp_angle)
+        y1   = startY + 10D0*sin(rp_angle)
+        
+        a11  = x1 - startX  
+        a12  = y1 - startY  
+
+        b    = d_1_4PI*(BxL  *BxL   + ByL  *ByL   + BzL  *BzL  )
+        ke   =          velxL*velxL + velyL*velyL + velzL*velzL
+
+        eL   = pressureL/hgamma + half*(densityL*ke + b)
+
+        b    = d_1_4PI*(BxR  *BxR   + ByR  *ByR   + BzR  *BzR  )
+        ke   =          velxR*velxR + velyR*velyR + velzR*velzR
+
+        eR   = pressureR/hgamma + half*(densityR*ke + b)
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x = (i + half)*dx;
+          y = (j + half)*dx;
+          z = (k + half)*dx]
+          
+          a21 = x - startX
+          a22 = y - startY
+          
+          det = a11*a22-a12*a21
+          
+          if( det > 0.0 ) then
+            U(CHF_IX[i;j;k],URHO)  = densityL
+
+            U(CHF_IX[i;j;k],UMOMX) = densityL*velxL
+            U(CHF_IX[i;j;k],UMOMY) = densityL*velyL
+            U(CHF_IX[i;j;k],UMOMZ) = densityL*velzL
+
+            U(CHF_IX[i;j;k],UENG)  = eL
+
+            U(CHF_IX[i;j;k],UBX )  = BxL
+            U(CHF_IX[i;j;k],UBY )  = ByL
+            U(CHF_IX[i;j;k],UBZ )  = BzL
+          else
+            U(CHF_IX[i;j;k],URHO)  = densityR
+
+            U(CHF_IX[i;j;k],UMOMX) = densityR*velxR
+            U(CHF_IX[i;j;k],UMOMY) = densityR*velyR
+            U(CHF_IX[i;j;k],UMOMZ) = densityR*velzR
+
+            U(CHF_IX[i;j;k],UENG)  = eR
+
+            U(CHF_IX[i;j;k],UBX )  = BxR
+            U(CHF_IX[i;j;k],UBY )  = ByR
+            U(CHF_IX[i;j;k],UBZ )  = BzR
+          endif
+          
+          ! Dedner
+          if (iCP>0) then  
+            U(CHF_IX[i;j;k],iCP)  = zero          
+          endif
+        CHF_ENDDO
+
+        return
+        end
+   
+
+        subroutine OBLIQUESHOCKTUBEGS(
+     &    CHF_FRA[W],
+     &    CHF_CONST_REAL[tanangle],
+     &    CHF_CONST_INT[iCP],
+     &    CHF_CONST_REAL[dx],     
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],     
+     &    CHF_BOX[box])
+
+        
+        integer CHF_DDECL[i;j;k]
+        
+        real_t CHF_DDECL[x;y;z]
+        
+        real_t x1,y1,a11,a12,a21,a22,det,rp_angle,itan
+c        real_t xr,ir,c1,c2
+c        integer i1,i2
+        integer ishift,jshift,jb,ivar,indb
+
+#include "RiemannCommon.fh"
+#include "EosCommon.fh"
+        
+        rp_angle = atan(tanangle)
+        x1   = startX - 10D0*cos(rp_angle)
+        y1   = startY + 10D0*sin(rp_angle)
+
+
+        a11  = x1 - startX  
+        a12  = y1 - startY
+
+        if (dir == 0) then               
+        
+          if (lohisign == 1) then
+            ! Right boundary
+            indb     = iboxlo0 - 1            
+          else 
+            ! Left boundary
+            indb     = iboxhi0 + 1            
+          endif
+
+        CHF_MULTIDO[box;i;j;k]
+
+          CHF_DTERM[
+          x = (i + half)*dx;
+          y = (j + half)*dx;
+          z = (k + half)*dx]
+          
+          a21 = x - startX
+          a22 = y - startY
+          
+          det = a11*a22-a12*a21
+                  
+          do ivar = 0,CHF_NCOMP[W]-1          
+          W(CHF_IX[i;j;k],ivar)  = W(CHF_IX[indb;j;k],ivar)                        
+          enddo
+          
+          
+c          if( det > 0.0 ) then               
+c              W(CHF_IX[i;j;k],WRHO ) = densityL
+c              W(CHF_IX[i;j;k],WVELX) = velxL
+c              W(CHF_IX[i;j;k],WVELY) = velyL
+c              W(CHF_IX[i;j;k],WVELZ) = velzL
+c              W(CHF_IX[i;j;k],WPRES) = pressureL
+c              W(CHF_IX[i;j;k],WBX  ) = BxL
+c              W(CHF_IX[i;j;k],WBY  ) = ByL
+c              W(CHF_IX[i;j;k],WBZ  ) = BzL                           
+c          else
+c              W(CHF_IX[i;j;k],WRHO ) = densityR
+c              W(CHF_IX[i;j;k],WVELX) = velxR
+c              W(CHF_IX[i;j;k],WVELY) = velyR
+c              W(CHF_IX[i;j;k],WVELZ) = velzR
+c              W(CHF_IX[i;j;k],WPRES) = pressureR
+c              W(CHF_IX[i;j;k],WBX  ) = BxR
+c              W(CHF_IX[i;j;k],WBY  ) = ByR
+c              W(CHF_IX[i;j;k],WBZ  ) = BzR
+c          endif
+c          
+c          ! Dedner
+c          if (iCP>0) then  
+c            W(CHF_IX[i;j;k],iCP)  = zero          
+c          endif
+          
+          CHF_ENDDO       
+          endif 
+          
+          
+          if (dir == 1) then               
+                    
+          if (lohisign == 1) then
+            jb     = iboxlo1 - 1            
+          else 
+            jb     = iboxhi1 + 1
+          endif
+          
+          if (tanangle>=0.9) then
+          
+            itan = nint(tanangle)
+                                  
+            CHF_MULTIDO[box;i;j;k]
+            
+            if (lohisign == 1) then
+              ishift = (j-jb)/itan
+            else 
+              ishift = (jb-j)/itan
+            endif 
+            
+            if (ishift == 0) then
+              ishift = 1          
+            endif
+            
+            ishift = 2
+            
+            ishift = ishift*lohisign
+            jshift = ishift*itan
+                              
+            W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[i+ishift;j-jshift;k],WRHO) 
+            W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[i+ishift;j-jshift;k],WVELX)
+            W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[i+ishift;j-jshift;k],WVELY)
+            W(CHF_IX[i;j;k],WVELZ) = W(CHF_IX[i+ishift;j-jshift;k],WVELZ)
+            W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[i+ishift;j-jshift;k],WPRES)
+            W(CHF_IX[i;j;k],WBX  ) = W(CHF_IX[i+ishift;j-jshift;k],WBX) 
+            W(CHF_IX[i;j;k],WBY  ) = W(CHF_IX[i+ishift;j-jshift;k],WBY) 
+            W(CHF_IX[i;j;k],WBZ  ) = W(CHF_IX[i+ishift;j-jshift;k],WBZ) 
+            
+            ! Dedner
+            if (iCP>0) then  
+              W(CHF_IX[i;j;k],iCP)  = W(CHF_IX[i+ishift;j-jshift;k],iCP)
+            endif
+            CHF_ENDDO
+        else
+          itan = nint(one/tanangle)   
+          CHF_MULTIDO[box;i;j;k] 
+          jshift = (j-jb)                    
+          ishift = jshift*itan
+          ishift = max(iWlo0,i+ishift)-i
+          ishift = min(iWhi0,i+ishift)-i
+          
+          W(CHF_IX[i;j;k],WRHO ) = W(CHF_IX[i+ishift;j-jshift;k],WRHO) 
+          W(CHF_IX[i;j;k],WVELX) = W(CHF_IX[i+ishift;j-jshift;k],WVELX)
+          W(CHF_IX[i;j;k],WVELY) = W(CHF_IX[i+ishift;j-jshift;k],WVELY)
+          W(CHF_IX[i;j;k],WVELZ) = W(CHF_IX[i+ishift;j-jshift;k],WVELZ)
+          W(CHF_IX[i;j;k],WPRES) = W(CHF_IX[i+ishift;j-jshift;k],WPRES)
+          W(CHF_IX[i;j;k],WBX  ) = W(CHF_IX[i+ishift;j-jshift;k],WBX) 
+          W(CHF_IX[i;j;k],WBY  ) = W(CHF_IX[i+ishift;j-jshift;k],WBY) 
+          W(CHF_IX[i;j;k],WBZ  ) = W(CHF_IX[i+ishift;j-jshift;k],WBZ) 
+          
+          ! Dedner
+          if (iCP>0) then  
+            W(CHF_IX[i;j;k],iCP)  = W(CHF_IX[i+ishift;j-jshift;k],iCP)
+          endif
+          
+          CHF_ENDDO
+        
+        endif
+
+
+c          CHF_DTERM[
+c          x = (i + half)*dx;
+c          y = (j + half)*dx;
+c          z = (k + half)*dx]
+c                    
+c          xr  = x + (j - jb)*dx*cos(rp_angle)/sin(rp_angle)
+c          ir  = xr/dx - 0.5                 
+c          i1  = floor(ir)
+c          if (i1 < iWlo0) then
+c            i1 = iWlo0
+c            i2 = iWlo0
+c            c1 = one
+c            c2 = zero
+c          else if (i1 > iWhi0-1) then
+c            i1  = iWhi0-1
+c            i2  = iWhi0-1
+c            c1 = one
+c            c2 = zero
+c          else 
+c            i2  = i1+1                    
+c          
+c            ! weight coefficients
+c            c1  = (dx -(xr - (i1 + half)*dx))/dx
+c            c2  = (dx -((i2 + half)*dx - xr))/dx
+c          endif
+c                                        
+c          W(CHF_IX[i;j;k],WRHO ) = c1*W(CHF_IX[i1;jb;k],WRHO) + c2*W(CHF_IX[i2;jb;k],WRHO)
+c          W(CHF_IX[i;j;k],WVELX) = c1*W(CHF_IX[i1;jb;k],WVELX) + c2*W(CHF_IX[i2;jb;k],WVELX)
+c          W(CHF_IX[i;j;k],WVELY) = c1*W(CHF_IX[i1;jb;k],WVELY) + c2*W(CHF_IX[i2;jb;k],WVELY)
+c          W(CHF_IX[i;j;k],WVELZ) = c1*W(CHF_IX[i1;jb;k],WVELZ) + c2*W(CHF_IX[i2;jb;k],WVELZ)
+c          W(CHF_IX[i;j;k],WPRES) = c1*W(CHF_IX[i1;jb;k],WPRES) + c2*W(CHF_IX[i2;jb;k],WPRES)
+c          W(CHF_IX[i;j;k],WBX  ) = c1*W(CHF_IX[i1;jb;k],WBX) + c2*W(CHF_IX[i2;jb;k],WBX)
+c          W(CHF_IX[i;j;k],WBY  ) = c1*W(CHF_IX[i1;jb;k],WBY) + c2*W(CHF_IX[i2;jb;k],WBY)
+c          W(CHF_IX[i;j;k],WBZ  ) = c1*W(CHF_IX[i1;jb;k],WBZ) + c2*W(CHF_IX[i2;jb;k],WBZ)
+c          
+c          ! Dedner
+c          if (iCP>0) then  
+c            W(CHF_IX[i;j;k],iCP)  = c1*W(CHF_IX[i1;jb;k],iCP) + c2*W(CHF_IX[i2;jb;k],iCP)
+c          endif
+          
+                 
+          endif 
+
+        return
+        end

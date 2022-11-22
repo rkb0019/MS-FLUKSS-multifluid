@@ -1,0 +1,15 @@
+FF:
+
+
+Oct 2022 changes:
+
+-Fixed bug in Euler step scheme for PUIs (the PdivU  version of the pressure equation was not solved)
+-Fixed bug in Level Set (Hancock solver)
+-Modified DEFINE_REGION (new DEFINE_REGION_TRACER_4F allows to get both region 1 and 4 without using function REGTRACER_REINIT, which was overriding surface0. In doing so, the LevelSet compression (reinit) could not be used.)
+-Added function tagCellsSpherical for simple refinement in the ISH
+-Added PUIs for Cartesian grid
+-Added tagCellsTailHP_Federico based on tagCellHPInstab, for long tail simulations. Used by default for Cartesian grid (tested on max_level=3 levels).
+
+
+
+

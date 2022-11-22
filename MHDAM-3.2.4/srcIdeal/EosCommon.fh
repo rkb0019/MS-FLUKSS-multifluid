@@ -1,0 +1,40 @@
+C
+C   Equation of state Fortran constants and small/cutoff values.
+C
+        real_t gamma,hgamma,invhgamma,smallp,smallr,smallu,small
+        real_t gammaPI, smallPI
+
+        real_t d_1_4PI, d_1_8PI, d_SQRT_2, d_PI, d_2PI, d_4PI, d_SQRTPI
+        real_t d_PI_180, d_PI_2, d_SQRT3_2
+
+        real_t eos_mp, eos_k, eos_AU, eos_mSun, eos_G, eos_rSun
+        parameter (small    = 1.0D-8 )
+
+        parameter (d_1_4PI  = 0.079577471545947667884441881686257181D0 )
+        parameter (d_1_8PI  = 0.039788735772973833942220940843128591D0 )
+        parameter (d_SQRT_2 = 0.707106781186547524400844362104849039D0 )
+        parameter (d_PI     = 3.14159265358979323846264338327950288D0 )
+        parameter (d_2PI    = 6.28318530717958647692528676655900576D0 )
+        parameter (d_4PI    = 12.566370614359172953850573533118D0 )
+        parameter (d_SQRTPI = 1.77245385090551602729816748334114518D0 )
+        parameter (d_PI_180 = 0.0174532925199432957692369076848861271D0 )
+        parameter (d_PI_2   = 1.57079632679489661923132169163975144D0 )
+        parameter (d_SQRT3_2= 0.866025403784438646763723170752936183D0 )
+
+        parameter (eos_mp   = 1.67262171D-24)
+        parameter (eos_k    = 1.3806505D-16)
+        parameter (eos_AU   = 1.5D+13)
+
+        parameter (eos_mSun   = 1.98892D+33)
+        parameter (eos_G      = 6.674D-8)
+        parameter (eos_rSun   = 6.955D+10)
+
+
+        real_t netFluid2Dens, netFluid2Pres, netFluid3Dens, netFluid3Pres
+        parameter (netFluid2Dens  = 1.0D-6)
+        parameter (netFluid2Pres  = 1.0D-8)
+        parameter (netFluid3Dens  = 1.0D-7)
+        parameter (netFluid3Pres  = 1.0D-9)
+
+        common /eos/ gamma,hgamma,invhgamma,smallp,smallr,smallu,
+     &               gammaPI, smallPI

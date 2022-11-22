@@ -1,0 +1,12 @@
+C
+C   Fortran parameters for the ramp/wedge example:
+C
+C     alpha   - The angle from horizontal to the wedge edge
+C     M       - Mach shock number
+C     xcorner - Position of the corner/tip of the wedge
+C
+C   This entire problem is rotated so that the wedge edge is horizontal
+C   in the problem domain.
+C
+        real_t ramp_alpha, ramp_M, ramp_XCorner
+        common /rampcm/ ramp_alpha, ramp_M, ramp_XCorner

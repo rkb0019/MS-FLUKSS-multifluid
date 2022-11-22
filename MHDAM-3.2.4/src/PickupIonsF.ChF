@@ -1,0 +1,558 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+#include "CH_assert.H"
+
+
+        subroutine SETCONST_PI(
+     &    CHF_CONST_REAL[auGamma],
+     &    CHF_CONST_REAL[auSmallPI] )
+
+#include "EosCommon.fh"
+
+        gammaPI      = auGamma
+        smallPI      = auSmallPI
+
+        return
+        end
+
+        subroutine POSTPROCESSING_PI(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_BOX[box])
+ 
+        integer iWas
+        real_t Rho_I, Rho_S, P, P_S, P_I
+        real_t rho, ru, rv, rw, invrho, uu, vv, ww, ke, bx, by, bz, b
+        integer CHF_DDECL[i;j;k]
+        integer iPressPIU, iPressPIW
+
+#include "EosCommon.fh"
+
+        iPressPIU  = iRhoPIU + 1
+        iPressPIW  = iRhoPIW + 1
+
+        CHF_MULTIDO[box;i;j;k]
+          Rho_I  = U(CHF_IX[i;j;k],iRhoPIU)
+          P_I    = U(CHF_IX[i;j;k],iPressPIU)
+
+          iWas   = 0
+          if( Rho_I < smallPI ) then
+            Rho_I  = smallPI
+            iWas   = 1
+          endif
+
+          if( P_I < smallPI ) then
+            P_I    = smallPI
+            iWas   = 1
+          endif
+
+          rho  = U(CHF_IX[i;j;k],URHO)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+
+          invrho = one/rho
+
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+
+          ke   = ru*uu + rv*vv + rw*ww
+
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+
+          P    = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+
+
+          Rho_S = rho - Rho_I
+          if( Rho_S < smallr ) then
+            Rho_I = max(1e-16,rho - smallr)
+            iWas = 1
+          endif
+
+
+
+!          P_S  = half*(P - P_I)
+!          if( P_S < smallP ) then
+!            P_I  = P - two*smallP
+!            iWas = 1
+!          endif
+
+
+
+!RKB-------
+        P_S  = (P-P_I)/(2+Rho_I/(rho-Rho_I+1e-18))   !For Te=T_sw
+        if( P_S < smallP ) then
+          P_I  = max(1e-16,P - (two+Rho_I/(rho-Rho_I+1e-18))*smallP)
+        iWas = 1
+        endif
+!-----------
+
+          if( iWas == 1 ) then
+            U(CHF_IX[i;j;k],iRhoPIU  ) = Rho_I
+            U(CHF_IX[i;j;k],iPressPIU) = P_I
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+! old fluxes for use with ugradp source terms
+        subroutine FLUXE_PI(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[Prim],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iPressPIU, iPressPIW, inorm
+
+        real_t rhoPI, pPI, u
+
+#include "EosCommon.fh"
+
+        iPressPIU  = iRhoPIU + 1
+        iPressPIW  = iRhoPIW + 1
+
+        inorm  = WVELX + idir
+
+        CHF_MULTIDO[box;i;j;k]
+          u      =              Prim(CHF_IX[i;j;k],inorm)
+          rhoPI  =              Prim(CHF_IX[i;j;k],iRhoPIW)
+          pPI    =              Prim(CHF_IX[i;j;k],iPressPIW)
+
+          F(CHF_IX[i;j;k],iRhoPIU)   = rhoPI*u
+          F(CHF_IX[i;j;k],iPressPIU) = gammaPI*pPI*u
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine FLUXE_PI_REG(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[Prim],
+     &    CHF_CONST_FIA1[REG],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_CONST_INT[idir],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iPressPIU, iPressPIW, inorm
+
+        real_t rhoPI, pPI, u
+
+#include "EosCommon.fh"
+
+        iPressPIU  = iRhoPIU + 1
+        iPressPIW  = iRhoPIW + 1
+
+        inorm  = WVELX + idir
+
+        CHF_MULTIDO[box;i;j;k]
+!        if ((REG(CHF_IX[i;j;k]) .eq. 1) .or. 
+!     &      (REG(CHF_IX[i;j;k]) .eq. 4)) then
+!          F(CHF_IX[i;j;k],iRhoPIU)   = zero
+!          F(CHF_IX[i;j;k],iPressPIU) = zero
+!        else
+          u      =              Prim(CHF_IX[i;j;k],inorm)
+          rhoPI  =              Prim(CHF_IX[i;j;k],iRhoPIW)
+          pPI    =              Prim(CHF_IX[i;j;k],iPressPIW)
+
+          F(CHF_IX[i;j;k],iRhoPIU)   = rhoPI*u
+!old below, for use with ugradp source term
+!          F(CHF_IX[i;j;k],iPressPIU) = gammaPI*pPI*u
+!use this for pdivu source term
+          F(CHF_IX[i;j;k],iPressPIU) = pPI*u
+!        endif
+        CHF_ENDDO
+
+        return
+        end
+
+!old, simple upwinding with ugradp source term and no region involved
+        subroutine UPWINDSCALARFLUXES_PI(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        real_t rhoPI, pPI, u, RhoU
+        integer iPressPIU, iPressPIW, iVelX, inorm
+
+#include "EosCommon.fh"
+
+        iVelX  = iRho  + 1
+        inorm  = iVelX + idir
+
+        iPressPIU  = iRhoPIU + 1
+        iPressPIW  = iRhoPIW + 1
+
+        CHF_MULTIDO[box;i;j;k]
+          RhoU   = Wgdnv(CHF_IX[i;j;k],iRho  )
+
+          if( RhoU > zero ) then
+            u      = WLeft(CHF_IX[i;j;k],inorm)
+            rhoPI  = WLeft(CHF_IX[i;j;k],iRhoPIW)
+            pPI    = WLeft(CHF_IX[i;j;k],iPressPIW)
+          else
+            u      = WRight(CHF_IX[i;j;k],inorm)
+            rhoPI  = WRight(CHF_IX[i;j;k],iRhoPIW)
+            pPI    = WRight(CHF_IX[i;j;k],iPressPIW)
+          endif
+
+          Wgdnv(CHF_IX[i;j;k],iRhoPIU  ) = rhoPI*u
+          Wgdnv(CHF_IX[i;j;k],iPressPIU) = gammaPI*pPI*u
+        CHF_ENDDO
+
+        return
+        end
+
+!new fluxes - face averaged rather than upwind
+!upwind is bad at shocks, use this instead
+        subroutine UPWINDSCALARFLUXES_PI_REG(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_FIA1[REG],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        real_t rhoPIL, pPIL, uL,vL, wL, RhoUL
+        real_t rhoPIR, pPIR, uR,vR, wR, RhoUR
+        real_t u, v, w, eps, rhoflux, pflux
+        integer iPressPIU, iPressPIW, iVelX, inorm
+        
+        integer itan1, itan2 !RKB
+        integer spacedim 
+
+#include "EosCommon.fh"
+
+        spacedim = 3
+
+        iVelX  = iRho  + 1
+        inorm  = iVelX + idir
+
+     !RKB
+        itan1  = iVelX + mod( idir + 1, spacedim )
+        itan2  = iVelX + mod( idir + 2, spacedim )
+
+
+        iPressPIU  = iRhoPIU + 1
+        iPressPIW  = iRhoPIW + 1
+
+        CHF_MULTIDO[box;i;j;k]
+!        if ((REG(CHF_IX[i;j;k]) .eq. 1) .or. 
+!     &      (REG(CHF_IX[i;j;k]) .eq. 4)) then
+!          Wgdnv(CHF_IX[i;j;k],iRhoPIU  ) = zero
+!          Wgdnv(CHF_IX[i;j;k],iPressPIU) = zero
+!        else
+!          RhoU   = Wgdnv(CHF_IX[i;j;k],iRho  )
+!
+!          if( RhoU > zero ) then
+!            u      = WLeft(CHF_IX[i;j;k],inorm)
+!            rhoPI  = WLeft(CHF_IX[i;j;k],iRhoPIW)
+!            pPI    = WLeft(CHF_IX[i;j;k],iPressPIW)
+!          else
+!            u      = WRight(CHF_IX[i;j;k],inorm)
+!            rhoPI  = WRight(CHF_IX[i;j;k],iRhoPIW)
+!            pPI    = WRight(CHF_IX[i;j;k],iPressPIW)
+!          endif
+          uL      = WLeft(CHF_IX[i;j;k],inorm)
+          rhoPIL  = WLeft(CHF_IX[i;j;k],iRhoPIW)
+          pPIL    = WLeft(CHF_IX[i;j;k],iPressPIW)
+!RKB
+          vL      = WLeft(CHF_IX[i;j;k],itan1)
+          wL      = WLeft(CHF_IX[i;j;k],itan2)
+
+          uR      = WRight(CHF_IX[i;j;k],inorm)
+          rhoPIR  = WRight(CHF_IX[i;j;k],iRhoPIW)
+          pPIR    = WRight(CHF_IX[i;j;k],iPressPIW)
+!RKB
+          vR      = WRight(CHF_IX[i;j;k],itan1)
+          wR      = WRight(CHF_IX[i;j;k],itan2)
+
+
+          u       = abs(half*(uL+uR))
+          v       = abs(half*(vL+vR))
+          w       = abs(half*(wL+wR))
+!entropy correction, can turn off          
+          eps     = 0.2D0*(u + v + w)
+          if (u < eps) then
+            u     = half*(u*u+eps*eps)/eps
+          endif
+         
+!for pdivu source term
+!if ugradp desired, replace p with gammaPI*p
+          rhoflux = half*(uL*rhoPIL+uR*rhoPIR-u*(rhoPIR-rhoPIL))
+          pflux   = half*(uL*pPIL+uR*pPIR-u*(pPIR-pPIL))
+
+!          Wgdnv(CHF_IX[i;j;k],iRhoPIU  ) = rhoPI*u
+!          Wgdnv(CHF_IX[i;j;k],iPressPIU) = gammaPI*pPI*u
+!          Wgdnv(CHF_IX[i;j;k],iPressPIU) = pPI*u
+
+          Wgdnv(CHF_IX[i;j;k],iRhoPIU  ) = rhoflux
+          Wgdnv(CHF_IX[i;j;k],iPressPIU) = pflux
+!        endif
+        CHF_ENDDO
+
+        return
+        end
+
+! old ugradp source terms
+        subroutine SOURCE_PICKUP_IONS(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3
+        integer CHF_DDECL[i;j;k]
+        integer iPressPIU, iPressPIW, iRef
+        real_t DPDR, DPDF, DPDT, dF, dTH, sinT, HG, up, R
+        real_t x, y, z, cosF, sinF, cosT, iInv
+
+#include "EosCommon.fh"
+
+        iPressPIU  = iRhoPIU + 1
+        iPressPIW  = iRhoPIW + 1
+
+        iRef     = m_ref_factor(level)
+        iInv     = m_inv_factor(level)
+
+        HG       = (gammaPI - one)*dt
+
+        CHF_MULTIDO[box;i;j;k]
+          R      = m_rc(i,level)
+
+          sinT   = m_thetac(k,ISIN,level)
+
+          DPDR   = (W(CHF_IX[i+1;j;k],iPressPIW) - W(CHF_IX[i-1;j;k],iPressPIW))
+     &           / (m_rc(i+1,level)              - m_rc(i-1,level)             )
+
+          dF     = m_dphi(j/iRef) + half*(m_dphi((j+1)/iRef) + m_dphi((j-1)/iRef))
+          dF     = dF*iInv
+
+          DPDF   = (W(CHF_IX[i;j+1;k],iPressPIW) - W(CHF_IX[i;j-1;k],iPressPIW))/(dF*R*sinT)
+
+          dTH    = m_dtheta(k,level) + half*(m_dtheta(k+1,level) + m_dtheta(k-1,level))
+          dTH    = dTH*iInv
+
+          DPDT   = (W(CHF_IX[i;j;k+1],iPressPIW) - W(CHF_IX[i;j;k-1],iPressPIW))/(dTH*R)
+
+          up     =      W(CHF_IX[i;j;k],WVELR)*DPDR
+          up     = up + W(CHF_IX[i;j;k],WVELP)*DPDF
+          up     = up + W(CHF_IX[i;j;k],WVELT)*DPDT
+
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) = zero
+          S(CHF_IX[i;j;k],UMOMY) = zero
+          S(CHF_IX[i;j;k],UMOMZ) = zero
+
+          S(CHF_IX[i;j;k],UENG ) = zero
+
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+
+          S(CHF_IX[i;j;k],iRhoPIU  )  = zero
+!          if (HG*up+W(CHF_IX[i;j;k],iPressPIU) .le. 1.0D-12) then
+!              S(CHF_IX[i;j;k],iPressPIU) = 1.0D-12-W(CHF_IX[i;j;k],iPressPIU)
+!          else
+              S(CHF_IX[i;j;k],iPressPIU)  = HG*up
+!          endif
+
+        CHF_ENDDO
+#endif
+        return
+        end
+
+! new pdivu source terms
+! can also use region if needed
+        subroutine SOURCE_PICKUP_IONS_REG(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FIA1[REG],
+     &    CHF_CONST_FRA1[divU],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3
+        integer CHF_DDECL[i;j;k]
+        integer iPressPIU, iPressPIW
+        real_t HG, pdivU
+
+#include "EosCommon.fh"
+
+        iPressPIU  = iRhoPIU + 1
+        iPressPIW  = iRhoPIW + 1
+        HG       = (gammaPI - one)*dt
+
+        CHF_MULTIDO[box;i;j;k]
+!        if ((REG(CHF_IX[i;j;k]) .eq. 1) .or. 
+!     &      (REG(CHF_IX[i;j;k]) .eq. 4)) then
+!          S(CHF_IX[i;j;k],iRhoPIU  )  = zero
+!          S(CHF_IX[i;j;k],iPressPIU)  = zero
+!        else 
+          pdivU = W(CHF_IX[i;j;k],iPressPIW)*divU(CHF_IX[i;j;k])
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) = zero
+          S(CHF_IX[i;j;k],UMOMY) = zero
+          S(CHF_IX[i;j;k],UMOMZ) = zero
+
+          S(CHF_IX[i;j;k],UENG ) = zero
+
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+
+          S(CHF_IX[i;j;k],iRhoPIU  )  = zero
+!          if (HG*up+W(CHF_IX[i;j;k],iPressPIU) .le. 1.0D-12) then
+!              S(CHF_IX[i;j;k],iPressPIU) = 1.0D-12-W(CHF_IX[i;j;k],iPressPIU)
+!          else
+              S(CHF_IX[i;j;k],iPressPIU)  = -HG*pdivU
+!          endif
+!        endif
+        CHF_ENDDO
+#endif
+        return
+        end
+
+        subroutine MAXWAVESPEED_PI(
+     &    CHF_FRA1[cmax],
+     &    CHF_CONST_FRA[cons],
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iMOMX, iMOMY, iMOMZ, iPressPI
+        real_t  ru, rv, rw, u, v, w, rho, invrho, p
+        real_t  umax, a
+
+#include "EosCommon.fh"
+
+        iMOMX  = iRHO + 1
+        iMOMY  = iRHO + 2
+        iMOMZ  = iRHO + 3
+
+        iPressPI = iRhoPI + 1
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = cons(CHF_IX[i;j;k],iRHO)
+          rho    = max( rho, smallr )
+          invrho = one/rho
+
+          ru     = cons(CHF_IX[i;j;k],iMOMX)
+          rv     = cons(CHF_IX[i;j;k],iMOMY)
+          rw     = cons(CHF_IX[i;j;k],iMOMZ)
+
+          u      = ru*invrho
+          v      = rv*invrho
+          w      = rw*invrho
+
+          p      = cons(CHF_IX[i;j;k],iPressPI)
+          p      = max( p, smallPI )
+
+          rho    = cons(CHF_IX[i;j;k],iRhoPI)
+
+          a      = sqrt( gammaPI*p/rho )
+
+          umax   = max( abs( u ), abs( v ), abs( w ) ) + a
+
+          cmax(CHF_IX[i;j;k]) = max( umax, cmax(CHF_IX[i;j;k]) )
+        CHF_ENDDO
+
+        return
+        end
+        
+        subroutine MINDT_SPHERICAL_PI(
+     &    CHF_FRA1[dt],
+     &    CHF_CONST_FRA[cons],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k], iPressPI
+        real_t  CHF_DDECL[ p;rdphi,dphi;rdtheta,dtheta]
+        real_t  ru, rv, rw, rho, invrho
+        real_t  dtmin, a
+        real_t  ur, uphi, utheta
+
+#include "EosCommon.fh"
+
+        iPressPI = iRhoPI + 1
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[ ;
+            dphi   = m_dphi  (j/m_ref_factor(level))*m_inv_factor(level);
+            dtheta = m_dtheta(k,level) ]
+          CHF_DSELECT[ ;
+            rdphi   = m_rn(i,level)*dphi;
+            rdphi   = m_rn(i,level)*dphi*m_thetac(k,ISIN,level)
+            rdtheta = m_rn(i,level)*dtheta ]
+
+          rho    = cons(CHF_IX[i;j;k],URHO)
+          invrho = one/rho
+
+          ru     = cons(CHF_IX[i;j;k],UMOMX)
+          rv     = cons(CHF_IX[i;j;k],UMOMY)
+          rw     = cons(CHF_IX[i;j;k],UMOMZ)
+
+          ur     = ru*invrho
+          uphi   = rv*invrho
+          utheta = rw*invrho
+
+          p      = cons(CHF_IX[i;j;k],iPressPI)
+          p      = max( p, smallPI )
+
+          rho    = cons(CHF_IX[i;j;k],iRhoPI)
+
+          a      = sqrt( gammaPI*p/rho )
+
+          dtmin  = dt(CHF_IX[i;j;k])
+
+!          dtmin  = min( m_dr(i,level)/(abs( ur   ) + a), dtmin )
+!          dtmin  = min( rdphi        /(abs( uphi ) + a), dtmin )
+
+          dtmin  = min( m_dr(i,level)/(gammaPI*abs( ur   )), dtmin )
+          dtmin  = min( rdphi        /(gammaPI*abs( uphi )), dtmin )
+
+#if CH_SPACEDIM == 3
+!          dtmin  = min( rdtheta      /(abs( utheta ) + a), dtmin )
+          dtmin  = min( rdtheta      /(gammaPI*abs( utheta )), dtmin )
+#endif          
+
+          dt(CHF_IX[i;j;k]) = dtmin
+        CHF_ENDDO
+
+        return
+        end
+

@@ -1,0 +1,178 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine ROEHHTF(
+     &                      CHF_FRA[Wgdnv],
+     &                      CHF_CONST_FRA[WLeft],
+     &                      CHF_CONST_FRA[WRight],
+     &                      CHF_CONST_INT[idir],
+     &                      CHF_CONST_INT[iRho],
+     &                      CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        integer CHF_DDECL[inorm; itan1; itan2]
+        real_t PGasL, RhoL, RUxUL, EL, AL2, AL, HL, RUL
+        real_t PGasR, RhoR, RUxUR, ER, AR2, AR, HR, RUR
+
+        real_t RhoAV, QAV, A2, AAV, HAV, R, Z1, Z2
+
+        real_t CHF_DDECL[ UL;   VL;   WL]
+        real_t CHF_DDECL[ UR;   VR;   WR]
+        real_t CHF_DDECL[ UAV;  VAV;  WAV]
+        real_t CHF_DDECL[ DU1;  DU2;  DU3]
+        real_t CHF_DDECL[ CONU; CONV; CONW]
+
+        real_t DU, DP, DR, DA, H1, H2, H3, B1, B2, B3
+        real_t Lambda, LambdaM, LambdaP, Delta, DQ
+        real_t CONR, CONE
+
+        integer spacedim, iVelX, iPres
+
+        real_t, parameter :: dA2Min     = 1.0D-10
+        real_t, parameter :: dDeltaFac  = 0.250
+        real_t, parameter :: dConstK    = 0.50D0
+        real_t, parameter :: dOneSixth  = 1.0D0/6.0D0
+
+#include "EosCommon.fh"
+#include "RSCommon.fh"
+
+        spacedim = CH_SPACEDIM
+
+        iVelX  = iRho + 1
+        iPres  = iRho + 4
+
+        CHF_DTERM[
+        inorm  = iVelX +      idir;
+        itan1  = iVelX + mod( idir + 1, spacedim );
+        itan2  = iVelX + mod( idir + 2, spacedim )]
+
+        CHF_MULTIDO[box;i;j;k]
+          Wgdnv(CHF_IX[i;j;k],iRho:iPres)  = zero
+
+          PGasL  = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+          RhoL   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+
+          CHF_DTERM[
+          UL     =              WLeft(CHF_IX[i;j;k],inorm);
+          VL     =              WLeft(CHF_IX[i;j;k],itan1);
+          WL     =              WLeft(CHF_IX[i;j;k],itan2)]
+
+          AL2    = gamma*PGasL/RhoL
+          AL     = sqrt( AL2 )
+
+          RUxUL  = half*RhoL*(CHF_DTERM[UL*UL;  + VL*VL;  + WL*WL])
+
+          EL     = PGasL/hgamma + RUxUL
+          HL     = (EL + PGasL)/RhoL
+
+          PGasR  = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+          RhoR   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+
+          CHF_DTERM[
+          UR     =              WRight(CHF_IX[i;j;k],inorm);
+          VR     =              WRight(CHF_IX[i;j;k],itan1);
+          WR     =              WRight(CHF_IX[i;j;k],itan2)]
+
+          AR2    = gamma*PGasR/RhoR
+          AR     = sqrt( AR2 )
+
+          RUxUR  = half*RhoR*(CHF_DTERM[UR*UR;  + VR*VR;  + WR*WR])
+
+          ER     = PGasR/hgamma + RUxUR
+          HR     = (ER + PGasR)/RhoR
+!                                                           Compute Roe averages
+          R      = sqrt( RhoR/RhoL )
+          Z1     = one/(R + one)
+          Z2     = R*Z1
+          RhoAV  = R*RhoL
+
+          CHF_DTERM[
+          UAV    = Z1*UL + Z2*UR;
+          VAV    = Z1*VL + Z2*VR;
+          WAV    = Z1*WL + Z2*WR]
+
+          HAV    = Z1*HL + Z2*HR
+!                                                 Compute average speed of sound
+          QAV    = half*(CHF_DTERM[UAV*UAV; + VAV*VAV; + WAV*WAV])
+          A2     = hgamma*(HAV - QAV)
+
+          if( A2 < dA2Min ) A2   = dA2Min
+
+          AAV    = sqrt( A2 )
+
+          DU     = UR    - UL
+          DP     = PGasR - PGasL
+          DA     = AR    - AL
+          DR     = RhoR  - RhoL
+!                                                 Compute modules of eigenvalues
+          LambdaM  = abs( UAV - AAV )
+          Lambda   = abs( UAV       )
+          LambdaP  = abs( UAV + AAV )
+!                                                                    Entropy fix
+          Delta  = dDeltaFac*(CHF_DTERM[abs( UAV ); + abs( VAV ); + abs( WAV )] + AAV)
+
+          if( LambdaM < Delta ) LambdaM  = half*(LambdaM*LambdaM/Delta + Delta)
+          if( Lambda  < Delta ) Lambda   = half*(Lambda *Lambda /Delta + Delta)
+          if( LambdaP < Delta ) LambdaP  = half*(LambdaP*LambdaP/Delta + Delta)
+
+          LambdaM  = LambdaM + max( dOneSixth*(DU - DA) + dConstK*DU*DU, zero )
+          Lambda   = Lambda  + max( dOneSixth*(DU     ) + dConstK*DU*DU, zero )
+          LambdaP  = LambdaP + max( dOneSixth*(DU + DA) + dConstK*DU*DU, zero )
+
+          H1     = RhoAV*AAV*DU
+          H2     = half/A2
+          H3     = RhoAV*Lambda
+
+          B1     = LambdaM*(DP  - H1   )*H2
+          B2     = Lambda *(DR  - DP/A2)
+          B3     = LambdaP*(DP  + H1   )*H2
+
+          RUR    = RhoR*UR
+          RUL    = RhoL*UL
+
+          CHF_DTERM[
+          DU1    = UR - UL;
+          DU2    = VR - VL;
+          DU3    = WR - WL]
+
+          DQ     = CHF_DTERM[UAV*DU1; + VAV*DU2; + WAV*DU3]
+
+          CONR   = RUL    + RUR
+
+          CHF_DTERM[
+          CONU   = RUL*UL + RUR*UR + PGasR + PGasL;
+          CONV   = RUL*VL + RUR*VR;
+          CONW   = RUL*WL + RUR*WR]
+
+          CONE   = RUL*HL + RUR*HR
+
+          CONR   = CONR - B1                 - B3
+
+          CHF_DTERM[
+          CONU   = CONU - B1*(UAV -     AAV) - B3*(UAV +     AAV);
+          CONV   = CONV - B1*(VAV          ) - B3*(VAV          );
+          CONW   = CONW - B1*(WAV          ) - B3*(WAV          )]
+
+          CONE   = CONE - B1*(HAV - UAV*AAV) - B3*(HAV + UAV*AAV)
+
+          CONR   = CONR - B2
+
+          CHF_DTERM[
+          CONU   = CONU - B2*UAV - H3*(DU1 -     DU);
+          CONV   = CONV - B2*VAV - H3*(DU2         );
+          CONW   = CONW - B2*WAV - H3*(DU3         )]
+
+          CONE   = CONE - B2*QAV - H3*(DQ  - UAV*DU)
+
+          Wgdnv(CHF_IX[i;j;k],iRho  )  = half*CONR
+
+          CHF_DTERM[
+          Wgdnv(CHF_IX[i;j;k],inorm )  = half*CONU;
+          Wgdnv(CHF_IX[i;j;k],itan1 )  = half*CONV;
+          Wgdnv(CHF_IX[i;j;k],itan2 )  = half*CONW]
+
+          Wgdnv(CHF_IX[i;j;k],iPres )  = half*CONE
+        CHF_ENDDO
+
+        return
+        end

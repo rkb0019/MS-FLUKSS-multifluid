@@ -1,0 +1,89 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETCSHEET(
+     &    CHF_CONST_REAL[augamma],
+     &    CHF_CONST_REAL[auCSheetU0],
+     &    CHF_CONST_REAL[auCSheetB0],
+     &    CHF_CONST_REAL[auCSheetP0] )
+
+#include "CSheetCommon.fh"
+#include "EosCommon.fh"        
+
+        real_t umag 
+
+        gamma      = augamma
+        hgamma     = gamma - 1.0d0
+        invhgamma  = one / hgamma
+        
+        CSheetU0 = auCSheetU0
+        CSheetB0 = auCSheetB0
+        CSheetP0 = auCSheetP0
+
+        umag     = CSheetU0
+
+        smallr   = small
+        smallu   = small*umag
+        smallp   = small*half*umag*umag
+        return
+        end
+
+        subroutine CSHEETINIT(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iCP],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t ke, b, e0, ux, uy, uz, Bx, By, Bz, p, rho
+        integer CHF_DDECL[i;j;k]
+        real_t CHF_DDECL[x;y;z]
+
+#include "CSheetCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx;
+          y      = (j + half)*dx;
+          z      = (k + half)*dx]
+
+          ux     = CSheetU0*sin( d_2PI*y )
+          uy     = zero
+          uz     = zero
+
+          Bx     = zero
+          By     = CSheetB0
+          Bz     = zero
+
+          if( (x > 0.25D0) .and. (x < 0.75D0) ) then
+            By     =-CSheetB0
+          endif
+
+          rho    = 1.0D0
+
+          p      = CSheetP0
+
+          b      = d_1_4PI*(Bx*Bx + By*By + Bz*Bz)
+          ke     =          ux*ux + uy*uy + uz*uz
+          e0     = p/hgamma + half*(ke + b)
+          
+          U(CHF_IX[i;j;k],URHO)  = rho
+
+          U(CHF_IX[i;j;k],UMOMX) = ux
+          U(CHF_IX[i;j;k],UMOMY) = zero
+          U(CHF_IX[i;j;k],UMOMZ) = zero
+
+          U(CHF_IX[i;j;k],UENG)  = e0
+
+          U(CHF_IX[i;j;k],UBX )  = zero
+          U(CHF_IX[i;j;k],UBY )  = By
+          U(CHF_IX[i;j;k],UBZ )  = zero
+          
+          ! Dedner
+          if (iCP>0) then  
+            U(CHF_IX[i;j;k],iCP)  = zero          
+          endif
+        CHF_ENDDO
+
+        return
+        end

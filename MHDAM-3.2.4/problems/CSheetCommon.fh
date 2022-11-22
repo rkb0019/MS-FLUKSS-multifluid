@@ -1,0 +1,7 @@
+C
+C   Fortran parameters for the Current sheet problem:
+C
+        
+        real_t CSheetU0, CSheetB0, CSheetP0
+        common /csheetcm/ CSheetU0, CSheetB0, CSheetP0
+     

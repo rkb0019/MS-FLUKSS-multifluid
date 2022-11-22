@@ -1,0 +1,115 @@
+#include "KS1DIntergrator.H"
+#include "LGintegrator.H"
+
+
+! PREPARE DATA FOR KINETIC SOURCE CALCULATOR       
+
+      subroutine PREPAREDATAFORKINETICSC1D(
+     &     CHF_CONST_FRA[U],
+     &     CHF_FRA[Ph],
+     &     CHF_BOX[box])
+      
+      
+        integer CHF_DDECL[i;j;k]
+        real_t rho, p, ke, uu, vv, ww, ru, rv, rw, invrho
+        real_t bx, by, bz, b, TEMP, rhoD, uD, vD
+     
+
+#include "EosCommon.fh"
+#include "RiemannCommon.fh"
+
+        CHF_MULTIDO[box;i;j;k]
+          rho  = U(CHF_IX[i;j;k],URHO)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          
+          invrho = one / rho
+
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+
+          ke   = ru*uu + rv*vv + rw*ww
+
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+          
+          p    = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p    = max( p, smallp )
+
+!          rhoPh  = rho
+!          uPh    = uu
+!          TEMP   = p/rho
+
+! Conversion to SI units  :
+
+!  number of particles per cm^3 -> number of particles per m^3       
+          rhoD  = rho*ref_N*1D+6
+          
+!  velocity cm/s -> velocity m/s           
+          uD    = uu*ref_V*1D-2
+          vD    = vv*ref_V*1D-2
+          TEMP  = gamma*machL*machL*temperatureL*p/rho
+          
+          Ph(CHF_IX[i;j;k],SWRHO)   = rhoD
+          Ph(CHF_IX[i;j;k],SWVELX)  = uD          
+          Ph(CHF_IX[i;j;k],SWVELY)  = vD          
+          Ph(CHF_IX[i;j;k],SWTEMP)  = TEMP
+        CHF_ENDDO
+        
+      return
+      end        
+      
+  
+      subroutine MODIFYSOURCEAFTERKINETICSC1D(
+     &     CHF_FRA[S],     
+     &     CHF_BOX[box])
+      
+      integer CHF_DDECL[i;j;k]
+
+#include "EosCommon.fh"
+#include "RiemannCommon.fh"
+
+      
+      real_t Cm, Ce
+      Cm = 0.1D0*eos_AU/(ref_N*eos_mp*ref_V*ref_V)
+      Ce = 10D0 *eos_AU/(ref_N*eos_mp*ref_V*ref_V*ref_V)
+      
+
+      CHF_MULTIDO[box;i;j;k]
+        S(CHF_IX[i;j;k],SMOMX) = Cm*S(CHF_IX[i;j;k],SMOMX)        
+        S(CHF_IX[i;j;k],SMOMY) = Cm*S(CHF_IX[i;j;k],SMOMY)        
+        S(CHF_IX[i;j;k],SENG)  = Ce*S(CHF_IX[i;j;k],SENG)
+        
+!  number of particles per m^3 -> number of particles per cm^3 
+        S(CHF_IX[i;j;k],NRHO)  = 1D-6*S(CHF_IX[i;j;k],NRHO)
+        
+!  velocity m/s -> velocity cm/s 
+        S(CHF_IX[i;j;k],NVELX) = 1D+2*S(CHF_IX[i;j;k],NVELX)        
+        S(CHF_IX[i;j;k],NVELY) = 1D+2*S(CHF_IX[i;j;k],NVELY)        
+      CHF_ENDDO      
+      
+      return      
+      end        
+
+
+
+      subroutine ADDKINETICSOURCE1D(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[S],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],UMOMX) = U(CHF_IX[i;j;k],UMOMX) + dt*S(CHF_IX[i;j;k],SMOMX)          
+          U(CHF_IX[i;j;k],UMOMY) = U(CHF_IX[i;j;k],UMOMY) + dt*S(CHF_IX[i;j;k],SMOMY)          
+          U(CHF_IX[i;j;k],UENG ) = U(CHF_IX[i;j;k],UENG ) + dt*S(CHF_IX[i;j;k],SENG)
+        CHF_ENDDO
+
+        return
+        end

@@ -1,0 +1,85 @@
+#   Florinskii variant
+mhdam.problem = swlism
+
+mhdam.gamma = 1.66666666666667
+
+mhdam.verbosity = 0
+
+mhdam.max_step = 1307030
+mhdam.max_time = 1000000.0
+
+mhdam.lismN    = 0.1
+mhdam.lismV    = 2500000.0
+mhdam.lismT    = 7000.0
+mhdam.lismB    = 0.0000015
+
+mhdam.XC         = 300.0
+mhdam.YC         = 0.0
+mhdam.R0         = 10.0
+mhdam.sunN       = 5.0
+mhdam.sunV       = 50000000.0
+mhdam.sunT       = 150000.0
+mhdam.initR      = 80.0
+
+mhdam.coord_sys  = 1
+
+mhdam.domain_length = 1200.0
+mhdam.num_cells =  192 96 4
+mhdam.is_periodic = 0 0 0
+mhdam.max_level = 2
+mhdam.ref_ratio = 2 2 2 2 2 2 2 2 2 2
+
+mhdam.regrid_interval = 10 -1 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.25
+mhdam.refine_B_thresh = -1
+
+# Blocking factor. For each box B in the grids, this is the number Nref 
+# for which it is guaranteed to be true that refine(coarsen(B;Nref);Nref) == B. 
+# Default = 1. Note that this will also be the minimum possible box size.
+mhdam.block_factor = 4
+
+# Maximum length of a grid in any dimension. An input value of 0
+# means the maximum value will be infinity (no limit).
+mhdam.max_grid_size = 32
+
+# Overall grid efficiency to be generated. If this number is set
+# low, the grids will tend to be larger and less filled with tags. If this number
+# is set high, the grids will tend to be smaller and more filled with tags. This
+# controls the aggressiveness of agglomeration by box merging.
+mhdam.fill_ratio = 0.75
+
+# Proper nesting buffer size. This will be the minimum number
+# of level l cells between any level l+1 cell and a level l-1 cell. Default = 1.
+mhdam.grid_buffer_size = 4
+
+mhdam.limiter_RHO = 4
+mhdam.limiter_VX = 4
+mhdam.limiter_VY = 4
+mhdam.limiter_VZ = 4
+mhdam.limiter_P = 4
+mhdam.limiter_BX = 4
+mhdam.limiter_BY = 4
+mhdam.limiter_BZ = 4
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+mhdam.entropy_fix_coeff = 0.2
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 1000
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = chk
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.02
+mhdam.dt_tolerance_factor = 1.02
+
+#mhdam.restart_file = chk141200.2d.hdf5

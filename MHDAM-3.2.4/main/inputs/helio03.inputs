@@ -1,0 +1,101 @@
+#   Pogorelov variant with 4 fluids
+mhdam.problem = heliosph
+
+mhdam.gamma = 1.66666666666667
+
+mhdam.verbosity = 1
+
+mhdam.max_step = 19902
+mhdam.max_time = 1000000.0
+
+mhdam.fluids   = 4
+
+mhdam.lismN    = 0.06
+mhdam.lismV    = 2640000.0
+mhdam.lismT    = 6527.0
+mhdam.lismB    = 0.000003
+mhdam.lismBX   =-0.82356
+mhdam.lismBY   = 0.2678
+mhdam.lismBZ   =-0.5
+
+mhdam.XC         = 1000.0
+mhdam.YC         = 1000.0
+mhdam.ZC         = 1000.0
+mhdam.R0         = 10.0
+mhdam.sunN       = 7.4
+mhdam.sunV       = 45000000.0
+mhdam.sunT       = 51100.0
+mhdam.sunB       = 0.0000375
+mhdam.sunTILT    = 0.0
+mhdam.sunBeta    = 0.9
+mhdam.initR      = 80.0
+mhdam.netN       = 0.15
+
+mhdam.adaptR1    = 100.0
+mhdam.adaptR2    = 600.0
+
+mhdam.coord_sys  = 0
+
+mhdam.domain_length = 2000.0
+mhdam.num_cells =  80 100 100
+mhdam.is_periodic = 0 0 0
+mhdam.max_level = 4
+mhdam.ref_ratio = 2 2 2 2 2 2 2 2 2 2
+
+mhdam.regrid_interval = 20 -1 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.20
+mhdam.refine_B_thresh = -1
+
+# Blocking factor. For each box B in the grids, this is the number Nref 
+# for which it is guaranteed to be true that refine(coarsen(B;Nref);Nref) == B. 
+# Default = 1. Note that this will also be the minimum possible box size.
+mhdam.block_factor = 4
+
+# Maximum length of a grid in any dimension. An input value of 0
+# means the maximum value will be infinity (no limit).
+mhdam.max_grid_size = 32
+
+# Overall grid efficiency to be generated. If this number is set
+# low, the grids will tend to be larger and less filled with tags. If this number
+# is set high, the grids will tend to be smaller and more filled with tags. This
+# controls the aggressiveness of agglomeration by box merging.
+mhdam.fill_ratio = 0.75
+
+# Proper nesting buffer size. This will be the minimum number
+# of level l cells between any level l+1 cell and a level l-1 cell. Default = 1.
+mhdam.grid_buffer_size = 4
+
+mhdam.limiter_RHO = 1
+mhdam.limiter_VX = 1
+mhdam.limiter_VY = 1
+mhdam.limiter_VZ = 1
+mhdam.limiter_P = 1
+mhdam.limiter_BX = 1
+mhdam.limiter_BY = 1
+mhdam.limiter_BZ = 1
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+mhdam.entropy_fix_coeff = 0.3
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+# Keep only last "max_chk_files" checkpoint, -1 keep all checkpoints
+mhdam.max_chk_files = 3
+mhdam.checkpoint_interval = 100
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = mfl
+
+mhdam.cfl = 0.2
+mhdam.initial_cfl = 0.1
+
+mhdam.max_dt_growth = 1.01
+mhdam.dt_tolerance_factor = 1.01
+
+mhdam.restart_file = mfl19900.3d.hdf5
+

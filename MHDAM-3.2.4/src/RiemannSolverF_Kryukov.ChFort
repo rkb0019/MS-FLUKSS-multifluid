@@ -1,0 +1,611 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETRSCONST(
+     &    CHF_CONST_REAL[auDel2],
+     &    CHF_CONST_REAL[auSmallB],
+     &    CHF_CONST_INT[auAver],
+     &    CHF_CONST_INT[auLF])
+
+#include "RSCommon.fh"
+
+        del2         = auDel2
+        smallB       = auSmallB
+        iAveraging   = auAver
+        iLaxFriedrix = auLF
+
+        return
+        end
+
+        subroutine RIEMANNF(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        integer inorm, itan1, itan2, inormB, itanB1, itanB2
+        real_t PGasL, RhoL, UL, VL, WL, RUL, RVL, RWL, BXL, BYL, BZL
+        real_t PGasR, RhoR, UR, VR, WR, RUR, RVR, RWR, BXR, BYR, BZR
+        real_t PGas,  Rho,  U,  V,  W,                 BX,  BY,  BZ
+        real_t BxBL, RUxUL, PL, EL, AL2, DL, HL, coefRL
+        real_t BxBR, RUxUR, PR, ER, AR2, DR, HR, coefRR
+        real_t BxBH,        P,          denom, HAV
+
+        real_t aas, as, aaf, af, alf, als, c, cc, ccmi, ccma, dfs
+        real_t hyy, hyz, hzz, szb, h, kk, sih, z, del, dell2
+        real_t b, bb, bx2, by2, bz2, byz2, sqPiRho, sq2PiRho
+        real_t Aeigen1, Aeigen2, Aeigen3, Aeigen4, Aeigen5, Aeigen6
+        real_t Aeigen7, Aeigen8
+        real_t  eigen1,  eigen2,  eigen3,  eigen4,  eigen5,  eigen6
+        real_t  eigen7,  eigen8,  eigmax
+        real_t fl1, fl2, fl3, fl4, fl5, fl6, fl7, fl8
+        real_t fr1, fr2, fr3, fr4, fr5, fr6, fr7, fr8
+        real_t du1, du2, du3, du4, du5, du6, du7, du8
+        real_t lu1, lu2, lu3, lu4, lu5, lu6, lu7, lu8
+        real_t ra1, ra2, ra3, ra4, ra5, ra6, ra7, ra8
+
+        real_t sp11, sp12, sp13, sp14, sp15, sp16, sp17, sp18
+        real_t sp21, sp22, sp23, sp24, sp25, sp26, sp27, sp28
+        real_t sp31, sp32, sp33, sp34, sp35, sp36, sp37, sp38
+        real_t sp41, sp42, sp43, sp44, sp45, sp46, sp47, sp48
+        real_t sp51, sp52, sp53, sp54, sp55, sp56, sp57, sp58
+        real_t sp61, sp62, sp63, sp64, sp65, sp66, sp67, sp68
+        real_t sp71, sp72, sp73, sp74, sp75, sp76, sp77, sp78
+        real_t sp81, sp82, sp83, sp84, sp85, sp86, sp87, sp88
+
+        real_t so11, so12, so13, so14, so15, so16, so17, so18
+        real_t so21, so22, so23, so24, so25, so26, so27, so28
+        real_t so31, so32, so33, so34, so35, so36, so37, so38
+        real_t so41, so42, so43, so44, so45, so46, so47, so48
+        real_t so51, so52, so53, so54, so55, so56, so57, so58
+        real_t so61, so62, so63, so64, so65, so66, so67, so68
+        real_t so71, so72, so73, so74, so75, so76, so77, so78
+        real_t so81, so82, so83, so84, so85, so86, so87, so88
+
+        integer spacedim, iVelX, iBX, iPres
+
+#include "EosCommon.fh"
+#include "RSCommon.fh"
+
+        spacedim = 3
+
+        iVelX  = iRho + 1
+        iPres  = iRho + 4
+        iBX    = iRho + 5
+
+        inorm  = iVelX +      idir
+        itan1  = iVelX + mod( idir + 1, spacedim )
+        itan2  = iVelX + mod( idir + 2, spacedim )
+
+        inormB = iBX   +      idir
+        itanB1 = iBX   + mod( idir + 1, spacedim )
+        itanB2 = iBX   + mod( idir + 2, spacedim )
+
+        CHF_MULTIDO[box;i;j;k]
+          PGasL  = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+c          PGasL  = max( 1.d-7, WLeft(CHF_IX[i;j;k],iPres) )
+          RhoL   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+
+          UL     =              WLeft(CHF_IX[i;j;k],inorm)
+          VL     =              WLeft(CHF_IX[i;j;k],itan1)
+          WL     =              WLeft(CHF_IX[i;j;k],itan2)
+
+          BXL    =              WLeft(CHF_IX[i;j;k],inormB)
+          BYL    =              WLeft(CHF_IX[i;j;k],itanB1)
+          BZL    =              WLeft(CHF_IX[i;j;k],itanB2)
+
+          PGasR  = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+c          PGasR  = max( 1.d-7, WRight(CHF_IX[i;j;k],iPres) )
+          RhoR   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+
+          UR     =              WRight(CHF_IX[i;j;k],inorm)
+          VR     =              WRight(CHF_IX[i;j;k],itan1)
+          WR     =              WRight(CHF_IX[i;j;k],itan2)
+
+          BXR    =              WRight(CHF_IX[i;j;k],inormB)
+          BYR    =              WRight(CHF_IX[i;j;k],itanB1)
+          BZR    =              WRight(CHF_IX[i;j;k],itanB2)
+
+          RUL    = RhoL*UL
+          RVL    = RhoL*VL
+          RWL    = RhoL*WL
+
+          BxBL   = d_1_8PI*(BXL*BXL + BYL*BYL + BZL*BZL)
+          RUxUL  = half   *(RUL*UL  + RVL*VL  + RWL*WL )
+
+          PL     = PGasL + BxBL
+          EL     = PGasL/hgamma + RUxUL + BxBL
+
+          AL2    = gamma*PGasL/RhoL
+
+          RUR    = RhoR*UR
+          RVR    = RhoR*VR
+          RWR    = RhoR*WR
+
+          BxBR   = d_1_8PI*(BXR*BXR + BYR*BYR + BZR*BZR)
+          RUxUR  = half   *(RUR*UR  + RVR*VR  + RWR*WR )
+
+          PR     = PGasR + BxBR
+          ER     = PGasR/hgamma + RUxUR + BxBR
+
+          AR2    = gamma*PGasR/RhoR
+
+          if( iAveraging == 1 ) then
+            HL     = (EL + PL)/RhoL
+            HR     = (ER + PR)/RhoR
+
+            DL     = sqrt( RhoL )
+            DR     = sqrt( RhoR )
+            denom  = DL + DR
+            coefRL = DL/denom
+            coefRR = DR/denom
+
+            Rho    = DL*DR
+            U      = UL*coefRL + UR*coefRR
+            V      = VL*coefRL + VR*coefRR
+            W      = WL*coefRL + WR*coefRR
+            HAV    = HL*coefRL + HR*coefRR
+
+            BX     = (BXL/DL + BXR/DR)/denom
+            BY     = (BYL/DL + BYR/DR)/denom
+            BZ     = (BZL/DL + BZR/DR)/denom
+
+            BX2    = BX*BX
+            BY2    = BY*BY
+            BZ2    = BZ*BZ
+
+            BYZ2   = BY2 + BZ2
+            BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+            kk     = half*(U*U + V*V + W*W)
+
+            PGas   = hgamma*(Rho*HAV - BxBH - BxBH - Rho*kk)
+            P      = PGas + BxBH
+          else
+            Rho    = half*(RhoL + RhoR)
+            U      = half*(UL   + UR  )
+            V      = half*(VL   + VR  )
+            W      = half*(WL   + WR  )
+            BX     = half*(BXL  + BXR )
+            BY     = half*(BYL  + BYR )
+            BZ     = half*(BZL  + BZR )
+            P      = half*(PL   + PR  )
+
+            BX2    = BX*BX
+            BY2    = BY*BY
+            BZ2    = BZ*BZ
+
+            BYZ2   = BY2 + BZ2
+            BxBH   = d_1_8PI*(BX2 + BYZ2)
+
+            kk     = half*(U*U + V*V + W*W)
+
+            PGas   = P - BxBH
+          endif
+
+          bb     = d_1_4PI*BX2/Rho
+          b      = sqrt( bb )
+
+          if( AL2 > AR2 ) then
+            ccmi   = AR2
+            ccma   = AL2
+          else
+            ccmi   = AL2
+            ccma   = AR2
+          endif
+  
+          cc     = gamma*PGas/Rho
+          if( cc < ccmi ) cc    = ccmi
+          if( cc > ccma ) cc    = ccma
+          c      = sqrt( cc )
+
+          hyz    = sqrt( BYZ2 )
+          if( abs( BY ) + abs( BZ ) < smallB ) then
+            hyy    = d_SQRT_2
+            hzz    = d_SQRT_2
+
+            if( bb > cc ) then
+              aaf    = bb
+              aas    = cc
+              af     = b
+              as     = c
+            else
+              aaf    = cc
+              aas    = bb
+              af     = c
+              as     = b
+            endif
+          else
+            hyy    = BY/hyz
+            hzz    = BZ/hyz
+
+            szb    = cc + (BxBH + BxBH)/Rho
+            h      = sqrt( szb*szb - four*cc*bb )
+            aas    = half*(szb - h)
+
+            if( aas <= zero ) then
+              aas    = zero
+              as     = zero
+            else if( aas >= cc ) then
+              aas    = cc
+              as     = c
+            else
+              as     = sqrt( aas )
+            endif
+
+            aaf    = half*(szb + h)
+            if( aaf <= cc ) then
+              aaf    = cc
+              af     = c
+            else
+              af     = sqrt( aaf )
+            endif
+          endif
+
+          if( iLaxFriedrix == 1 ) then
+            eigmax   = abs( U ) + af
+
+            Aeigen1  = eigmax
+            Aeigen2  = eigmax
+            Aeigen3  = eigmax
+            Aeigen4  = eigmax
+            Aeigen5  = eigmax
+            Aeigen6  = eigmax
+            Aeigen7  = eigmax
+            Aeigen8  = eigmax
+          else
+            eigen1 = U
+            eigen2 = U
+            eigen3 = U + b
+            eigen4 = U - b
+            eigen5 = U + af
+            eigen6 = U - af
+            eigen7 = U + as
+            eigen8 = U - as
+
+            eigmax = abs( U ) + abs( V ) + abs( W ) + af
+
+            del    = del2*eigmax
+            dell2  = del*del
+
+            z      = abs( eigen1 )
+            if( z >= del ) then
+              Aeigen1  = z
+            else
+              Aeigen1  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen2 )
+            if( z >= del ) then
+              Aeigen2  = z
+            else
+              Aeigen2  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen3 )
+            if( z >= del ) then
+              Aeigen3  = z
+            else
+              Aeigen3  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen4 )
+            if( z >= del ) then
+              Aeigen4  = z
+            else
+              Aeigen4  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen5 )
+            if( z >= del ) then
+              Aeigen5  = z
+            else
+              Aeigen5  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen6 )
+            if( z >= del ) then
+              Aeigen6  = z
+            else
+              Aeigen6  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen7 )
+            if( z >= del ) then
+              Aeigen7  = z
+            else
+              Aeigen7  = half*(z*z + dell2)/del
+            endif
+
+            z      = abs( eigen8 )
+            if( z >= del ) then
+              Aeigen8  = z
+            else
+              Aeigen8  = half*(z*z + dell2)/del
+            endif
+          endif
+
+          dfs    = aaf - aas
+          if( dfs < 1.0D-8 ) then
+            alf    = one
+            als    = zero
+          else if( (cc - aas) <= zero ) then
+            alf    = zero
+            als    = one
+          else if( (aaf - cc) <= zero ) then
+            alf    = one
+            als    = zero
+          else
+            alf    = sqrt( (cc  - aas)/dfs )
+            als    = sqrt( (aaf - cc )/dfs )
+          endif
+
+          sih    =-one
+          if( BX >= zero ) sih   = one
+
+          fl1    =    RUL
+          fl2    = UL*RUL       - BXL*BXL*d_1_4PI + PL
+          fl3    = UL*RVL       - BXL*BYL*d_1_4PI
+          fl4    = UL*RWL       - BXL*BZL*d_1_4PI
+          fl5    = UL*(EL + PL) - BXL*(UL*BXL + VL*BYL + WL*BZL)*d_1_4PI
+          fl6    = zero
+          fl7    = UL*BYL       - BXL*VL
+          fl8    = UL*BZL       - BXL*WL
+
+          fr1    =    RUR
+          fr2    = UR*RUR       - BXR*BXR*d_1_4PI + PR
+          fr3    = UR*RVR       - BXR*BYR*d_1_4PI
+          fr4    = UR*RWR       - BXR*BZR*d_1_4PI
+          fr5    = UR*(ER + PR) - BXR*(UR*BXR + VR*BYR + WR*BZR)*d_1_4PI
+          fr6    = zero
+          fr7    = UR*BYR       - BXR*VR
+          fr8    = UR*BZR       - BXR*WR
+
+          du1    = RhoL - RhoR
+          du2    = RUL  - RUR
+          du3    = RVL  - RVR
+          du4    = RWL  - RWR
+          du5    = EL   - ER
+          du6    = BXL  - BXR
+          du7    = BYL  - BYR
+          du8    = BZL  - BZR
+
+          du5    =-hgamma*(-kk*du1 +   U*du2 +  V*du3 +  W*du4 - du5
+     .                             + (BX*du6 + BY*du7 + BZ*du8)*d_1_4PI)
+
+          du2    = (-U*du1 + du2)/Rho
+          du3    = (-V*du1 + du3)/Rho
+          du4    = (-W*du1 + du4)/Rho
+
+          sqPiRho  = sqrt( d_PI *Rho )
+          sq2PiRho = sqrt( d_2PI*Rho )
+
+          sp11   = one
+          sp12   = zero
+          sp13   = zero
+          sp14   = zero
+          sp15   = Rho*alf
+          sp16   = Rho*alf
+          sp17   = Rho*als
+          sp18   = Rho*als
+
+          sp21   = zero
+          sp22   = zero
+          sp23   = zero
+          sp24   = zero
+          sp25   = alf*af
+          sp26   =-alf*af
+          sp27   = als*as
+          sp28   =-als*as
+
+          sp31   = zero
+          sp32   = zero
+          sp33   =-hzz*d_SQRT_2
+          sp34   =-hzz*d_SQRT_2
+          sp35   =-als*as*hyy*sih
+          sp36   = als*as*hyy*sih
+          sp37   = alf*af*hyy*sih
+          sp38   =-alf*af*hyy*sih
+
+          sp41   = zero
+          sp42   = zero
+          sp43   = hyy*d_SQRT_2
+          sp44   = hyy*d_SQRT_2
+          sp45   =-als*as*hzz*sih
+          sp46   = als*as*hzz*sih
+          sp47   = alf*af*hzz*sih
+          sp48   =-alf*af*hzz*sih
+
+          sp51   = zero
+          sp52   = zero
+          sp53   = zero
+          sp54   = zero
+          sp55   = alf*Rho*cc
+          sp56   = alf*Rho*cc
+          sp57   = als*Rho*cc
+          sp58   = als*Rho*cc
+
+          sp61   = zero
+          sp62   = one
+          sp63   = zero
+          sp64   = zero
+          sp65   = zero
+          sp66   = zero
+          sp67   = zero
+          sp68   = zero
+
+          sp71   = zero
+          sp72   = zero
+          sp73   = hzz*sq2PiRho*sih
+          sp74   =-hzz*sq2PiRho*sih
+          sp75   = two*als*sqPiRho*c*hyy
+          sp76   = two*als*sqPiRho*c*hyy
+          sp77   =-two*alf*sqPiRho*c*hyy
+          sp78   =-two*alf*sqPiRho*c*hyy
+
+          sp81   = zero
+          sp82   = zero
+          sp83   =-hyy*sq2PiRho*sih
+          sp84   = hyy*sq2PiRho*sih
+          sp85   = two*als*sqPiRho*c*hzz
+          sp86   = two*als*sqPiRho*c*hzz
+          sp87   =-two*alf*sqPiRho*c*hzz
+          sp88   =-two*alf*sqPiRho*c*hzz
+
+          so11   = one  
+          so12   = zero
+          so13   = zero
+          so14   = zero
+          so15   =-one/cc
+          so16   = zero
+          so17   = zero
+          so18   = zero
+
+          so21   = zero
+          so22   = zero
+          so23   = zero
+          so24   = zero
+          so25   = zero
+          so26   = one
+          so27   = zero
+          so28   = zero
+
+          so31   = zero
+          so32   = zero
+          so33   =-hzz*d_SQRT_2
+          so34   = hyy*d_SQRT_2
+          so35   = zero
+          so36   = zero
+          so37   = half*hzz*sih/sq2PiRho
+          so38   =-half*hyy*sih/sq2PiRho
+
+          so41   = zero
+          so42   = zero
+          so43   =-hzz*d_SQRT_2
+          so44   = hyy*d_SQRT_2
+          so45   = zero
+          so46   = zero
+          so47   =-half*hzz*sih/sq2PiRho
+          so48   = half*hyy*sih/sq2PiRho
+
+          so51   = zero
+          so52   = half*alf*af/cc
+          so53   =-half*als*as*hyy*sih/cc
+          so54   =-half*als*as*hzz*sih/cc
+          so55   = half*alf/(cc*Rho)
+          so56   = zero
+          so57   = 0.25D0*als*hyy/(c*sqPiRho)
+          so58   = 0.25D0*als*hzz/(c*sqPiRho)
+
+          so61   = zero
+          so62   =-half*alf*af/cc
+          so63   = half*als*as*hyy*sih/cc
+          so64   = half*als*as*hzz*sih/cc
+          so65   = half*alf/(cc*Rho)
+          so66   = zero
+          so67   = 0.25D0*als*hyy/(c*sqPiRho)
+          so68   = 0.25D0*als*hzz/(c*sqPiRho)
+
+          so71   = zero
+          so72   = half*als*as/cc
+          so73   = half*alf*af*hyy*sih/cc
+          so74   = half*alf*af*hzz*sih/cc
+          so75   = half*als/(Rho*cc)
+          so76   = zero
+          so77   =-0.25D0*alf*hyy/(c*sqPiRho)
+          so78   =-0.25D0*alf*hzz/(c*sqPiRho)
+
+          so81   = zero
+          so82   =-half*als*as/cc
+          so83   =-half*alf*af*hyy*sih/cc
+          so84   =-half*alf*af*hzz*sih/cc
+          so85   = half*als/(Rho*cc)
+          so86   = zero
+          so87   =-0.25D0*alf*hyy/(c*sqPiRho)
+          so88   =-0.25D0*alf*hzz/(c*sqPiRho)
+
+          lu1    = Aeigen1*(so11*du1 + so12*du2 + so13*du3 + so14*du4
+     .                    + so15*du5 + so16*du6 + so17*du7 + so18*du8)
+          lu2    = Aeigen2*(so21*du1 + so22*du2 + so23*du3 + so24*du4
+     .                    + so25*du5 + so26*du6 + so27*du7 + so28*du8)
+          lu3    = Aeigen3*(so31*du1 + so32*du2 + so33*du3 + so34*du4
+     .                    + so35*du5 + so36*du6 + so37*du7 + so38*du8)
+          lu4    = Aeigen4*(so41*du1 + so42*du2 + so43*du3 + so44*du4
+     .                    + so45*du5 + so46*du6 + so47*du7 + so48*du8)
+          lu5    = Aeigen5*(so51*du1 + so52*du2 + so53*du3 + so54*du4
+     .                    + so55*du5 + so56*du6 + so57*du7 + so58*du8)
+          lu6    = Aeigen6*(so61*du1 + so62*du2 + so63*du3 + so64*du4
+     .                    + so65*du5 + so66*du6 + so67*du7 + so68*du8)
+          lu7    = Aeigen7*(so71*du1 + so72*du2 + so73*du3 + so74*du4
+     .                    + so75*du5 + so76*du6 + so77*du7 + so78*du8)
+          lu8    = Aeigen8*(so81*du1 + so82*du2 + so83*du3 + so84*du4
+     .                    + so85*du5 + so86*du6 + so87*du7 + so88*du8)
+
+          ra1    = sp11*lu1 + sp12*lu2 + sp13*lu3 + sp14*lu4
+     .           + sp15*lu5 + sp16*lu6 + sp17*lu7 + sp18*lu8
+          ra2    = sp21*lu1 + sp22*lu2 + sp23*lu3 + sp24*lu4
+     .           + sp25*lu5 + sp26*lu6 + sp27*lu7 + sp28*lu8
+          ra3    = sp31*lu1 + sp32*lu2 + sp33*lu3 + sp34*lu4
+     .           + sp35*lu5 + sp36*lu6 + sp37*lu7 + sp38*lu8
+          ra4    = sp41*lu1 + sp42*lu2 + sp43*lu3 + sp44*lu4
+     .           + sp45*lu5 + sp46*lu6 + sp47*lu7 + sp48*lu8
+          ra5    = sp51*lu1 + sp52*lu2 + sp53*lu3 + sp54*lu4
+     .           + sp55*lu5 + sp56*lu6 + sp57*lu7 + sp58*lu8
+          ra6    = sp61*lu1 + sp62*lu2 + sp63*lu3 + sp64*lu4
+     .           + sp65*lu5 + sp66*lu6 + sp67*lu7 + sp68*lu8
+          ra7    = sp71*lu1 + sp72*lu2 + sp73*lu3 + sp74*lu4
+     .           + sp75*lu5 + sp76*lu6 + sp77*lu7 + sp78*lu8
+          ra8    = sp81*lu1 + sp82*lu2 + sp83*lu3 + sp84*lu4
+     .           + sp85*lu5 + sp86*lu6 + sp87*lu7 + sp88*lu8
+
+          ra5    = ra1*kk     + Rho    *(U *ra2 + V *ra3 + W *ra4)
+     .           + ra5/hgamma + d_1_4PI*(BX*ra6 + BY*ra7 + BZ*ra8)
+          ra2    = U*ra1 + Rho*ra2
+          ra3    = V*ra1 + Rho*ra3
+          ra4    = W*ra1 + Rho*ra4
+
+          Wgdnv(CHF_IX[i;j;k],iRho  )  = half*(fl1 + fr1 + ra1)
+          Wgdnv(CHF_IX[i;j;k],inorm )  = half*(fl2 + fr2 + ra2)
+          Wgdnv(CHF_IX[i;j;k],itan1 )  = half*(fl3 + fr3 + ra3)
+          Wgdnv(CHF_IX[i;j;k],itan2 )  = half*(fl4 + fr4 + ra4)
+          Wgdnv(CHF_IX[i;j;k],iPres )  = half*(fl5 + fr5 + ra5)
+          Wgdnv(CHF_IX[i;j;k],inormB)  = half*(fl6 + fr6 + ra6)
+          Wgdnv(CHF_IX[i;j;k],itanB1)  = half*(fl7 + fr7 + ra7)
+          Wgdnv(CHF_IX[i;j;k],itanB2)  = half*(fl8 + fr8 + ra8)
+
+c      write(*,*) ' i = ', i, ' j = ',j
+c      write(*,*)' del  =', del,   ' emax = ', eigmax
+c      write(*,601)' aas  =', aas,   ' aaf  = ', aaf,   ' alf = ', alf, ' als= ', als
+c      write(*,*) so11, so12, so13, so14, so15, so16, so17, so18
+c      write(*,*) so21, so22, so23, so24, so25, so26, so27, so28
+c      write(*,*) so31, so32, so33, so34, so35, so36, so37, so38
+c      write(*,*) so41, so42, so43, so44, so45, so46, so47, so48
+c      write(*,*) so51, so52, so53, so54, so55, so56, so57, so58
+c      write(*,*) so61, so62, so63, so64, so65, so66, so67, so68
+c      write(*,*) so71, so72, so73, so74, so75, so76, so77, so78
+c      write(*,*) so81, so82, so83, so84, so85, so86, so87, so88
+c      write(*,601)' fl1  =', fl1,   ' fr1  = ', fr1,   ' ra1 = ', ra1, ' lu1= ', lu1
+c      write(*,601)' fl2  =', fl2,   ' fr2  = ', fr2,   ' ra2 = ', ra2, ' lu2= ', lu2
+c      write(*,601)' fl3  =', fl3,   ' fr3  = ', fr3,   ' ra3 = ', ra3, ' lu3= ', lu3
+c      write(*,601)' fl4  =', fl4,   ' fr4  = ', fr4,   ' ra4 = ', ra4, ' lu4= ', lu4
+c      write(*,601)' fl5  =', fl5,   ' fr5  = ', fr5,   ' ra5 = ', ra5, ' lu5= ', lu5
+c      write(*,601)' fl6  =', fl6,   ' fr6  = ', fr6,   ' ra6 = ', ra6, ' lu6= ', lu6
+c      write(*,601)' fl7  =', fl7,   ' fr7  = ', fr7,   ' ra7 = ', ra7, ' lu7= ', lu7
+c      write(*,601)' fl8  =', fl8,   ' fr8  = ', fr8,   ' ra8 = ', ra8, ' lu8= ', lu8
+c      write(*,601)' rhoL =', RhoL,  ' rhoR = ', RhoR,  ' fr  = ', Wgdnv(CHF_IX[i;j;k],WRHO  )
+c      write(*,601)' pL   =', PGasL, ' pR   = ', PGasR, ' fr  = ', Wgdnv(CHF_IX[i;j;k],WPRES )
+c      write(*,601)' uL   =', UL,    ' uR   = ', UR,    ' fu  = ', Wgdnv(CHF_IX[i;j;k],inorm )
+c      write(*,601)' vL   =', VL,    ' vR   = ', VR,    ' fv  = ', Wgdnv(CHF_IX[i;j;k],itan1 )
+c      write(*,601)' wL   =', WL,    ' wR   = ', WR,    ' fw  = ', Wgdnv(CHF_IX[i;j;k],itan2 )
+c      write(*,601)' BxL  =', BXL,   ' BxR  = ', BXR,   ' fbx = ', Wgdnv(CHF_IX[i;j;k],inormB)
+c      write(*,601)' ByL  =', BYL,   ' ByR  = ', BYR,   ' fby = ', Wgdnv(CHF_IX[i;j;k],itanB1)
+c      write(*,601)' BzL  =', BZL,   ' BzR  = ', BZR,   ' fbz = ', Wgdnv(CHF_IX[i;j;k],itanB2)
+
+601   format(a7,d11.4,a7,d11.4,a7,d14.7)
+        CHF_ENDDO
+
+        return
+        end

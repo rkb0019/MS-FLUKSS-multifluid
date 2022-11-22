@@ -1,0 +1,10 @@
+C
+C   Turbulence model Fortran constants and small/cutoff values.
+C
+        real_t smallTM, alphaTM, betaTM, sigmaDTM, fDTM, nHTM, TionTM,
+     &         LcavTM, Ur1AUTM, Va1AUTM, nSW1AUTM, refLenTM, refVelTM,
+     &         c1EPI, c2EPI
+        common /TurbMod/ smallTM, alphaTM, betaTM, sigmaDTM, fDTM,
+     &                   nHTM, TionTM, LcavTM, Ur1AUTM, Va1AUTM,
+     &                   nSW1AUTM, refLenTM, refVelTM, c1EPI,
+     &                   c2EPI

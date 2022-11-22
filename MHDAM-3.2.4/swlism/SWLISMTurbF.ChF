@@ -1,0 +1,540 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "CH_assert.H"
+
+      subroutine SETSWLISMTURB(
+     &    CHF_CONST_REAL[auLISMDeviation],
+     &    CHF_CONST_REAL[auSWDeviation],
+     &    CHF_CONST_REAL[auR0Turb])
+
+#include "SWLISMCommon.fh"
+      LISMDeviation = auLISMDeviation
+      SWDeviation   = auSWDeviation
+      R0Turb        = auR0Turb
+
+      return
+      end      
+      
+      
+      subroutine SWLISMREINIT_TURB(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t e0, r, ux, uy, p, rho, sunR2,r2, rn
+        integer CHF_DDECL[i;j;k]
+        real_t CHF_DDECL[x;y;z]
+        
+        real_t CHF_DDECL[xl;yl;zl]
+        real_t CHF_DDECL[xh;yh;zh]        
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_DTERM[
+        xl = CHF_LBOUND[U;0]*dx - sunXC;
+        yl = CHF_LBOUND[U;1]*dx - sunYC;
+        zl = CHF_LBOUND[U;2]*dx - sunZC]
+        
+        CHF_DTERM[
+        xh = (CHF_UBOUND[U;0]+1)*dx - sunXC;
+        yh = (CHF_UBOUND[U;1]+1)*dx - sunYC;
+        zh = (CHF_UBOUND[U;2]+1)*dx - sunZC]
+        
+        if (CHF_DTERM[(xl > sunR);.or. (yl > sunR); .or. (zl > sunR)])  then
+           return
+        endif
+        
+        if (CHF_DTERM[(xh < -sunR);.or. (yh < -sunR); .or. (zh < -sunR)]) then
+          return
+        endif 
+        
+        
+        sunR2 = sunR*sunR
+        
+        SWDeviation = 0.1
+
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r2      = CHF_DTERM[x*x; + y*y; + z*z]          
+
+          if( r2 <= sunR2 ) then
+            r      = sqrt( r2 )
+            
+            rho    = sunRho/(r*r)
+
+            ux     = sunV*x/r
+            uy     = sunV*y/r
+
+            p      = sunP/r**(two*gamma)
+            
+            
+            call GaussDistribution(rn)
+            rho = rho*(one+SWDeviation*rn)
+            rho = max(smallr, rho)            
+            
+            call GaussDistribution(rn)
+            ux  = ux* (one+SWDeviation*rn)
+            
+            call GaussDistribution(rn)
+            uy  = uy* (one+SWDeviation*rn)            
+            
+            call GaussDistribution(rn)
+            p   = p*  (one+SWDeviation*rn)
+            p   = max(smallp, p)
+            
+            e0     = p/hgamma + half*rho*(ux*ux + uy*uy)
+            
+            U(CHF_IX[i;j;k],URHO)  = rho                        
+            U(CHF_IX[i;j;k],UMOMX) = rho*ux
+            U(CHF_IX[i;j;k],UMOMY) = rho*uy
+            U(CHF_IX[i;j;k],UMOMZ) = zero
+
+            U(CHF_IX[i;j;k],UENG)  = e0
+
+            U(CHF_IX[i;j;k],UBX )  = zero
+            U(CHF_IX[i;j;k],UBY )  = zero
+            U(CHF_IX[i;j;k],UBZ )  = zero
+          endif
+        CHF_ENDDO
+
+        return
+        end
+        
+        
+        subroutine SW_TURBR0(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[Phi],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_BOX[box])
+
+        real_t R0Turb2, r2        
+        real_t CHF_DDECL[x;y;z]
+        
+        real_t CHF_DDECL[xl;yl;zl]
+        real_t CHF_DDECL[xh;yh;zh]
+
+        real_t e0, uu, vv, ww, p, rho, rn, invrho
+        real_t ru, rv, rw, bx, by, bz, b, ke, vel
+        integer CHF_DDECL[i;j;k]        
+        
+        real_t U2,ULIMlocal,ULIM2local  
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_DTERM[
+        xl = CHF_LBOUND[U;0]*dx - sunXC;
+        yl = CHF_LBOUND[U;1]*dx - sunYC;
+        zl = CHF_LBOUND[U;2]*dx - sunZC]
+        
+        CHF_DTERM[
+        xh = (CHF_UBOUND[U;0]+1)*dx - sunXC;
+        yh = (CHF_UBOUND[U;1]+1)*dx - sunYC;
+        zh = (CHF_UBOUND[U;2]+1)*dx - sunZC]
+        
+        if (CHF_DTERM[(xl > R0Turb);.or. (yl > R0Turb); .or. (zl > R0Turb)])  then
+           return
+        endif
+        
+        if (CHF_DTERM[(xh < -R0Turb);.or. (yh < -R0Turb); .or. (zh < -R0Turb)]) then
+          return
+        endif 
+        
+        
+        R0Turb2 = R0Turb*R0Turb
+                
+
+        CHF_MULTIDO[box;i;j;k]
+        CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r2      = CHF_DTERM[x*x; + y*y; + z*z]          
+
+          if( r2 <= R0Turb2 ) then
+            rho = U(CHF_IX[i;j;k],URHO)
+            invrho = one/rho
+                      
+            rho  = U(CHF_IX[i;j;k],URHO)
+            ru   = U(CHF_IX[i;j;k],UMOMX)
+            rv   = U(CHF_IX[i;j;k],UMOMY)
+            rw   = U(CHF_IX[i;j;k],UMOMZ)
+            
+            invrho = one/rho
+  
+            uu   = ru*invrho
+            vv   = rv*invrho
+            ww   = rw*invrho
+            
+            U2     = uu*uu + vv*vv + ww*ww
+            vel    = sqrt(U2)
+  
+  !         if( U2 .le. ULIM2local ) then
+  !           cycle
+  !         endif
+            
+            ke   = ru*uu + rv*vv + rw*ww
+  
+            bx   = U(CHF_IX[i;j;k],UBX)
+            by   = U(CHF_IX[i;j;k],UBY)
+            bz   = U(CHF_IX[i;j;k],UBZ)
+            b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+  
+            p    = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+            p    = max( p, smallp )
+              
+ !          call GaussDistribution(rn)
+ !          rho = rho*(one+SWDeviation*rn)
+ !          rho = max(smallr, rho)            
+            
+            call GaussDistribution(rn)
+            uu  = uu + vel*SWDeviation*Phi(CHF_IX[i;j;k],0)
+            
+            call GaussDistribution(rn)
+            vv  = vv + vel*SWDeviation*Phi(CHF_IX[i;j;k],1)
+            
+ 
+            
+            e0     = p/hgamma + half*rho*(uu*uu + vv*vv + ww*ww)
+            
+            U(CHF_IX[i;j;k],URHO)  = rho                        
+            U(CHF_IX[i;j;k],UMOMX) = rho*uu
+            U(CHF_IX[i;j;k],UMOMY) = rho*vv         
+            U(CHF_IX[i;j;k],UENG)  = e0      
+          endif
+        CHF_ENDDO
+
+        return
+        end
+        
+! Applying random disturbances to all cells in region 3        
+        subroutine REG3_TURB1(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FIA1[REG],     
+     &    CHF_BOX[box])
+
+        real_t e0, uu, vv, ww, p, rho, rn, invrho
+        real_t ru, rv, rw, bx, by, bz, b, ke
+        integer CHF_DDECL[i;j;k]        
+        
+        real_t U2,ULIMlocal,ULIM2local
+        
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+        
+        ULIMlocal   = 15D0
+        ULIM2local  = ULIMlocal*ULIMlocal        
+                
+
+        CHF_MULTIDO[box;i;j;k] 
+        if (REG(CHF_IX[i;j;k]) == 3 ) then
+          
+          rho = U(CHF_IX[i;j;k],URHO)
+          invrho = one/rho
+                    
+          rho  = U(CHF_IX[i;j;k],URHO)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          
+          invrho = one/rho
+
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          
+          U2     = uu*uu + vv*vv + ww*ww
+
+ !         if( U2 .le. ULIM2local ) then
+ !           cycle
+ !         endif
+          
+          ke   = ru*uu + rv*vv + rw*ww
+
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+
+          p    = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p    = max( p, smallp )
+            
+!          call GaussDistribution(rn)
+!          rho = rho*(one+SWDeviation*rn)
+!          rho = max(smallr, rho)            
+          
+          call GaussDistribution(rn)
+          uu  = uu* (one+SWDeviation*rn)
+          
+          call GaussDistribution(rn)
+          vv  = vv* (one+SWDeviation*rn)            
+          
+!          call GaussDistribution(rn)
+!          p   = p* (one+SWDeviation*rn)
+!          p   = max(smallp, p)
+          
+          e0     = p/hgamma + half*rho*(uu*uu + vv*vv + ww*ww)
+          
+          U(CHF_IX[i;j;k],URHO)  = rho                        
+          U(CHF_IX[i;j;k],UMOMX) = rho*uu
+          U(CHF_IX[i;j;k],UMOMY) = rho*vv         
+          U(CHF_IX[i;j;k],UENG)  = e0      
+        endif  
+        CHF_ENDDO
+
+        return
+        end
+        
+
+! Applying random disturbances to all cells in region 3        
+        subroutine REG3_TURB2(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[Phi],
+     &    CHF_CONST_FIA1[REG],     
+     &    CHF_BOX[box])
+
+        real_t e0, uu, vv, ww, p, rho, rn, invrho
+        real_t ru, rv, rw, bx, by, bz, b, ke, vel
+        integer CHF_DDECL[i;j;k]        
+        
+        real_t velSWMax2,velSWMax2local, velnew2, ratio
+        
+        real_t U2,ULIMlocal,ULIM2local
+        
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+        
+        ULIMlocal   = 15D0
+        ULIM2local  = ULIMlocal*ULIMlocal   
+
+        velSWMax2 = sunV*sunV*1.2*1.2
+                
+
+        CHF_MULTIDO[box;i;j;k] 
+        if ((REG(CHF_IX[i;j;k]) == 3 ).and.
+     &      (CHF_LBOUND[Phi;0]<=i).and.(i<=CHF_UBOUND[Phi;0]).and. 
+     &      (CHF_LBOUND[Phi;1]<=j).and.(j<=CHF_UBOUND[Phi;1])) then
+     
+!          velSWMax2local = velSWMax2     
+!          if (j<5) then
+!            velSWMax2local = (sunV*(1.1D0+0.1D0*j/5D0))**2
+!          endif
+            
+          
+          rho = U(CHF_IX[i;j;k],URHO)
+          invrho = one/rho
+                    
+          rho  = U(CHF_IX[i;j;k],URHO)
+          ru   = U(CHF_IX[i;j;k],UMOMX)
+          rv   = U(CHF_IX[i;j;k],UMOMY)
+          rw   = U(CHF_IX[i;j;k],UMOMZ)
+          
+          invrho = one/rho
+
+          uu   = ru*invrho
+          vv   = rv*invrho
+          ww   = rw*invrho
+          
+          U2     = uu*uu + vv*vv + ww*ww
+          vel    = sqrt(U2)
+
+ !         if( U2 .le. ULIM2local ) then
+ !           cycle
+ !         endif
+          
+          ke   = ru*uu + rv*vv + rw*ww
+
+          bx   = U(CHF_IX[i;j;k],UBX)
+          by   = U(CHF_IX[i;j;k],UBY)
+          bz   = U(CHF_IX[i;j;k],UBZ)
+          b    = d_1_4PI*(bx*bx + by*by + bz*bz)
+
+          p    = hgamma*(U(CHF_IX[i;j;k],UENG) - half*(ke + b))
+          p    = max( p, smallp )
+            
+!          call GaussDistribution(rn)
+!          rho = rho*(one+SWDeviation*rn)
+!          rho = max(smallr, rho)            
+          
+          call GaussDistribution(rn)
+          uu  = uu + vel*SWDeviation*Phi(CHF_IX[i;j;k],0)
+          
+          call GaussDistribution(rn)
+          vv  = vv + vel*SWDeviation*Phi(CHF_IX[i;j;k],1)
+          
+!          velnew2 = uu*uu+vv*vv          
+!          if (velnew2 > velSWMax2local) then
+!            ratio = sqrt(velSWMax2local/velnew2)
+!            uu = uu*ratio
+!            vv = vv*ratio
+!          endif
+            
+                    
+!          call GaussDistribution(rn)
+!          p   = p* (one+SWDeviation*rn)
+!          p   = max(smallp, p)
+          
+          e0     = p/hgamma + half*rho*(uu*uu + vv*vv + ww*ww)
+          
+          U(CHF_IX[i;j;k],URHO)  = rho                        
+          U(CHF_IX[i;j;k],UMOMX) = rho*uu
+          U(CHF_IX[i;j;k],UMOMY) = rho*vv         
+          U(CHF_IX[i;j;k],UENG)  = e0      
+        endif  
+        CHF_ENDDO
+
+        return
+        end
+        
+        
+        subroutine LISMBC_TURB(
+     &    CHF_FRA[W],        
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],  
+     &    CHF_CONST_INT[iRhoN],     
+     &    CHF_CONST_INT[fluids],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        real_t r, ux, uy, uz, Bx, By, Bz
+        real_t sinT, cosT, h, rn
+        real_t CHF_DDECL[x;y;z]
+        integer CHF_DDECL[ioff;joff;koff]        
+        integer shift
+        real_t b,a2,as2,bn2,cf2,cf
+                        
+#include "SWLISMCommon.fh"     
+#include "EosCommon.fh"
+         
+        CH_assert(fluids<=4)
+                 
+        CHF_DTERM[
+        ioff = CHF_ID(0,dir)*lohisign;
+        joff = CHF_ID(1,dir)*lohisign;
+        koff = CHF_ID(2,dir)*lohisign]
+
+         
+        b      = d_1_4PI*lismBX*lismBX
+        a2     = gamma*lismP*one
+        as2    = half*(a2 + one*b)        
+        bn2    = d_1_4PI*lismBX*lismBX*one
+        cf2    = as2 + sqrt( as2*as2 - a2*bn2 )
+        cf     = sqrt(cf2)
+                
+        
+        
+        
+        CHF_MULTIDO[box;i;j;k]     
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+          
+          r      = CHF_DTERM[x*x; + y*y; + z*z]
+          r      = sqrt( r )
+          
+          sinT   = y/r
+          cosT   = x/r
+
+          h      = initR/r
+          h      = h*h*h
+
+          ux     = one - (one - 1.5D0*sinT*sinT)*h
+          uy     =-1.5*sinT*cosT*h
+          uz     = zero
+          
+          Bx     = lismBX*ux
+          By     = lismBX*uy
+          Bz     = zero
+                    
+  !          call GaussDistribution(rn)
+  !          W(CHF_IX[i;j;k],WRHO ) = one + one*LISMDeviation*rn
+            W(CHF_IX[i;j;k],WRHO ) = one
+            
+            call GaussDistribution(rn)
+            W(CHF_IX[i;j;k],WVELX) = one*(one + LISMDeviation*rn)
+            
+            if (W(CHF_IX[i;j;k],WVELX) < 1.05D0*cf) then
+              W(CHF_IX[i;j;k],WVELX) = one
+            endif
+            
+            call GaussDistribution(rn)
+            W(CHF_IX[i;j;k],WVELY) = one*LISMDeviation*rn
+!            W(CHF_IX[i;j;k],WVELY) = zero
+                      
+            W(CHF_IX[i;j;k],WVELZ) = uz
+            
+  !          call GaussDistribution(rn)
+  !          W(CHF_IX[i;j;k],WPRES) = lismP+lismP*LISMDeviation*rn
+  
+            W(CHF_IX[i;j;k],WPRES) = lismP            
+            W(CHF_IX[i;j;k],WBX  ) = Bx
+            W(CHF_IX[i;j;k],WBY  ) = By
+            W(CHF_IX[i;j;k],WBZ  ) = Bz
+          
+!            W(CHF_IX[i+ioff;j+joff;k+koff], WRHO)  = W(CHF_IX[i;j;k], WRHO)
+!            W(CHF_IX[i+ioff;j+joff;k+koff], WVELX) = W(CHF_IX[i;j;k], WVELX)
+!            W(CHF_IX[i+ioff;j+joff;k+koff], WVELY) = W(CHF_IX[i;j;k], WVELY)
+!            W(CHF_IX[i+ioff;j+joff;k+koff], WVELZ) = W(CHF_IX[i;j;k], WVELZ)
+!            W(CHF_IX[i+ioff;j+joff;k+koff], WPRES) = W(CHF_IX[i;j;k], WPRES)
+!            W(CHF_IX[i+ioff;j+joff;k+koff], WBX)   = W(CHF_IX[i;j;k], WBX)
+!            W(CHF_IX[i+ioff;j+joff;k+koff], WBY)   = W(CHF_IX[i;j;k], WBY)
+!            W(CHF_IX[i+ioff;j+joff;k+koff], WBZ)   = W(CHF_IX[i;j;k], WBZ)                                                 
+        CHF_ENDDO
+                
+        if (fluids>1) then
+        CHF_MULTIDO[box;i;j;k]     
+            W(CHF_IX[i;j;k],iRhoN+WRHO )   = netRho
+            W(CHF_IX[i;j;k],iRhoN+WVELX)  = W(CHF_IX[i;j;k],WVELX)
+            W(CHF_IX[i;j;k],iRhoN+WVELY)  = W(CHF_IX[i;j;k],WVELY)
+            W(CHF_IX[i;j;k],iRhoN+WVELZ)  = W(CHF_IX[i;j;k],WVELZ)
+            W(CHF_IX[i;j;k],iRhoN+WPRES)  = netP
+ !           W(CHF_IX[i+ioff;j+joff;k+koff], WRHO1)  = W(CHF_IX[i;j;k], WRHO1)
+ !           W(CHF_IX[i+ioff;j+joff;k+koff], WVELX1) = W(CHF_IX[i;j;k], WVELX1)
+ !           W(CHF_IX[i+ioff;j+joff;k+koff], WVELY1) = W(CHF_IX[i;j;k], WVELY1)
+ !           W(CHF_IX[i+ioff;j+joff;k+koff], WVELZ1) = W(CHF_IX[i;j;k], WVELZ1)
+ !           W(CHF_IX[i+ioff;j+joff;k+koff], WPRES1) = W(CHF_IX[i;j;k], WPRES1)            
+        CHF_ENDDO        
+        endif
+        
+        if (fluids>2) then
+        shift = iRhoN + WNUM_E
+        CHF_MULTIDO[box;i;j;k]     
+            W(CHF_IX[i;j;k],shift+WRHO )  = netFluid2Dens
+            W(CHF_IX[i;j;k],shift+WVELX)  = zero
+            W(CHF_IX[i;j;k],shift+WVELY)  = zero
+            W(CHF_IX[i;j;k],shift+WVELZ)  = zero
+            W(CHF_IX[i;j;k],shift+WPRES)  = netFluid2Pres
+  !          W(CHF_IX[i+ioff;j+joff;k+koff], WRHO2)  = W(CHF_IX[i;j;k], WRHO2)
+  !          W(CHF_IX[i+ioff;j+joff;k+koff], WVELX2) = W(CHF_IX[i;j;k], WVELX2)
+  !          W(CHF_IX[i+ioff;j+joff;k+koff], WVELY2) = W(CHF_IX[i;j;k], WVELY2)
+  !          W(CHF_IX[i+ioff;j+joff;k+koff], WVELZ2) = W(CHF_IX[i;j;k], WVELZ2)
+  !          W(CHF_IX[i+ioff;j+joff;k+koff], WPRES2) = W(CHF_IX[i;j;k], WPRES2)
+        CHF_ENDDO        
+        endif
+        
+        if (fluids>3) then
+        shift = iRhoN + 2*WNUM_E
+        CHF_MULTIDO[box;i;j;k]     
+            W(CHF_IX[i;j;k],shift+WRHO )  = netFluid3Dens
+            W(CHF_IX[i;j;k],shift+WVELX)  = zero
+            W(CHF_IX[i;j;k],shift+WVELY)  = zero
+            W(CHF_IX[i;j;k],shift+WVELZ)  = zero
+            W(CHF_IX[i;j;k],shift+WPRES)  = netFluid3Pres
+   !         W(CHF_IX[i+ioff;j+joff;k+koff], WRHO3)  = W(CHF_IX[i;j;k], WRHO3)
+   !         W(CHF_IX[i+ioff;j+joff;k+koff], WVELX3) = W(CHF_IX[i;j;k], WVELX3)
+   !         W(CHF_IX[i+ioff;j+joff;k+koff], WVELY3) = W(CHF_IX[i;j;k], WVELY3)
+   !         W(CHF_IX[i+ioff;j+joff;k+koff], WVELZ3) = W(CHF_IX[i;j;k], WVELZ3)
+   !         W(CHF_IX[i+ioff;j+joff;k+koff], WPRES3) = W(CHF_IX[i;j;k], WPRES3)
+        CHF_ENDDO        
+        endif
+        
+        return
+        end

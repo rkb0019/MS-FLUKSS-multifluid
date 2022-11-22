@@ -1,0 +1,74 @@
+mhdam.problem = riemann
+
+mhdam.gamma = 1.666666666666667
+
+mhdam.verbosity = 1
+
+mhdam.densityL   = 0.15
+mhdam.velxL      = 21.55
+mhdam.velyL      = 1.0
+mhdam.velzL      = 1.0
+mhdam.pressureL  = 0.28
+mhdam.BxL        = 0.0
+mhdam.ByL        =-2.0
+mhdam.BzL        =-1.0
+
+mhdam.densityR   = 0.1
+mhdam.velxR      =-26.45
+mhdam.velyR      = 0.0
+mhdam.velzR      = 0.0
+mhdam.pressureR  = 0.1
+mhdam.BxR        = 0.0
+mhdam.ByR        = 2.0
+mhdam.BzR        = 1.0
+
+mhdam.startX     = 0.5
+
+mhdam.max_step = 1000
+mhdam.max_time = 0.04
+
+mhdam.domain_length = 1.0
+#mhdam.num_cells =  16 16 16
+mhdam.num_cells =  128 4 4
+mhdam.is_periodic = 0 1 0
+mhdam.max_level = 2
+mhdam.ref_ratio = 2 2 2 2 
+
+mhdam.regrid_interval = 10 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.15
+mhdam.refine_B_thresh = -1
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+mhdam.grid_buffer_size = 4
+
+mhdam.limiter_RHO = 4
+mhdam.limiter_VX = 4
+mhdam.limiter_VY = 4
+mhdam.limiter_VZ = 4
+mhdam.limiter_P = 4
+mhdam.limiter_BX = 4
+mhdam.limiter_BY = 4
+mhdam.limiter_BZ = 4
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+mhdam.entropy_fix_coeff = 0.3
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 100
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = chk
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1

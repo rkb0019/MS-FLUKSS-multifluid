@@ -1,0 +1,633 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+
+        subroutine SETHELIOS_PI(
+     &    CHF_CONST_REAL[aulismNPI],
+     &    CHF_CONST_REAL[aulismTPI],
+     &    CHF_CONST_REAL[ausunNPI],
+     &    CHF_CONST_REAL[ausunTPI] )
+
+        real_t rho, pref, pI, pS
+        real_t factorP,factorD
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        rho          = lismN*eos_mp
+        pref         = rho*lismV*lismV
+
+        pS           = eos_k*sunN*sunT
+        pI           = eos_k*ausunNPI*ausunTPI
+
+       
+        factorP=0   !FFpressure added late in GS (Spherical grid) or in reinit (Cartesian)
+        sunP         = (pS + pS + pI*factorP)/pref    !FF because sunP is applied to the mixture AT 1 AU, not at R0, we should not add pI. 
+        sunPressPI   =            pI /pref
+
+        factorD=0.  !temporary, to be changed
+        sunRho       = (sunN + ausunNPI*factorD)/lismN       !
+        sunRhoPI     =         ausunNPI /lismN
+
+
+
+        lismRhoPI    = aulismNPI/lismN
+        lismPressPI  = eos_k*aulismNPI*aulismTPI/pref
+
+!        print*,"sunPressPI,pI,ausunTPI,ausunNPI:",sunPressPI,pI,ausunTPI,ausunNPI
+
+        
+
+        return
+        end
+
+
+        subroutine HELIOINIT_PI(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iPressPI
+        real_t  x, y, z, r
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        iPressPI = iRhoPI + 1
+
+        z      = zero
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r      = CHF_DTERM[x*x; + y*y; + z*z]
+          r      = sqrt( r )
+
+          if( r > initR ) then
+            U(CHF_IX[i;j;k],iRhoPI)    = lismRhoPI
+            U(CHF_IX[i;j;k],iPressPI)  = lismPressPI
+          else
+
+
+            U(CHF_IX[i;j;k],iRhoPI)    = sunRhoPI
+            U(CHF_IX[i;j;k],iPressPI)  = sunPressPI
+
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+
+        subroutine HELIOINITSPHERICAL_PI(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3
+        real_t r
+
+        integer CHF_DDECL[i;j;k]
+        integer iPressPI
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        iPressPI = iRhoPI + 1
+
+        CHF_MULTIDO[box;i;j;k]
+          r      = m_rc(i,level)
+
+          if( r > initR ) then
+
+            U(CHF_IX[i;j;k],iRhoPI)    = lismRhoPI
+            U(CHF_IX[i;j;k],iPressPI)  = lismPressPI
+          else
+
+            U(CHF_IX[i;j;k],iRhoPI)    = sunRhoPI
+            U(CHF_IX[i;j;k],iPressPI)  = sunPressPI
+          endif
+        CHF_ENDDO
+#endif
+
+        return
+
+        end
+
+
+        subroutine HELIOREINIT_PI(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_REAL[t],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iPressPI
+
+        real_t x, y, z, r, r2, sunR2
+        real_t delta, nI,pI, pref
+
+        real_t CHF_DDECL[xl;yl;zl]
+        real_t CHF_DDECL[xh;yh;zh]
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+       
+        delta = 0.2*MIN(sunR,10.)       !FF
+
+        CHF_DTERM[
+        xl = CHF_LBOUND[U;0]*dx - sunXC;
+        yl = CHF_LBOUND[U;1]*dx - sunYC;
+        zl = CHF_LBOUND[U;2]*dx - sunZC]
+
+        CHF_DTERM[
+        xh = (CHF_UBOUND[U;0]+1)*dx - sunXC;
+        yh = (CHF_UBOUND[U;1]+1)*dx - sunYC;
+        zh = (CHF_UBOUND[U;2]+1)*dx - sunZC]
+
+        if( CHF_DTERM[(xl > sunR); .or. (yl > sunR); .or. (zl > sunR)] ) then
+          return
+        endif
+
+        if( CHF_DTERM[(xh <-sunR); .or. (yh <-sunR); .or. (zh <-sunR)] ) then
+          return
+        endif
+
+        sunR2 = sunR*sunR
+
+        iPressPI = iRhoPI + 1
+
+        z      = zero
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r2      = CHF_DTERM[x*x; + y*y; + z*z]
+
+          if( r2 <= sunR2 ) then
+
+            nI = TANH(sqrt(r2)/delta)* sunRhoPI
+            U(CHF_IX[i;j;k],iRhoPI)    = nI        !sunRhoPI   FF
+            pI       = nI* sunPressPI/sunRhoPI    !sun** are quantities at R0, assume Tpui is constant for r<R0  
+            U(CHF_IX[i;j;k],iPressPI)  = pI
+
+!Override the mixture (set previously by HELIOREINIT_DEFAULT)
+           U(CHF_IX[i;j;k],URHO)  =   U(CHF_IX[i;j;k],URHO)  + nI
+           U(CHF_IX[i;j;k],UENG)  =   U(CHF_IX[i;j;k],UENG)+ pI/hgamma 
+
+
+          endif
+
+
+
+        CHF_ENDDO
+
+        return
+        end
+
+
+!FF: reinit for the cycle - uses spherically symmetric constant PUI properties
+!can be extended to include latitudinal dependence of PUIs
+
+        subroutine HELIOREINITSPHERICAL_PI(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[t],
+     &    CHF_CONST_REAL[Rinit],
+     &    CHF_CONST_INT[iHCS],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+
+        integer CHF_DDECL[i;j;k]
+        integer iPressPI
+
+        real_t delta, nI,pI
+        real_t r, r2, rr, sunR2
+        real_t rl
+        real_t C_PERIOD, timeRef, tilt,slow_ex
+
+
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        iPressPI = iRhoPI + 1
+        delta = 0.2*MIN(sunR,10.)       !for analytic radial distrib of PUIs
+
+        rl = CHF_LBOUND[U;0]
+
+        if( rl .gt. Rinit ) then
+          return
+        endif
+
+
+        sunR2 = Rinit*Rinit
+
+        CHF_MULTIDO[box;i;j;k]
+        r       = m_rc(i,level)
+
+         if( r <= Rinit ) then
+            r2      = r*r
+
+
+            nI = TANH(sqrt(r2)/delta)* sunRhoPI
+            U(CHF_IX[i;j;k],iRhoPI)    = nI        !sunRhoPI   FF
+            pI       = nI* sunPressPI/sunRhoPI    !sun** are quantities at R0, assume Tpui is constant for r<R0
+            U(CHF_IX[i;j;k],iPressPI)  = pI
+
+!Override the mixture (set previously by HELIOREINIT_CYCLE_SPHERICAL)
+!note that the pressure of the mixture, without this, decays as r**(-2 gamma) until R0.
+!note that sunRhoPI, sunPressPI are input values at R0, NOT at 1 au (differently from the mixture's inputs)
+
+           U(CHF_IX[i;j;k],URHO)  =   U(CHF_IX[i;j;k],URHO)  + nI
+           U(CHF_IX[i;j;k],UENG)  =   U(CHF_IX[i;j;k],UENG)+ pI/hgamma
+
+
+          endif
+
+
+
+        CHF_ENDDO
+
+        return
+        end
+
+
+
+        subroutine HELIOBC_PI(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_BOX[box])
+
+        real_t velx, rhoL, vnL, pL
+        real_t  x, y, z
+
+        integer CHF_DDECL[i;j;k]
+        integer inorm, iPressPI
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        inorm    = WVELX + dir
+
+        iPressPI = iRhoPI + 1
+
+        if( dir .eq. 0 ) then
+          if( lohisign == -1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Left boundary
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WRight(CHF_IX[i;j;k],iRhoPI)
+              vnL    = WRight(CHF_IX[i;j;k],inorm )
+              pL     = WRight(CHF_IX[i;j;k],iPressPI)
+
+              rhoL   = max( smallr, rhoL )
+              vnL    = min( -1.0D-6, vnL )
+
+              F(CHF_IX[i;j;k],iRhoPI)    = rhoL*vnL
+              F(CHF_IX[i;j;k],iPressPI)  = pL*vnL
+!old below, for ugradp
+!              F(CHF_IX[i;j;k],iPressPI)  = gammaPI*pL*vnL
+            CHF_ENDDO
+          else
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Right boundary
+            CHF_MULTIDO[box;i;j;k]
+              velx     =-one
+
+              F(CHF_IX[i;j;k],iRhoPI)    = velx*lismRhoPI
+              F(CHF_IX[i;j;k],iPressPI)  = velx*lismPressPI
+!old below, for ugradp
+!              F(CHF_IX[i;j;k],iPressPI)  = gammaPI*velx*lismPressPI
+            CHF_ENDDO
+          endif
+        else
+          if( lohisign == -1 ) then
+            CHF_MULTIDO[box;i;j;k]
+              vnL    = WRight(CHF_IX[i;j;k],inorm)
+
+              if( vnL >= zero ) then
+                rhoL   = WLeft (CHF_IX[i;j;k],iRhoPI)
+                pL     = WLeft (CHF_IX[i;j;k],iPressPI)
+              else
+                rhoL   = WRight(CHF_IX[i;j;k],iRhoPI)
+                pL     = WRight(CHF_IX[i;j;k],iPressPI)
+              endif
+
+              F(CHF_IX[i;j;k],iRhoPI)    = rhoL*vnL
+              F(CHF_IX[i;j;k],iPressPI)  = pL*vnL
+!old below, for ugradp
+!              F(CHF_IX[i;j;k],iPressPI)  = gammaPI*pL*vnL
+            CHF_ENDDO
+          else
+            CHF_MULTIDO[box;i;j;k]
+              vnL    = WLeft(CHF_IX[i;j;k],inorm)
+
+              if( vnL >= zero ) then
+                rhoL   = WLeft (CHF_IX[i;j;k],iRhoPI)
+                pL     = WLeft (CHF_IX[i;j;k],iPressPI)
+              else
+                rhoL   = WRight(CHF_IX[i;j;k],iRhoPI)
+                pL     = WRight(CHF_IX[i;j;k],iPressPI)
+              endif
+
+              F(CHF_IX[i;j;k],iRhoPI)    = rhoL*vnL
+              F(CHF_IX[i;j;k],iPressPI)  = pL*vnL
+!old below, for ugradp
+!              F(CHF_IX[i;j;k],iPressPI)  = gammaPI*pL*vnL
+            CHF_ENDDO
+          endif
+        endif
+
+        return
+        end
+
+        subroutine HELIOGS_PI(
+     &    CHF_FRA[W],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k], CHF_DDECL[ii; jj; kk]
+        integer iPressPI
+        real_t vN
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        iPressPI = iRhoPI + 1
+
+        if( dir == 0 ) then
+          if( lohisign == -1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Left boundary
+            ii     = iboxhi0 + 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[i;j;k],WVELX)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iRhoPI)    = lismRhoPI
+                W(CHF_IX[i;j;k],iPressPI)  = lismPressPI
+              else
+                W(CHF_IX[i;j;k],iRhoPI)    = W(CHF_IX[ii;j;k],iRhoPI)
+                W(CHF_IX[i;j;k],iPressPI)  = W(CHF_IX[ii;j;k],iPressPI)
+              endif
+            CHF_ENDDO
+          else
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Right boundary
+            ii     = iboxlo0 - 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[i;j;k],WVELX)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iRhoPI)    = W(CHF_IX[ii;j;k],iRhoPI)
+                W(CHF_IX[i;j;k],iPressPI)  = W(CHF_IX[ii;j;k],iPressPI)
+              else
+                W(CHF_IX[i;j;k],iRhoPI)    = lismRhoPI
+                W(CHF_IX[i;j;k],iPressPI)  = lismPressPI
+              endif
+            CHF_ENDDO
+          endif
+        endif
+
+        if( dir == 1 ) then
+          if( lohisign == -1 ) then
+            jj     = iboxhi1 + 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[i;j;k],WVELY)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iRhoPI)    = lismRhoPI
+                W(CHF_IX[i;j;k],iPressPI)  = lismPressPI
+              else
+                W(CHF_IX[i;j;k],iRhoPI)    = W(CHF_IX[i;jj;k],iRhoPI)
+                W(CHF_IX[i;j;k],iPressPI)  = W(CHF_IX[i;jj;k],iPressPI)
+              endif
+            CHF_ENDDO
+          else
+            jj     = iboxlo1 - 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[i;j;k],WVELY)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iRhoPI)    = W(CHF_IX[i;jj;k],iRhoPI)
+                W(CHF_IX[i;j;k],iPressPI)  = W(CHF_IX[i;jj;k],iPressPI)
+              else
+                W(CHF_IX[i;j;k],iRhoPI)    = lismRhoPI
+                W(CHF_IX[i;j;k],iPressPI)  = lismPressPI
+              endif
+            CHF_ENDDO
+          endif
+        endif
+
+#if CH_SPACEDIM == 3
+        if( dir == 2 ) then
+          if( lohisign == -1 ) then
+            kk     = iboxhi2 + 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[i;j;k],WVELZ)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iRhoPI)    = lismRhoPI
+                W(CHF_IX[i;j;k],iPressPI)  = lismPressPI
+              else
+                W(CHF_IX[i;j;k],iRhoPI)    = W(CHF_IX[i;j;kk],iRhoPI)
+                W(CHF_IX[i;j;k],iPressPI)  = W(CHF_IX[i;j;kk],iPressPI)
+              endif
+            CHF_ENDDO
+          else
+            kk     = iboxlo2 - 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[i;j;k],WVELZ)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iRhoPI)    = W(CHF_IX[i;j;kk],iRhoPI)
+                W(CHF_IX[i;j;k],iPressPI)  = W(CHF_IX[i;j;kk],iPressPI)
+              else
+                W(CHF_IX[i;j;k],iRhoPI)    = lismRhoPI
+                W(CHF_IX[i;j;k],iPressPI)  = lismPressPI
+              endif
+            CHF_ENDDO
+          endif
+        endif
+#endif
+        return
+        end
+
+
+        subroutine HELIOBCSPHERICAL_PI(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_BOX[box] )
+
+        real_t vnL, rhoL, pL
+
+        integer CHF_DDECL[i;j;k]
+        integer inorm, iPressPI
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        inorm = WVELX + dir
+
+        iPressPI = iRhoPI + 1
+
+        if( dir == 0 ) then
+          if( lohisign == 1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!                                                                 Outer boundary
+            CHF_MULTIDO[box;i;j;k]
+              vnL    = WLeft(CHF_IX[i;j;k],inorm)
+
+              if( vnL >= zero ) then
+                rhoL   = WLeft (CHF_IX[i;j;k],iRhoPI)
+                pL     = WLeft (CHF_IX[i;j;k],iPressPI)
+              else
+                rhoL   = WRight(CHF_IX[i;j;k],iRhoPI)
+                pL     = WRight(CHF_IX[i;j;k],iPressPI)
+              endif
+
+              F(CHF_IX[i;j;k],iRhoPI)    = rhoL*vnL
+!for pdivu
+              F(CHF_IX[i;j;k],iPressPI)  = pL*vnL
+!old below, for ugradp source term
+!              F(CHF_IX[i;j;k],iPressPI)  = gammaPI*pL*vnL
+            CHF_ENDDO
+          else if( lohisign == -1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!                                                                Inner  boundary
+            CHF_MULTIDO[box;i;j;k]
+              vnL    = WRight(CHF_IX[i;j;k],inorm)
+
+              if( vnL >= zero ) then
+                rhoL   = WLeft (CHF_IX[i;j;k],iRhoPI)
+                pL     = WLeft (CHF_IX[i;j;k],iPressPI)
+              else
+                rhoL   = WRight(CHF_IX[i;j;k],iRhoPI)
+                pL     = WRight(CHF_IX[i;j;k],iPressPI)
+              endif
+
+              F(CHF_IX[i;j;k],iRhoPI)    = rhoL*vnL
+!old below, for ugradp source term
+!              F(CHF_IX[i;j;k],iPressPI)  = gammaPI*pL*vnL
+!for pdivu
+              F(CHF_IX[i;j;k],iPressPI)  = pL*vnL
+            CHF_ENDDO
+          endif
+        endif
+
+        return
+        end
+
+
+        subroutine HELIOGSSPHERICAL_PI(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k]
+        integer iPressPI, ii, inorm
+
+        real_t vnL
+
+#include "SWLISMCommon.fh"
+
+        inorm    = WVELX + dir
+
+        iPressPI = iRhoPI + 1
+!                                                                 Inner boundary
+        if( lohisign == -1 ) then
+          CHF_MULTIDO[box;i;j;k]
+            W(CHF_IX[i;j;k],WRHO)     = W(CHF_IX[i;j;k],WRHO)  + sunRhoPI   !FF
+            W(CHF_IX[i;j;k],WPRES)    = W(CHF_IX[i;j;k],WPRES) + sunPressPI !FF
+
+            W(CHF_IX[i;j;k],iRhoPI)   = sunRhoPI
+            W(CHF_IX[i;j;k],iPressPI) = sunPressPI
+
+          CHF_ENDDO
+        endif
+!                                                                 Outer boundary
+        if( lohisign == 1 ) then
+          ii     = iboxlo0 - 1
+          CHF_MULTIDO[box;i;j;k]
+            vnL    = U(CHF_IX[i;j;k],inorm)
+
+            if( vnL >= zero ) then
+              W(CHF_IX[i;j;k],iRhoPI)   = W(CHF_IX[ii;j;k],iRhoPI)
+              W(CHF_IX[i;j;k],iPressPI) = W(CHF_IX[ii;j;k],iPressPI)
+            else
+              W(CHF_IX[i;j;k],iRhoPI)   = lismRhoPI
+              W(CHF_IX[i;j;k],iPressPI) = lismPressPI
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine OMNIGSSPHERICAL_PI(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iRhoPI],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k]
+        integer iPressPI, ii, inorm
+
+        real_t vnL
+
+#include "SWLISMCommon.fh"
+
+        inorm    = WVELX + dir
+
+        iPressPI = iRhoPI + 1
+!                                                                 Inner boundary
+        if( lohisign == -1 ) then
+          CHF_MULTIDO[box;i;j;k]
+            W(CHF_IX[i;j;k],WRHO)     = W(CHF_IX[i;j;k],WRHO)  + sunRhoPI
+            W(CHF_IX[i;j;k],WPRES)    = W(CHF_IX[i;j;k],WPRES) + sunPressPI
+
+            W(CHF_IX[i;j;k],iRhoPI)   = sunRhoPI
+            W(CHF_IX[i;j;k],iPressPI) = sunPressPI
+          CHF_ENDDO
+        endif
+!                                                                 Outer boundary
+        if( lohisign == 1 ) then
+          ii     = iboxlo0 - 1
+          CHF_MULTIDO[box;i;j;k]
+            vnL    = U(CHF_IX[i;j;k],inorm)
+
+            if( vnL >= zero ) then
+              W(CHF_IX[i;j;k],iRhoPI)   = W(CHF_IX[ii;j;k],iRhoPI)
+              W(CHF_IX[i;j;k],iPressPI) = W(CHF_IX[ii;j;k],iPressPI)
+            else
+              W(CHF_IX[i;j;k],iRhoPI)   = lismRhoPI
+              W(CHF_IX[i;j;k],iPressPI) = lismPressPI
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end

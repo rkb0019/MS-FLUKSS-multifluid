@@ -1,0 +1,29 @@
+
+        
+      subroutine VIEWBOXDATA(
+     &     CHF_FRA[Ph])        
+              
+      real_t a
+      a = Ph(CHF_IX[CHF_LBOUND[Ph;0];CHF_LBOUND[Ph;1];CHF_LBOUND[Ph;2]],0)
+      return
+      end
+
+        subroutine VIEWBOXDATACONST(
+     &     CHF_CONST_FRA[Ph])        
+              
+      real_t a
+      a = Ph(CHF_IX[CHF_LBOUND[Ph;0];CHF_LBOUND[Ph;1];CHF_LBOUND[Ph;2]],0)
+      return
+      end
+      
+        subroutine VIEWFIABOX(
+     &     CHF_CONST_FIA[Ph])        
+     
+      integer a
+      a = Ph(CHF_IX[CHF_LBOUND[Ph;0];CHF_LBOUND[Ph;1];CHF_LBOUND[Ph;2]],0)
+        
+      return
+      end
+      
+      
+      

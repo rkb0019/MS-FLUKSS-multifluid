@@ -1,0 +1,1338 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine SETCHARGEEX_PARS(
+     &    CHF_CONST_REAL[auVel],
+     &    CHF_CONST_REAL[auLen],
+     &    CHF_CONST_REAL[auNDen] )
+
+#include "ChargeExchange.fh"
+
+        ce_scaleVel    = auVel
+        ce_scaleLen    = auLen
+        ce_scaleNDen   = auNDen
+
+        ce_scaleSigmaFite    = 1.0D-14*ce_scaleLen*ce_scaleNDen
+        ce_scaleSigmaLindsay = 1.0D-16*ce_scaleLen*ce_scaleNDen
+        
+        ce_photoSigma        = 8.0D-8*ce_scaleLen/ce_scaleVel
+
+        return
+        end
+        
+        
+        subroutine PHOTOIONIZE_SPH(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FIA1[REG],     
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],
+     &    CHF_BOX[box],
+     &    CHF_CONST_INT[level],
+     &    CHF_USE[SphericalData])
+     
+        integer CHF_DDECL[i;j;k]
+        real_t r,coeff
+        real_t p,rho,ke,uu,vv,ww
+        real_t srho,smomx,smomy,smomz,seng
+        integer iFluid,shift
+             
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+
+        
+        CHF_MULTIDO[box;i;j;k]       
+                        
+        if( REG(CHF_IX[i;j;k]) .eq. 3 ) then                                  
+          r     =  m_rc(i,level)
+          coeff = -dt*ce_photoSigma/(r*r)
+        
+          do iFluid = 1, fluids-1
+            shift = iRhoN+(iFluid-1)*WNUM_E            
+
+            rho  = max( W(CHF_IX[i;j;k],WRHO+shift), smallr )
+
+            uu   =      W(CHF_IX[i;j;k],WVELX+shift)
+            vv   =      W(CHF_IX[i;j;k],WVELY+shift)
+            ww   =      W(CHF_IX[i;j;k],WVELZ+shift)
+
+            p    =      W(CHF_IX[i;j;k],WPRES+shift)
+
+            ke   =      uu*uu + vv*vv + ww*ww
+            
+            srho  = coeff*rho
+            smomx = coeff*rho*uu
+            smomy = coeff*rho*vv
+            smomz = coeff*rho*ww
+            seng  = coeff*(p*invhgamma + half*rho*ke)
+
+            S(CHF_IX[i;j;k],URHO +shift)  = S(CHF_IX[i;j;k],URHO +shift) + srho
+            S(CHF_IX[i;j;k],UMOMX+shift)  = S(CHF_IX[i;j;k],UMOMX+shift) + smomx
+            S(CHF_IX[i;j;k],UMOMY+shift)  = S(CHF_IX[i;j;k],UMOMY+shift) + smomy
+            S(CHF_IX[i;j;k],UMOMZ+shift)  = S(CHF_IX[i;j;k],UMOMZ+shift) + smomz
+            S(CHF_IX[i;j;k],UENG +shift)  = S(CHF_IX[i;j;k],UENG +shift) + seng
+            
+            S(CHF_IX[i;j;k],URHO ) = S(CHF_IX[i;j;k],URHO ) - srho
+            S(CHF_IX[i;j;k],UMOMX) = S(CHF_IX[i;j;k],UMOMX) - smomx
+            S(CHF_IX[i;j;k],UMOMY) = S(CHF_IX[i;j;k],UMOMY) - smomy
+            S(CHF_IX[i;j;k],UMOMZ) = S(CHF_IX[i;j;k],UMOMZ) - smomz
+            S(CHF_IX[i;j;k],UENG ) = S(CHF_IX[i;j;k],UENG ) - seng
+          enddo        
+        endif
+        CHF_ENDDO
+         
+        return 
+        end
+        
+        
+        subroutine CHARGE_EXCHANGE_EXPSPH_CONSTH(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],  
+     &    CHF_CONST_R1D[Wnet],
+     &    CHF_CONST_REAL[dt],   
+     &    CHF_BOX[box],
+     &    CHF_CONST_INT[level],
+     &    CHF_USE[SphericalData])
+     
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho,  ux,  uy,  uz,  p, U2, VVTP
+        real_t rho1, ux1, uy1, uz1, p1, VVTH1, VVTHU1
+        real_t UH21, DU21, VPHH1, VPHP1, UD1, UPM1, UHM1, UPE1, UHE1, UD1S
+        real_t SIGMAL1, ARR1, DENPLU1, h21, h31, h41, h51
+        real_t H1, H2, H3, H4, H5, ENMI, ENPLU
+        real_t PPLU1, PPLU2, PPLU3, PMI1, PMI2, PMI3
+                
+        real_t Lcav,r
+
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+         
+        Lcav = 8D0
+        
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+!-------------------------------------------------------------------------------
+!                                                                charge exchange
+!-------------------------------------------------------------------------------
+!                                                                     NEUTRALS 1
+          r      =  m_rc(i,level)
+          
+          rho1   = Wnet(WRHO)*exp(-Lcav/r)
+
+          ux1    = Wnet(WVELX)
+          uy1    = Wnet(WVELY)
+          uz1    = Wnet(WVELZ)
+
+          p1     = Wnet(WPRES)*exp(-Lcav/r)
+
+          UH21   = ux1*ux1 + uy1*uy1 + uz1*uz1
+
+          DU21   = (ux-ux1)**2  + (uy-uy1)**2  + (uz-uz1)**2
+          VPHH1  = (ux-ux1)*ux1 + (uy-uy1)*uy1 + (uz-uz1)*uz1
+          VPHP1  = (ux-ux1)*ux  + (uy-uy1)*uy  + (uz-uz1)*uz
+
+          VVTP   =       p /rho
+          VVTH1  = 2.0D0*p1/rho1
+
+          UD1    = sqrt( 4.0*(VVTP+VVTH1)/d_PI + DU21)
+          UPM1   = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH1  + 4.0*DU21)
+          UHM1   = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH1/d_PI  + 4.0*DU21)
+          UPE1   = sqrt((4.0*VVTP        + 64.0*VVTH1/9.0)/d_PI + DU21)
+          UHE1   = sqrt((64.0*VVTP/9.0   + 4.0*VVTH1     )/d_PI + DU21)
+
+c          SIGMAL1  = 2.1 - 0.092*log( ce_scaleVel*UD1 )
+c          SIGMAL1  = ce_scaleSigmaFite*SIGMAL1*SIGMAL1
+          
+          UD1S   = ce_scaleVel*UD1
+          SIGMAL1  = ((13.493 - 0.531*log(UD1S))**2)*(one - exp(-2.946D+9/UD1S))**4.5
+          SIGMAL1  = ce_scaleSigmaLindsay*SIGMAL1
+          
+          
+          
+          
+          
+!                                                                   Pauls & Zank
+          ARR1   = SIGMAL1*rho1*rho
+
+          VVTHU1 = VVTH1/upm1
+
+          h21    = ARR1*(ux-ux1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h31    = ARR1*(uy-uy1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h41    = ARR1*(uz-uz1)*(UD1 + VVTHU1 + VVTP/UHM1)
+
+          h51    = 0.5*ARR1*(1.5*(UHE1*VVTP - UPE1*VVTH1)+
+     &             UD1*(u2-uh21) + 2.0*(VVTHU1*VPHH1 + VVTP*VPHP1/UHM1))
+
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) =-dt*h21
+          S(CHF_IX[i;j;k],UMOMY) =-dt*h31
+          S(CHF_IX[i;j;k],UMOMZ) =-dt*h41
+
+          S(CHF_IX[i;j;k],UENG ) =-dt*h51
+
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+        CHF_ENDDO
+         
+        return 
+        end
+
+        
+        subroutine CHARGE_EXCHANGE_CONSTH(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W], 
+     &    CHF_CONST_R1D[Wnet], 
+     &    CHF_CONST_REAL[dt],   
+     &    CHF_BOX[box],
+     &    CHF_CONST_INT[level])
+     
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho,  ux,  uy,  uz,  p, U2, VVTP
+        real_t rho1, ux1, uy1, uz1, p1, VVTH1, VVTHU1
+        real_t UH21, DU21, VPHH1, VPHP1, UD1, UPM1, UHM1, UPE1, UHE1, UD1S
+        real_t SIGMAL1, ARR1, DENPLU1, h21, h31, h41, h51
+        real_t H1, H2, H3, H4, H5, ENMI, ENPLU
+        real_t PPLU1, PPLU2, PPLU3, PMI1, PMI2, PMI3
+                
+        real_t Lcav
+
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+         
+        Lcav = 8D0
+        
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+!-------------------------------------------------------------------------------
+!                                                                charge exchange
+!-------------------------------------------------------------------------------
+!                                                                     NEUTRALS 1          
+          
+          rho1   = Wnet(WRHO)
+
+          ux1    = Wnet(WVELX)
+          uy1    = Wnet(WVELY)
+          uz1    = Wnet(WVELZ)
+
+          p1     = Wnet(WPRES)
+                   
+          UH21   = ux1*ux1 + uy1*uy1 + uz1*uz1
+
+          DU21   = (ux-ux1)**2  + (uy-uy1)**2  + (uz-uz1)**2
+          VPHH1  = (ux-ux1)*ux1 + (uy-uy1)*uy1 + (uz-uz1)*uz1
+          VPHP1  = (ux-ux1)*ux  + (uy-uy1)*uy  + (uz-uz1)*uz
+
+          VVTP   =       p /rho
+          VVTH1  = 2.0D0*p1/rho1
+
+          UD1    = sqrt( 4.0*(VVTP+VVTH1)/d_PI + DU21)
+          UPM1   = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH1  + 4.0*DU21)
+          UHM1   = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH1/d_PI  + 4.0*DU21)
+          UPE1   = sqrt((4.0*VVTP        + 64.0*VVTH1/9.0)/d_PI + DU21)
+          UHE1   = sqrt((64.0*VVTP/9.0   + 4.0*VVTH1     )/d_PI + DU21)
+
+c          SIGMAL1  = 2.1 - 0.092*log( ce_scaleVel*UD1 )
+c          SIGMAL1  = ce_scaleSigmaFite*SIGMAL1*SIGMAL1
+
+          UD1S   = ce_scaleVel*UD1
+          SIGMAL1  = ((13.493 - 0.531*log(UD1S))**2)*(one - exp(-2.946D+9/UD1S))**4.5
+          SIGMAL1  = ce_scaleSigmaLindsay*SIGMAL1
+
+
+!                                                                   Pauls & Zank
+          ARR1   = SIGMAL1*rho1*rho
+
+          VVTHU1 = VVTH1/upm1
+
+          h21    = ARR1*(ux-ux1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h31    = ARR1*(uy-uy1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h41    = ARR1*(uz-uz1)*(UD1 + VVTHU1 + VVTP/UHM1)
+
+          h51    = 0.5*ARR1*(1.5*(UHE1*VVTP - UPE1*VVTH1)+
+     &             UD1*(u2-uh21) + 2.0*(VVTHU1*VPHH1 + VVTP*VPHP1/UHM1))
+
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) =-dt*h21
+          S(CHF_IX[i;j;k],UMOMY) =-dt*h31
+          S(CHF_IX[i;j;k],UMOMZ) =-dt*h41
+
+          S(CHF_IX[i;j;k],UENG ) =-dt*h51
+
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+        CHF_ENDDO
+         
+        return 
+        end
+
+
+        subroutine CHARGE_EXCHANGE_2F(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FIA1[REG],     
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho,  ux,  uy,  uz,  p, U2, VVTP
+        real_t rho1, ux1, uy1, uz1, p1, VVTH1, VVTHU1
+        real_t UH21, DU21, VPHH1, VPHP1, UD1, UPM1, UHM1, UPE1, UHE1, UD1S
+        real_t SIGMAL1, ARR1, DENPLU1, h21, h31, h41, h51
+        real_t H1, H2, H3, H4, H5, ENMI, ENPLU
+        real_t PPLU1, PPLU2, PPLU3, PMI1, PMI2, PMI3
+        
+        integer iWVELX1,iWVELY1,iWVELZ1,iWPRES1
+        integer iUMOMX1,iUMOMY1,iUMOMZ1,iUENG1
+
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+
+        iWVELX1 = iRhoN+WVELX
+        iWVELY1 = iRhoN+WVELY
+        iWVELZ1 = iRhoN+WVELZ
+        iWPRES1 = iRhoN+WPRES
+        iUMOMX1 = iRhoN+UMOMX
+        iUMOMY1 = iRhoN+UMOMY
+        iUMOMZ1 = iRhoN+UMOMZ
+        iUENG1  = iRhoN+UENG
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+!-------------------------------------------------------------------------------
+!                                                                charge exchange
+!-------------------------------------------------------------------------------
+!                                                                     NEUTRALS 1
+          rho1   = W(CHF_IX[i;j;k],iRhoN)
+
+          ux1    = W(CHF_IX[i;j;k],iWVELX1)
+          uy1    = W(CHF_IX[i;j;k],iWVELY1)
+          uz1    = W(CHF_IX[i;j;k],iWVELZ1)
+
+          p1     = W(CHF_IX[i;j;k],iWPRES1)
+
+          UH21   = ux1*ux1 + uy1*uy1 + uz1*uz1
+
+          DU21   = (ux-ux1)**2  + (uy-uy1)**2  + (uz-uz1)**2
+          VPHH1  = (ux-ux1)*ux1 + (uy-uy1)*uy1 + (uz-uz1)*uz1
+          VPHP1  = (ux-ux1)*ux  + (uy-uy1)*uy  + (uz-uz1)*uz
+
+          VVTP   =       p /rho
+          VVTH1  = 2.0D0*p1/rho1
+
+          UD1    = sqrt( 4.0*(VVTP+VVTH1)/d_PI + DU21)
+          UPM1   = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH1  + 4.0*DU21)
+          UHM1   = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH1/d_PI  + 4.0*DU21)
+          UPE1   = sqrt((4.0*VVTP        + 64.0*VVTH1/9.0)/d_PI + DU21)
+          UHE1   = sqrt((64.0*VVTP/9.0   + 4.0*VVTH1     )/d_PI + DU21)
+
+c          SIGMAL1  = 2.1 - 0.092*log( ce_scaleVel*UD1 )
+c          SIGMAL1  = ce_scaleSigmaFite*SIGMAL1*SIGMAL1
+
+          UD1S   = ce_scaleVel*UD1
+          SIGMAL1  = ((13.493 - 0.531*log(UD1S))**2)*(one - exp(-2.946D+9/UD1S))**4.5
+          SIGMAL1  = ce_scaleSigmaLindsay*SIGMAL1
+          
+!                                                                   Pauls & Zank
+          ARR1   = SIGMAL1*rho1*rho
+
+          VVTHU1 = VVTH1/upm1
+
+          h21    = ARR1*(ux-ux1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h31    = ARR1*(uy-uy1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h41    = ARR1*(uz-uz1)*(UD1 + VVTHU1 + VVTP/UHM1)
+
+          h51    = 0.5*ARR1*(1.5*(UHE1*VVTP - UPE1*VVTH1)+
+     &             UD1*(u2-uh21) + 2.0*(VVTHU1*VPHH1 + VVTP*VPHP1/UHM1))
+
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) =-dt*h21
+          S(CHF_IX[i;j;k],UMOMY) =-dt*h31
+          S(CHF_IX[i;j;k],UMOMZ) =-dt*h41
+
+          S(CHF_IX[i;j;k],UENG ) =-dt*h51
+
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+!                                                                   Pauls & Zank
+          DENPLU1  =-ARR1*UD1
+
+          PPLU1  =-ARR1*(ux*UD1 - (ux1-ux)*VVTP/UHM1)
+          PPLU2  =-ARR1*(uy*UD1 - (uy1-uy)*VVTP/UHM1)
+          PPLU3  =-ARR1*(uz*UD1 - (uz1-uz)*VVTP/UHM1)
+
+          PMI1   = ARR1*(ux1*UD1 + (ux1-ux)*VVTHU1)
+          PMI2   = ARR1*(uy1*UD1 + (uy1-uy)*VVTHU1)
+          PMI3   = ARR1*(uz1*UD1 + (uz1-uz)*VVTHU1)
+
+          ENPLU  =-ARR1*(0.5*U2*UD1 + VVTP*(VPHP1/UHM1 + 0.75*UHE1))
+
+          ENMI   = ARR1*(0.5*UH21*UD1 - VPHH1*VVTHU1 + 0.75*VVTH1*UPE1)
+
+          if ((REG(CHF_IX[i;j;k]) .eq. 1 ) .or. ( REG(CHF_IX[i;j;k]) .eq. 4)) then
+            H1     = zero
+            H2     = PPLU1   + PMI1
+            H3     = PPLU2   + PMI2
+            H4     = PPLU3   + PMI3
+            H5     = ENPLU   + ENMI
+          else
+            H1     =-DENPLU1
+            H2     = PMI1
+            H3     = PMI2
+            H4     = PMI3
+            H5     = ENMI
+          endif
+
+          S(CHF_IX[i;j;k],iRhoN )   =-dt*H1
+          
+          S(CHF_IX[i;j;k],iUMOMX1)  =-dt*H2
+          S(CHF_IX[i;j;k],iUMOMY1)  =-dt*H3
+          S(CHF_IX[i;j;k],iUMOMZ1)  =-dt*H4
+
+          S(CHF_IX[i;j;k],iUENG1 )  =-dt*H5
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine CHARGE_EXCHANGE_3F(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FIA1[REG],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho,  ux,  uy,  uz,  p, U2, VVTP
+        real_t rho1, ux1, uy1, uz1, p1, VVTH1, VVTHU1
+        real_t rho2, ux2, uy2, uz2, p2, VVTH2, VVTHU2
+        real_t UH21, DU21, VPHH1, VPHP1, UD1, UPM1, UHM1, UPE1, UHE1
+        real_t UH22, DU22, VPHH2, VPHP2, UD2, UPM2, UHM2, UPE2, UHE2        
+        real_t SIGMAL1, ARR1, DENPLU1, h21, h31, h41, h51
+        real_t SIGMAL2, ARR2, DENPLU2, h22, h32, h42, h52
+        real_t H1, H2, H3, H4, H5, ENMI, ENPLU
+        real_t PPLU1, PPLU2, PPLU3, PMI1, PMI2, PMI3
+        integer iWVELX1,iWVELY1,iWVELZ1,iWPRES1
+        integer iUMOMX1,iUMOMY1,iUMOMZ1,iUENG1
+        integer iWRHO2,iWVELX2,iWVELY2,iWVELZ2,iWPRES2
+        integer iURHO2,iUMOMX2,iUMOMY2,iUMOMZ2,iUENG2
+        real_t UDS
+        
+
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+
+
+        iWVELX1 = iRhoN + WVELX
+        iWVELY1 = iRhoN + WVELY
+        iWVELZ1 = iRhoN + WVELZ
+        iWPRES1 = iRhoN + WPRES
+        iUMOMX1 = iRhoN + UMOMX
+        iUMOMY1 = iRhoN + UMOMY
+        iUMOMZ1 = iRhoN + UMOMZ
+        iUENG1  = iRhoN + UENG
+
+        iWRHO2  = iRhoN  + WNUM_E
+        iWVELX2 = iWRHO2 + WVELX
+        iWVELY2 = iWRHO2 + WVELY
+        iWVELZ2 = iWRHO2 + WVELZ
+        iWPRES2 = iWRHO2 + WPRES
+        iURHO2  = iRhoN  + WNUM_E
+        iUMOMX2 = iURHO2 + UMOMX
+        iUMOMY2 = iURHO2 + UMOMY
+        iUMOMZ2 = iURHO2 + UMOMZ
+        iUENG2  = iURHO2 + UENG
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+!-------------------------------------------------------------------------------
+!                                                                charge exchange
+!-------------------------------------------------------------------------------
+!                                                                     NEUTRALS 1
+          rho1   = W(CHF_IX[i;j;k],iRhoN)
+
+          ux1    = W(CHF_IX[i;j;k],iWVELX1)
+          uy1    = W(CHF_IX[i;j;k],iWVELY1)
+          uz1    = W(CHF_IX[i;j;k],iWVELZ1)
+
+          p1     = W(CHF_IX[i;j;k],iWPRES1)
+
+          UH21   = ux1*ux1 + uy1*uy1 + uz1*uz1
+
+          DU21   = (ux-ux1)**2  + (uy-uy1)**2  + (uz-uz1)**2
+          VPHH1  = (ux-ux1)*ux1 + (uy-uy1)*uy1 + (uz-uz1)*uz1
+          VPHP1  = (ux-ux1)*ux  + (uy-uy1)*uy  + (uz-uz1)*uz
+
+          VVTP   =       p /rho
+          VVTH1  = 2.0D0*p1/rho1
+
+          UD1    = sqrt( 4.0*(VVTP+VVTH1)/d_PI + DU21)
+          UPM1   = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH1  + 4.0*DU21)
+          UHM1   = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH1/d_PI  + 4.0*DU21)
+          UPE1   = sqrt((4.0*VVTP        + 64.0*VVTH1/9.0)/d_PI + DU21)
+          UHE1   = sqrt((64.0*VVTP/9.0   + 4.0*VVTH1     )/d_PI + DU21)
+
+c          SIGMAL1  = 2.1 - 0.092*log( ce_scaleVel*UD1 )
+c          SIGMAL1  = ce_scaleSigmaFite*SIGMAL1*SIGMAL1
+
+          UDS   = ce_scaleVel*UD1
+          SIGMAL1  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+          SIGMAL1  = ce_scaleSigmaLindsay*SIGMAL1
+
+
+
+!                                                                     NEUTRALS 2
+          rho2   = W(CHF_IX[i;j;k],iWRHO2)
+
+          ux2    = W(CHF_IX[i;j;k],iWVELX2)
+          uy2    = W(CHF_IX[i;j;k],iWVELY2)
+          uz2    = W(CHF_IX[i;j;k],iWVELZ2)
+
+          p2     = W(CHF_IX[i;j;k],iWPRES2)
+
+          UH22   = ux2**2 + uy2**2 + uz2**2
+
+          DU22   = (ux-ux2)**2  + (uy-uy2)**2  + (uz-uz2)**2
+          VPHH2  = (ux-ux2)*ux2 + (uy-uy2)*uy2 + (uz-uz2)*uz2
+          VPHP2  = (ux-ux2)*ux  + (uy-uy2)*uy  + (uz-uz2)*uz
+    
+          VVTH2  = 2.0*p2/rho2
+
+          UD2    = sqrt( 4.0*(VVTP + VVTH2)/d_PI + DU22)
+          UPM2   = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH2  + 4.0*DU22)
+          UHM2   = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH2/d_PI  + 4.0*DU22)
+          UPE2   = sqrt((4.0*VVTP        + 64.0*VVTH2/9.0)/d_PI + DU22)
+          UHE2   = sqrt((64.0*VVTP/9.0   + 4.0*VVTH2     )/d_PI + DU22)
+
+c          SIGMAL2  = 2.1 - 0.092*log( ce_scaleVel*UD2 )
+c          SIGMAL2  = ce_scaleSigmaFite*SIGMAL2*SIGMAL2
+
+          UDS   = ce_scaleVel*UD2
+          SIGMAL2  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+          SIGMAL2  = ce_scaleSigmaLindsay*SIGMAL2
+          
+!                                                                   Pauls & Zank
+          ARR1   = SIGMAL1*rho1*rho
+          ARR2   = SIGMAL2*rho2*rho
+
+          VVTHU1 = VVTH1/upm1
+          VVTHU2 = VVTH2/upm2          
+
+          h21    = ARR1*(ux-ux1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h31    = ARR1*(uy-uy1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h41    = ARR1*(uz-uz1)*(UD1 + VVTHU1 + VVTP/UHM1)
+
+          h51    = 0.5*ARR1*(1.5*(UHE1*VVTP - UPE1*VVTH1)+
+     &             UD1*(u2-uh21) + 2.0*(VVTHU1*VPHH1 + VVTP*VPHP1/UHM1))
+
+          h22    = h21 + ARR2*(ux-ux2)*(UD2 + VVTHU2 + VVTP/UHM2)
+          h32    = h31 + ARR2*(uy-uy2)*(UD2 + VVTHU2 + VVTP/UHM2)
+          h42    = h41 + ARR2*(uz-uz2)*(UD2 + VVTHU2 + VVTP/UHM2)
+
+          h52    = h51 + 0.5*ARR2*(1.5*(UHE2*VVTP - UPE2*VVTH2)+
+     &             UD2*(u2-uh22) + 2.0*(VVTHU2*VPHH2 + VVTP*VPHP2/UHM2))
+
+          
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) =-dt*h22
+          S(CHF_IX[i;j;k],UMOMY) =-dt*h32
+          S(CHF_IX[i;j;k],UMOMZ) =-dt*h42
+
+          S(CHF_IX[i;j;k],UENG ) =-dt*h52
+
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+!                                                                   Pauls & Zank
+          DENPLU1  =-ARR1*UD1
+          DENPLU2  =-ARR2*UD2          
+
+          PPLU1  =-ARR1*(ux*UD1 - (ux1-ux)*VVTP/UHM1)
+     &            -ARR2*(ux*UD2 - (ux2-ux)*VVTP/UHM2)
+     
+
+          PPLU2  =-ARR1*(uy*UD1 - (uy1-uy)*VVTP/UHM1)
+     &            -ARR2*(uy*UD2 - (uy2-uy)*VVTP/UHM2)
+     
+
+          PPLU3  =-ARR1*(uz*UD1 - (uz1-uz)*VVTP/UHM1)
+     &            -ARR2*(uz*UD2 - (uz2-uz)*VVTP/UHM2)
+     
+
+          PMI1   = ARR1*(ux1*UD1 + (ux1-ux)*VVTHU1)
+          PMI2   = ARR1*(uy1*UD1 + (uy1-uy)*VVTHU1)
+          PMI3   = ARR1*(uz1*UD1 + (uz1-uz)*VVTHU1)
+
+          ENPLU  =-ARR1*(0.5*U2*UD1 + VVTP*(VPHP1/UHM1 + 0.75*UHE1))
+     &            -ARR2*(0.5*U2*UD2 + VVTP*(VPHP2/UHM2 + 0.75*UHE2))     
+
+          ENMI   = ARR1*(0.5*UH21*UD1 - VPHH1*VVTHU1 + 0.75*VVTH1*UPE1)
+
+          if( REG(CHF_IX[i;j;k]) .eq. 1 ) then
+            H1     = DENPLU2 
+            H2     = PPLU1   + PMI1
+            H3     = PPLU2   + PMI2
+            H4     = PPLU3   + PMI3
+            H5     = ENPLU   + ENMI
+          else
+            H1     =-DENPLU1
+            H2     = PMI1
+            H3     = PMI2
+            H4     = PMI3
+            H5     = ENMI
+          endif
+
+          S(CHF_IX[i;j;k],iRhoN )  =-dt*H1
+
+          S(CHF_IX[i;j;k],iUMOMX1)  =-dt*H2
+          S(CHF_IX[i;j;k],iUMOMY1)  =-dt*H3
+          S(CHF_IX[i;j;k],iUMOMZ1)  =-dt*H4
+
+          S(CHF_IX[i;j;k],iUENG1 )  =-dt*H5
+!                                                                   Pauls & Zank
+          PMI1   = ARR2*(ux2*UD2 + (ux2 - ux)*VVTHU2)
+          PMI2   = ARR2*(uy2*UD2 + (uy2 - uy)*VVTHU2)
+          PMI3   = ARR2*(uz2*UD2 + (uz2 - uz)*VVTHU2)
+
+          ENMI   = ARR2*(0.5*UH22*UD2 - VPHH2*VVTHU2 + 0.75*VVTH2*UPE2)
+
+          if( REG(CHF_IX[i;j;k]) .eq. 2 ) then
+            H1     = DENPLU1 
+            H2     = PPLU1   + PMI1
+            H3     = PPLU2   + PMI2
+            H4     = PPLU3   + PMI3
+            H5     = ENPLU   + ENMI
+          else
+            H1     =-DENPLU2
+            H2     = PMI1
+            H3     = PMI2
+            H4     = PMI3
+            H5     = ENMI
+          endif
+
+          S(CHF_IX[i;j;k],iURHO2 )  =-dt*H1
+
+          S(CHF_IX[i;j;k],iUMOMX2)  =-dt*H2
+          S(CHF_IX[i;j;k],iUMOMY2)  =-dt*H3
+          S(CHF_IX[i;j;k],iUMOMZ2)  =-dt*H4
+
+          S(CHF_IX[i;j;k],iUENG2 )  =-dt*H5
+
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine CHARGE_EXCHANGE_4F(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FIA1[REG],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho,  ux,  uy,  uz,  p, U2, VVTP
+        real_t rho1, ux1, uy1, uz1, p1, VVTH1, VVTHU1
+        real_t rho2, ux2, uy2, uz2, p2, VVTH2, VVTHU2
+        real_t rho3, ux3, uy3, uz3, p3, VVTH3, VVTHU3
+        real_t UH21, DU21, VPHH1, VPHP1, UD1, UPM1, UHM1, UPE1, UHE1
+        real_t UH22, DU22, VPHH2, VPHP2, UD2, UPM2, UHM2, UPE2, UHE2
+        real_t UH23, DU23, VPHH3, VPHP3, UD3, UPM3, UHM3, UPE3, UHE3
+        real_t SIGMAL1, ARR1, DENPLU1, h21, h31, h41, h51
+        real_t SIGMAL2, ARR2, DENPLU2, h22, h32, h42, h52
+        real_t SIGMAL3, ARR3, DENPLU3, h23, h33, h43, h53
+        real_t H1, H2, H3, H4, H5, ENMI, ENPLU
+        real_t PPLU1, PPLU2, PPLU3, PMI1, PMI2, PMI3
+        integer iWVELX1,iWVELY1,iWVELZ1,iWPRES1
+        integer iUMOMX1,iUMOMY1,iUMOMZ1,iUENG1
+        integer iWRHO2,iWVELX2,iWVELY2,iWVELZ2,iWPRES2
+        integer iURHO2,iUMOMX2,iUMOMY2,iUMOMZ2,iUENG2
+        integer iWRHO3,iWVELX3,iWVELY3,iWVELZ3,iWPRES3
+        integer iURHO3,iUMOMX3,iUMOMY3,iUMOMZ3,iUENG3
+        real_t UDS
+
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+
+        iWVELX1 = iRhoN + WVELX
+        iWVELY1 = iRhoN + WVELY
+        iWVELZ1 = iRhoN + WVELZ
+        iWPRES1 = iRhoN + WPRES
+        iUMOMX1 = iRhoN + UMOMX
+        iUMOMY1 = iRhoN + UMOMY
+        iUMOMZ1 = iRhoN + UMOMZ
+        iUENG1  = iRhoN + UENG
+
+        iWRHO2  = iRhoN  + WNUM_E
+        iWVELX2 = iWRHO2 + WVELX
+        iWVELY2 = iWRHO2 + WVELY
+        iWVELZ2 = iWRHO2 + WVELZ
+        iWPRES2 = iWRHO2 + WPRES
+        iURHO2  = iRhoN  + WNUM_E
+        iUMOMX2 = iURHO2 + UMOMX
+        iUMOMY2 = iURHO2 + UMOMY
+        iUMOMZ2 = iURHO2 + UMOMZ
+        iUENG2  = iURHO2 + UENG
+        
+        iWRHO3 = iRhoN  + 2*WNUM_E
+        iWVELX3 = iWRHO3 + WVELX
+        iWVELY3 = iWRHO3 + WVELY
+        iWVELZ3 = iWRHO3 + WVELZ
+        iWPRES3 = iWRHO3 + WPRES
+        iURHO3  = iRhoN  + 2*WNUM_E
+        iUMOMX3 = iURHO3 + UMOMX
+        iUMOMY3 = iURHO3 + UMOMY
+        iUMOMZ3 = iURHO3 + UMOMZ
+        iUENG3  = iURHO3 + UENG
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+!-------------------------------------------------------------------------------
+!                                                                charge exchange
+!-------------------------------------------------------------------------------
+!                                                                     NEUTRALS 1
+          rho1   = W(CHF_IX[i;j;k],iRhoN)
+
+          ux1    = W(CHF_IX[i;j;k],iWVELX1)
+          uy1    = W(CHF_IX[i;j;k],iWVELY1)
+          uz1    = W(CHF_IX[i;j;k],iWVELZ1)
+
+          p1     = W(CHF_IX[i;j;k],iWPRES1)
+
+          UH21   = ux1*ux1 + uy1*uy1 + uz1*uz1
+
+          DU21   = (ux-ux1)**2  + (uy-uy1)**2  + (uz-uz1)**2
+          VPHH1  = (ux-ux1)*ux1 + (uy-uy1)*uy1 + (uz-uz1)*uz1
+          VPHP1  = (ux-ux1)*ux  + (uy-uy1)*uy  + (uz-uz1)*uz
+
+          VVTP   =       p /rho
+          VVTH1  = 2.0D0*p1/rho1
+
+          UD1    = sqrt( 4.0*(VVTP+VVTH1)/d_PI + DU21)
+          UPM1   = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH1  + 4.0*DU21)
+          UHM1   = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH1/d_PI  + 4.0*DU21)
+          UPE1   = sqrt((4.0*VVTP        + 64.0*VVTH1/9.0)/d_PI + DU21)
+          UHE1   = sqrt((64.0*VVTP/9.0   + 4.0*VVTH1     )/d_PI + DU21)
+
+c          SIGMAL1  = 2.1 - 0.092*log( ce_scaleVel*UD1 )
+c          SIGMAL1  = ce_scaleSigmaFite*SIGMAL1*SIGMAL1
+          
+          UDS   = ce_scaleVel*UD1
+          SIGMAL1  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+          SIGMAL1  = ce_scaleSigmaLindsay*SIGMAL1
+          
+          
+!                                                                     NEUTRALS 2
+          rho2   = W(CHF_IX[i;j;k],iWRHO2)
+
+          ux2    = W(CHF_IX[i;j;k],iWVELX2)
+          uy2    = W(CHF_IX[i;j;k],iWVELY2)
+          uz2    = W(CHF_IX[i;j;k],iWVELZ2)
+
+          p2     = W(CHF_IX[i;j;k],iWPRES2)
+
+          UH22   = ux2**2 + uy2**2 + uz2**2
+
+          DU22   = (ux-ux2)**2  + (uy-uy2)**2  + (uz-uz2)**2
+          VPHH2  = (ux-ux2)*ux2 + (uy-uy2)*uy2 + (uz-uz2)*uz2
+          VPHP2  = (ux-ux2)*ux  + (uy-uy2)*uy  + (uz-uz2)*uz
+    
+          VVTH2  = 2.0*p2/rho2
+
+          UD2    = sqrt( 4.0*(VVTP + VVTH2)/d_PI + DU22)
+          UPM2   = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH2  + 4.0*DU22)
+          UHM2   = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH2/d_PI  + 4.0*DU22)
+          UPE2   = sqrt((4.0*VVTP        + 64.0*VVTH2/9.0)/d_PI + DU22)
+          UHE2   = sqrt((64.0*VVTP/9.0   + 4.0*VVTH2     )/d_PI + DU22)
+
+c          SIGMAL2  = 2.1 - 0.092*log( ce_scaleVel*UD2 )
+c          SIGMAL2  = ce_scaleSigmaFite*SIGMAL2*SIGMAL2
+
+          UDS   = ce_scaleVel*UD2
+          SIGMAL2  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+          SIGMAL2  = ce_scaleSigmaLindsay*SIGMAL2
+
+
+
+
+!                                                                     NEUTRALS 3
+          rho3   = W(CHF_IX[i;j;k],iWRHO3)
+
+          ux3    = W(CHF_IX[i;j;k],iWVELX3)
+          uy3    = W(CHF_IX[i;j;k],iWVELY3)
+          uz3    = W(CHF_IX[i;j;k],iWVELZ3)
+
+          p3     = W(CHF_IX[i;j;k],iWPRES3)
+
+          UH23   = ux3**2 + uy3**2 + uz3**2
+
+          DU23   = (ux-ux3)**2  + (uy-uy3)**2  + (uz-uz3)**2
+          VPHH3  = (ux-ux3)*ux3 + (uy-uy3)*uy3 + (uz-uz3)*uz3
+          VPHP3  = (ux-ux3)*ux  + (uy-uy3)*uy  + (uz-uz3)*uz
+
+          VVTH3  = 2.0*p3/rho3
+
+          UD3    = sqrt( 4.0*(VVTP + VVTH3)/d_PI + DU23)
+          UPM3   = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH3  + 4.0*DU23)
+          UHM3   = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH3/d_PI  + 4.0*DU23)
+          UPE3   = sqrt((4.0*VVTP        + 64.0*VVTH3/9.0)/d_PI + DU23)
+          UHE3   = sqrt((64.0*VVTP/9.0   + 4.0*VVTH3     )/d_PI + DU23)
+
+c          SIGMAL3  = 2.1 - 0.092*log( ce_scaleVel*UD3 )
+c          SIGMAL3  = ce_scaleSigmaFite*SIGMAL3*SIGMAL3
+
+          UDS   = ce_scaleVel*UD3
+          SIGMAL3  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+          SIGMAL3  = ce_scaleSigmaLindsay*SIGMAL3
+!                                                                   Pauls & Zank
+          ARR1   = SIGMAL1*rho1*rho
+          ARR2   = SIGMAL2*rho2*rho
+          ARR3   = SIGMAL3*rho3*rho
+
+          VVTHU1 = VVTH1/upm1
+          VVTHU2 = VVTH2/upm2
+          VVTHU3 = VVTH3/upm3
+
+          h21    = ARR1*(ux-ux1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h31    = ARR1*(uy-uy1)*(UD1 + VVTHU1 + VVTP/UHM1)
+          h41    = ARR1*(uz-uz1)*(UD1 + VVTHU1 + VVTP/UHM1)
+
+          h51    = 0.5*ARR1*(1.5*(UHE1*VVTP - UPE1*VVTH1)+
+     &             UD1*(u2-uh21) + 2.0*(VVTHU1*VPHH1 + VVTP*VPHP1/UHM1))
+
+          h22    = h21 + ARR2*(ux-ux2)*(UD2 + VVTHU2 + VVTP/UHM2)
+          h32    = h31 + ARR2*(uy-uy2)*(UD2 + VVTHU2 + VVTP/UHM2)
+          h42    = h41 + ARR2*(uz-uz2)*(UD2 + VVTHU2 + VVTP/UHM2)
+
+          h52    = h51 + 0.5*ARR2*(1.5*(UHE2*VVTP - UPE2*VVTH2)+
+     &             UD2*(u2-uh22) + 2.0*(VVTHU2*VPHH2 + VVTP*VPHP2/UHM2))
+
+          h23    = h22 + ARR3*(ux-ux3)*(UD3 + VVTHU3 + VVTP/UHM3)
+          h33    = h32 + ARR3*(uy-uy3)*(UD3 + VVTHU3 + VVTP/UHM3)
+          h43    = h42 + ARR3*(uz-uz3)*(UD3 + VVTHU3 + VVTP/UHM3)
+
+          h53    = h52 + 0.5*ARR3*(1.5*(UHE3*VVTP - UPE3*VVTH3)+
+     &             UD3*(u2-uh23) + 2.0*(VVTHU3*VPHH3 + VVTP*VPHP3/UHM3))
+
+          S(CHF_IX[i;j;k],URHO ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX) =-dt*h23
+          S(CHF_IX[i;j;k],UMOMY) =-dt*h33
+          S(CHF_IX[i;j;k],UMOMZ) =-dt*h43
+
+          S(CHF_IX[i;j;k],UENG ) =-dt*h53
+
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+!                                                                   Pauls & Zank
+          DENPLU1  =-ARR1*UD1
+          DENPLU2  =-ARR2*UD2
+          DENPLU3  =-ARR3*UD3
+
+          PPLU1  =-ARR1*(ux*UD1 - (ux1-ux)*VVTP/UHM1)
+     &            -ARR2*(ux*UD2 - (ux2-ux)*VVTP/UHM2)
+     &            -ARR3*(ux*UD3 - (ux3-ux)*VVTP/UHM3)
+
+          PPLU2  =-ARR1*(uy*UD1 - (uy1-uy)*VVTP/UHM1)
+     &            -ARR2*(uy*UD2 - (uy2-uy)*VVTP/UHM2)
+     &            -ARR3*(uy*UD3 - (uy3-uy)*VVTP/UHM3)
+
+          PPLU3  =-ARR1*(uz*UD1 - (uz1-uz)*VVTP/UHM1)
+     &            -ARR2*(uz*UD2 - (uz2-uz)*VVTP/UHM2)
+     &            -ARR3*(uz*UD3 - (uz3-uz)*VVTP/UHM3)
+
+          PMI1   = ARR1*(ux1*UD1 + (ux1-ux)*VVTHU1)
+          PMI2   = ARR1*(uy1*UD1 + (uy1-uy)*VVTHU1)
+          PMI3   = ARR1*(uz1*UD1 + (uz1-uz)*VVTHU1)
+
+          ENPLU  =-ARR1*(0.5*U2*UD1 + VVTP*(VPHP1/UHM1 + 0.75*UHE1))
+     &            -ARR2*(0.5*U2*UD2 + VVTP*(VPHP2/UHM2 + 0.75*UHE2))
+     &            -ARR3*(0.5*U2*UD3 + VVTP*(VPHP3/UHM3 + 0.75*UHE3))
+
+          ENMI   = ARR1*(0.5*UH21*UD1 - VPHH1*VVTHU1 + 0.75*VVTH1*UPE1)
+
+          if ((REG(CHF_IX[i;j;k]) .eq. 1) .or. (REG(CHF_IX[i;j;k]) .eq. 4)) then
+            H1     = DENPLU2 + DENPLU3
+            H2     = PPLU1   + PMI1
+            H3     = PPLU2   + PMI2
+            H4     = PPLU3   + PMI3
+            H5     = ENPLU   + ENMI
+          else
+            H1     =-DENPLU1
+            H2     = PMI1
+            H3     = PMI2
+            H4     = PMI3
+            H5     = ENMI
+          endif
+
+          S(CHF_IX[i;j;k],iRhoN )  =-dt*H1
+
+          S(CHF_IX[i;j;k],iUMOMX1)  =-dt*H2
+          S(CHF_IX[i;j;k],iUMOMY1)  =-dt*H3
+          S(CHF_IX[i;j;k],iUMOMZ1)  =-dt*H4
+
+          S(CHF_IX[i;j;k],iUENG1 )  =-dt*H5
+!                                                                   Pauls & Zank
+          PMI1   = ARR2*(ux2*UD2 + (ux2 - ux)*VVTHU2)
+          PMI2   = ARR2*(uy2*UD2 + (uy2 - uy)*VVTHU2)
+          PMI3   = ARR2*(uz2*UD2 + (uz2 - uz)*VVTHU2)
+
+          ENMI   = ARR2*(0.5*UH22*UD2 - VPHH2*VVTHU2 + 0.75*VVTH2*UPE2)
+
+          if( REG(CHF_IX[i;j;k]) .eq. 2 ) then
+            H1     = DENPLU1 + DENPLU3
+            H2     = PPLU1   + PMI1
+            H3     = PPLU2   + PMI2
+            H4     = PPLU3   + PMI3
+            H5     = ENPLU   + ENMI
+          else
+            H1     =-DENPLU2
+            H2     = PMI1
+            H3     = PMI2
+            H4     = PMI3
+            H5     = ENMI
+          endif
+
+          S(CHF_IX[i;j;k],iURHO2 )  =-dt*H1
+
+          S(CHF_IX[i;j;k],iUMOMX2)  =-dt*H2
+          S(CHF_IX[i;j;k],iUMOMY2)  =-dt*H3
+          S(CHF_IX[i;j;k],iUMOMZ2)  =-dt*H4
+
+          S(CHF_IX[i;j;k],iUENG2 )  =-dt*H5
+!                                                                   Pauls & Zank
+          PMI1   = ARR3*(ux3*UD3 + (ux3 - ux)*VVTHU3)
+          PMI2   = ARR3*(uy3*UD3 + (uy3 - uy)*VVTHU3)
+          PMI3   = ARR3*(uz3*UD3 + (uz3 - uz)*VVTHU3)
+
+          ENMI   = ARR3*(0.5*UH23*UD3 - VPHH3*VVTHU3 + 0.75*VVTH3*UPE3)
+
+          if( REG(CHF_IX[i;j;k]) .eq. 3 ) then
+            H1     = DENPLU1 + DENPLU2
+            H2     = PPLU1   + PMI1
+            H3     = PPLU2   + PMI2
+            H4     = PPLU3   + PMI3
+            H5     = ENPLU   + ENMI
+          else
+            H1     =-DENPLU3
+            H2     = PMI1
+            H3     = PMI2
+            H4     = PMI3
+            H5     = ENMI
+          endif
+
+          S(CHF_IX[i;j;k],iURHO3 )  =-dt*H1
+
+          S(CHF_IX[i;j;k],iUMOMX3)  =-dt*H2
+          S(CHF_IX[i;j;k],iUMOMY3)  =-dt*H3
+          S(CHF_IX[i;j;k],iUMOMZ3)  =-dt*H4
+
+          S(CHF_IX[i;j;k],iUENG3 )  =-dt*H5
+
+        CHF_ENDDO
+
+        return
+        end
+        
+        subroutine CHARGE_EXCHANGE_MF(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_FIA1[REG],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoN],
+     &    CHF_CONST_INT[fluids],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho,  ux,  uy,  uz,  p, U2, VVTP
+        real_t rhoN, uxN, uyN,  uzN,  pN, VVTH, VVTHU        
+        real_t UH2,  DU2, VPHH, VPHP, UD, UPM,  UHM, UPE, UHE
+        real_t UDS
+                
+        real_t SIGMAL, ARR, ENPLU, DENPLU(1:fluids-1)        
+        real_t H1, H2, H3, H4, H5 
+        real_t ENMI(1:fluids-1)
+        real_t PPLUX, PPLUY, PPLUZ
+        real_t PMIX(1:fluids-1), PMIY(1:fluids-1), PMIZ(1:fluids-1)        
+        integer iWRHO,iWVELX,iWVELY,iWVELZ,iWPRES
+        integer iURHO,iUMOMX,iUMOMY,iUMOMZ,iUENG        
+        integer iFluid
+
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+
+        
+        CHF_MULTIDO[box;i;j;k]
+                
+          rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+          VVTP   = p /rho
+          
+          h2     = zero
+          h3     = zero
+          h4     = zero
+          h5     = zero
+          PPLUX  = zero
+          PPLUY  = zero
+          PPLUZ  = zero
+          ENPLU  = zero
+          
+          do iFluid = 1, fluids - 1
+            iWRHO  = iRhoN + (iFluid-1)*WNUM_E
+            iWVELX = iWRHO + WVELX
+            iWVELY = iWRHO + WVELY
+            iWVELZ = iWRHO + WVELZ
+            iWPRES = iWRHO + WPRES            
+            
+            
+            rhoN   = W(CHF_IX[i;j;k],iWRHO)
+
+            uxN    = W(CHF_IX[i;j;k],iWVELX)
+            uyN    = W(CHF_IX[i;j;k],iWVELY)
+            uzN    = W(CHF_IX[i;j;k],iWVELZ)
+  
+            pN     = W(CHF_IX[i;j;k],iWPRES)
+
+            UH2    = uxN*uxN + uyN*uyN + uzN*uzN
+
+            DU2    = (ux-uxN)**2  + (uy-uyN)**2  + (uz-uzN)**2
+            VPHH   = (ux-uxN)*uxN + (uy-uyN)*uyN + (uz-uzN)*uzN
+            VPHP   = (ux-uxN)*ux  + (uy-uyN)*uy  + (uz-uzN)*uz
+
+          
+            VVTH   = two*pN/rhoN
+
+            UD     = sqrt( 4.0*(VVTP+VVTH)/d_PI + DU2)
+            UPM    = sqrt( 16.0*VVTP/d_PI  + 2.25*d_PI*VVTH  + 4.0*DU2)
+            UHM    = sqrt( 2.25*d_PI*VVTP  + 16.0*VVTH/d_PI  + 4.0*DU2)
+            UPE    = sqrt((4.0*VVTP        + 64.0*VVTH/9.0)/d_PI + DU2)
+            UHE    = sqrt((64.0*VVTP/9.0   + 4.0*VVTH     )/d_PI + DU2)
+
+c            SIGMAL = 2.1 - 0.092*log( ce_scaleVel*UD )
+c            SIGMAL = ce_scaleSigmaFite*SIGMAL*SIGMAL
+            
+            UDS   = ce_scaleVel*UD
+            SIGMAL  = ((13.493 - 0.531*log(UDS))**2)*(one - exp(-2.946D+9/UDS))**4.5
+            SIGMAL  = ce_scaleSigmaLindsay*SIGMAL
+            
+            ARR    = SIGMAL*rhoN*rho
+            VVTHU  = VVTH/UPM
+            
+            h2     = h2 + ARR*(ux-uxN)*(UD + VVTHU + VVTP/UHM)
+            h3     = h3 + ARR*(uy-uyN)*(UD + VVTHU + VVTP/UHM)
+            h4     = h4 + ARR*(uz-uzN)*(UD + VVTHU + VVTP/UHM)
+
+            h5     = h5 + 0.5*ARR*(1.5*(UHE*VVTP - UPE*VVTH)+
+     &                    UD*(u2-uh2) + 2.0*(VVTHU*VPHH + VVTP*VPHP/UHM))
+     
+            DENPLU(iFluid)  =-ARR*UD
+     
+            PPLUX  = PPLUX - ARR*(ux*UD - (uxN-ux)*VVTP/UHM)          
+            PPLUY  = PPLUY - ARR*(uy*UD - (uyN-uy)*VVTP/UHM)     
+            PPLUZ  = PPLUZ - ARR*(uz*UD - (uzN-uz)*VVTP/UHM)
+            
+            ENPLU  = ENPLU - ARR*(0.5*U2*UD + VVTP*(VPHP/UHM + 0.75*UHE))
+     
+            PMIX(iFluid)   = ARR*(uxN*UD + (uxN-ux)*VVTHU)
+            PMIY(iFluid)   = ARR*(uyN*UD + (uyN-uy)*VVTHU)
+            PMIZ(iFluid)   = ARR*(uzN*UD + (uzN-uz)*VVTHU)
+            
+            ENMI(iFluid)   = ARR*(0.5*UH2*UD - VPHH*VVTHU + 0.75*VVTH*UPE)            
+          enddo
+          
+          S(CHF_IX[i;j;k],URHO ) = zero
+          S(CHF_IX[i;j;k],UMOMX) =-dt*h2
+          S(CHF_IX[i;j;k],UMOMY) =-dt*h3
+          S(CHF_IX[i;j;k],UMOMZ) =-dt*h4
+          S(CHF_IX[i;j;k],UENG ) =-dt*h5
+          S(CHF_IX[i;j;k],UBX  ) = zero
+          S(CHF_IX[i;j;k],UBY  ) = zero
+          S(CHF_IX[i;j;k],UBZ  ) = zero
+          
+          do iFluid = 1, fluids - 1                    
+            iURHO  = iRhoN + (iFluid-1)*WNUM_E
+            iUMOMX = iURHO + UMOMX
+            iUMOMY = iURHO + UMOMY
+            iUMOMZ = iURHO + UMOMZ
+            iUENG  = iURHO + UENG
+          
+            if( REG(CHF_IX[i;j;k]) .eq. iFluid ) then
+              H1     = sum(DENPLU) - DENPLU(iFluid)
+              H2     = PPLUX   + PMIX(iFluid)
+              H3     = PPLUY   + PMIY(iFluid)
+              H4     = PPLUZ   + PMIZ(iFluid)
+              H5     = ENPLU   + ENMI(iFluid)
+            else
+              H1     =-DENPLU(iFluid)
+              H2     = PMIX(iFluid)
+              H3     = PMIY(iFluid)
+              H4     = PMIZ(iFluid)
+              H5     = ENMI(iFluid)
+            endif
+          
+            S(CHF_IX[i;j;k],iURHO )  =-dt*H1
+            S(CHF_IX[i;j;k],iUMOMX)  =-dt*H2
+            S(CHF_IX[i;j;k],iUMOMY)  =-dt*H3
+            S(CHF_IX[i;j;k],iUMOMZ)  =-dt*H4
+            S(CHF_IX[i;j;k],iUENG )  =-dt*H5          
+          enddo
+                           
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine CHARGE_EXCHANGE_2FPI(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRhoH],
+     &    CHF_CONST_INT[iRhoPIU],
+     &    CHF_CONST_INT[iRhoPIW],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t rho,  ux,  uy,  uz,  p, U2, U2H
+        real_t rhoH, uxH, uyH, uzH, pH, vT2H, vT2_UmPH, vT2_UmHP
+        real_t DUxDU, DUxUH, DUxUP, UdPH, UmPH, UmHP, UePH, UeHP
+        real_t sigmaPH, srrPH, MSX, MSY, MSZ, ES, MHX, MHY, MHZ, EH
+        real_t UdIH, UmIH, UmHI, UeIH, UeHI, sigmaIH, srrIH
+        real_t vT2P, vT2I, vT2_UmIH, vT2_UmHI
+        real_t rhoS, rhoI, pS, pI, duX, duY, duZ, HP, DH
+!                                                               c_11 =      4/PI
+        real_t, parameter :: C11   = 1.273239544735162686151070106980114896276D0
+!                                                               c_12 =      4/PI
+        real_t, parameter :: C12   = 1.273239544735162686151070106980114896276D0
+!                                                               c_21 =     16/PI
+        real_t, parameter :: C21   = 5.092958178940650744604280427920459585102D0
+!                                                               c_22 =    9*PI/4
+        real_t, parameter :: C22   = 7.068583470577034786540947612378881489443D0
+!                                                               c_31 =      4/PI
+        real_t, parameter :: C31   = 1.273239544735162686151070106980114896276D0
+!                                                               c_32 = 64/(9*PI)
+        real_t, parameter :: C32   = 2.263536968418066997601902412409093148934D0
+
+        integer iWVELXH, iWVELYH, iWVELZH, iWPRESH, iPressPIW
+        integer iUMOMXH, iUMOMYH, iUMOMZH, iUENGH,  iPressPIU
+
+#include "EosCommon.fh"
+#include "ChargeExchange.fh"
+
+        iWVELXH  = iRhoH + WVELX
+        iWVELYH  = iRhoH + WVELY
+        iWVELZH  = iRhoH + WVELZ
+        iWPRESH  = iRhoH + WPRES
+        iUMOMXH  = iRhoH + UMOMX
+        iUMOMYH  = iRhoH + UMOMY
+        iUMOMZH  = iRhoH + UMOMZ
+        iUENGH   = iRhoH + UENG
+
+        iPressPIW  = iRhoPIW + 1
+        iPressPIU  = iRhoPIU + 1
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = W(CHF_IX[i;j;k],WRHO)
+
+          ux     = W(CHF_IX[i;j;k],WVELX)
+          uy     = W(CHF_IX[i;j;k],WVELY)
+          uz     = W(CHF_IX[i;j;k],WVELZ)
+
+          p      = W(CHF_IX[i;j;k],WPRES)
+
+          U2     = ux*ux + uy*uy + uz*uz
+
+          rhoI   = W(CHF_IX[i;j;k],iRhoPIW)
+          pI     = W(CHF_IX[i;j;k],iPressPIW)
+
+          rhoS   = rho - rhoI
+          pS     = max( p - pI, two*smallp )
+
+          vT2P   =       pS/rhoS
+          vT2I   = 2.0D0*pI/rhoI
+!-------------------------------------------------------------------------------
+!                                                                charge exchange
+!-------------------------------------------------------------------------------
+!                                                                     NEUTRALS 1
+          rhoH   = W(CHF_IX[i;j;k],iRhoH)
+
+          uxH    = W(CHF_IX[i;j;k],iWVELXH)
+          uyH    = W(CHF_IX[i;j;k],iWVELYH)
+          uzH    = W(CHF_IX[i;j;k],iWVELZH)
+
+          pH     = W(CHF_IX[i;j;k],iWPRESH)
+
+          U2H    = uxH*uxH + uyH*uyH + uzH*uzH
+
+          vT2H   = 2.0D0*pH/rhoH
+
+          duX    = ux - uxH 
+          duY    = uy - uyH 
+          duZ    = uz - uzH 
+
+          DUxDU  = duX*duX + duY*duY + duZ*duZ
+          DUxUH  = duX*uxH + duY*uyH + duZ*uzH
+          DUxUP  = duX*ux  + duY*uy  + duZ*uz
+!                              proton + neutral(1) -> pickup proton + neutral(2)
+          UdPH   = sqrt( C11*vT2P + C12*vT2H +       DUxDU )
+          UmPH   = sqrt( C21*vT2P + C22*vT2H + 4.0D0*DUxDU )
+          UmHP   = sqrt( C21*vT2H + C22*vT2P + 4.0D0*DUxDU )
+          UePH   = sqrt( C31*vT2P + C32*vT2H +       DUxDU )
+          UeHP   = sqrt( C31*vT2H + C32*vT2P +       DUxDU )
+
+          sigmaPH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdPH )
+          sigmaPH  = ce_scaleSigmaFite*sigmaPH*sigmaPH
+!                                                                   Pauls & Zank
+          srrPH  = sigmaPH*rhoH*rhoS
+
+          vT2_UmPH = vT2H/UmPH
+          vT2_UmHP = vT2P/UmHP
+
+          DH     = srrPH*UdPH
+
+          MSX    = srrPH*duX*(UdPH + vT2_UmPH + vT2_UmHP)
+          MSY    = srrPH*duY*(UdPH + vT2_UmPH + vT2_UmHP)
+          MSZ    = srrPH*duZ*(UdPH + vT2_UmPH + vT2_UmHP)
+
+          MHX    = srrPH*(UdPH*uxH - vT2_UmPH*duX)
+          MHY    = srrPH*(UdPH*uyH - vT2_UmPH*duY)
+          MHZ    = srrPH*(UdPH*uzH - vT2_UmPH*duZ)
+
+          ES     = srrPH*(0.75D0*(UeHP*vT2P - UePH*vT2H)
+     &           +        0.5D0 *UdPH*(u2 - U2H)
+     &           +        vT2_UmPH*DUxUH + vT2_UmHP*DUxUP)
+
+          EH     = srrPH*(0.5D0*U2H*UdPH 
+     &           +        vT2H*(0.75D0*UePH - DUxUH/UmPH))
+
+          HP     = srrPH*(0.75D0*UePH*vT2H
+     &           + DUxDU*(0.5D0*UdPH + vT2_UmPH))
+!                 pickup proton(1) + neutral(1) -> pickup proton(2) + neutral(2)
+          UdIH   = sqrt( C11*vT2I + C12*vT2H +       DUxDU )
+          UmIH   = sqrt( C21*vT2I + C22*vT2H + 4.0D0*DUxDU )
+          UmHI   = sqrt( C21*vT2H + C22*vT2I + 4.0D0*DUxDU )
+          UeIH   = sqrt( C31*vT2I + C32*vT2H +       DUxDU )
+          UeHI   = sqrt( C31*vT2H + C32*vT2I +       DUxDU )
+
+          sigmaIH  = 2.1D0 - 0.092D0*log( ce_scaleVel*UdIH )
+          sigmaIH  = ce_scaleSigmaFite*sigmaIH*sigmaIH
+!                                                                   Pauls & Zank
+          srrIH    = sigmaIH*rhoH*rhoI
+
+          vT2_UmIH = vT2H/UmIH
+          vT2_UmHI = vT2I/UmHI
+
+          DH     = DH + srrIH*UdIH
+
+          MSX    = MSX + srrIH*duX*(UdIH + vT2_UmIH + vT2_UmHI)
+          MSY    = MSY + srrIH*duY*(UdIH + vT2_UmIH + vT2_UmHI)
+          MSZ    = MSZ + srrIH*duZ*(UdIH + vT2_UmIH + vT2_UmHI)
+
+          MHX    = MHX + srrIH*(UdIH*uxH - vT2_UmIH*duX)
+          MHY    = MHY + srrIH*(UdIH*uyH - vT2_UmIH*duY)
+          MHZ    = MHZ + srrIH*(UdIH*uzH - vT2_UmIH*duZ)
+
+          ES     = ES  + srrIH*(0.75D0*(UeHI*vT2I - UeIH*vT2H)
+     &           +              0.5D0 *UdIH*(u2 - U2H)
+     &           +              vT2_UmIH*DUxUH + vT2_UmHI*DUxUP)
+
+          EH     = EH + srrIH*(0.5D0*U2H*UdIH 
+     &           +             vT2H*(0.75D0*UeIH - DUxUH/UmIH))
+
+          HP     = HP  + srrIH*(0.75D0*(UeIH*vT2H - UeHI*vT2I)
+     &           +       DUxDU*(0.5D0*UdIH + vT2_UmIH))
+
+          HP     = (gamma - 1.0D0)*HP
+
+          S(CHF_IX[i;j;k],URHO     ) = zero
+
+          S(CHF_IX[i;j;k],UMOMX    ) =-dt*MSX
+          S(CHF_IX[i;j;k],UMOMY    ) =-dt*MSY
+          S(CHF_IX[i;j;k],UMOMZ    ) =-dt*MSZ
+
+          S(CHF_IX[i;j;k],UENG     ) =-dt*ES
+
+          S(CHF_IX[i;j;k],UBX      ) = zero
+          S(CHF_IX[i;j;k],UBY      ) = zero
+          S(CHF_IX[i;j;k],UBZ      ) = zero
+
+          S(CHF_IX[i;j;k],iRhoH    ) =-dt*DH
+
+          S(CHF_IX[i;j;k],iUMOMXH  ) =-dt*MHX
+          S(CHF_IX[i;j;k],iUMOMYH  ) =-dt*MHY
+          S(CHF_IX[i;j;k],iUMOMZH  ) =-dt*MHZ
+
+          S(CHF_IX[i;j;k],iUENGH   ) =-dt*EH
+
+          S(CHF_IX[i;j;k],iRhoPIU  ) = dt*srrPH*UdPH
+          S(CHF_IX[i;j;k],iPressPIU) = dt*HP
+        CHF_ENDDO
+
+        return
+        end

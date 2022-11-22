@@ -1,0 +1,41 @@
+C
+C   Fortran parameters for the planar Riemann problem example:
+C
+        real_t densityL,  densityR
+        real_t pressureL, pressureR
+        real_t temperatureL, temperatureR
+        real_t velxL,     velxR
+        real_t velyL,     velyR
+        real_t velzL,     velzR
+        real_t BxL,       BxR
+        real_t ByL,       ByR
+        real_t BzL,       BzR
+        real_t machL
+
+        real_t TMLIM
+
+        real_t netDenL, netPresL, netTemperatureL
+        real_t netVelx, netVely, netVelz
+        
+        integer NInitDistr
+ 
+        real_t ref_N, ref_V
+
+        real_t startX, startY
+        common /riemanncm/
+     &                    densityL,  densityR,
+     &                    pressureL, pressureR,
+     &                    temperatureL, temperatureR,
+     &                    velxL,     velxR,
+     &                    velyL,     velyR,
+     &                    velzL,     velzR,
+     &                    BxL,       BxR,
+     &                    ByL,       ByR,
+     &                    BzL,       BzR,
+     &                    machL,     TMLIM,
+     &                    netDenL,   netPresL, netTemperatureL,
+     &                    ref_N,     ref_V,
+     &                    netVelx, netVely, netVelz,
+     &                    startX,    startY, 
+     &                    NInitDistr
+     

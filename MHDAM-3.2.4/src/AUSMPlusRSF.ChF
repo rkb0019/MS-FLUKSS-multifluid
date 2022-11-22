@@ -1,0 +1,117 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+
+        subroutine AUSMPLUSF(
+     &    CHF_FRA[Wgdnv],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRho],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i; j; k]
+        integer inorm, itan1, itan2
+        real_t PGasL, RhoL, UL, VL, WL, RUxUL, EL, AL2, AL, ML
+        real_t PGasR, RhoR, UR, VR, WR, RUxUR, ER, AR2, AR, MR
+        real_t MM_R, MP_L, PM_R, PP_L, MM, PP
+        real_t A, A2, H, HM, M2, CONR
+
+        integer spacedim, iVelX, iPres
+
+#include "EosCommon.fh"
+#include "RSCommon.fh"
+
+        spacedim = 3
+
+        iVelX  = iRho + 1
+        iPres  = iRho + 4
+
+        inorm  = iVelX +      idir
+        itan1  = iVelX + mod( idir + 1, spacedim )
+        itan2  = iVelX + mod( idir + 2, spacedim )
+
+        CHF_MULTIDO[box;i;j;k]
+          PGasL  = max( smallp, WLeft(CHF_IX[i;j;k],iPres) )
+          RhoL   = max( smallr, WLeft(CHF_IX[i;j;k],iRho ) )
+
+          UL     =              WLeft(CHF_IX[i;j;k],inorm)
+          VL     =              WLeft(CHF_IX[i;j;k],itan1)
+          WL     =              WLeft(CHF_IX[i;j;k],itan2)
+
+          AL2    = gamma*PGasL/RhoL
+          AL     = sqrt( AL2 )
+
+          RUxUL  = half*RhoL*(UL*UL  + VL*VL  + WL*WL)
+
+          EL     = PGasL/hgamma + RUxUL
+
+          PGasR  = max( smallp, WRight(CHF_IX[i;j;k],iPres) )
+          RhoR   = max( smallr, WRight(CHF_IX[i;j;k],iRho ) )
+
+          UR     =              WRight(CHF_IX[i;j;k],inorm)
+          VR     =              WRight(CHF_IX[i;j;k],itan1)
+          WR     =              WRight(CHF_IX[i;j;k],itan2)
+
+          AR2    = gamma*PGasR/RhoR
+          AR     = sqrt( AR2 )
+
+          RUxUR  = half*RhoR*(UR*UR  + VR*VR  + WR*WR)
+
+          ER     = PGasR/hgamma + RUxUR
+
+          A2     = (RhoL*AL*AL + RhoR*AR*AR)/(RhoL + RhoR)
+          A      = sqrt( A2 )
+
+          ML     = UL/A
+
+          if( ML >= one ) then
+            MP_L   = ML
+            PP_L   = PGasL
+          else if( ML > -one ) then
+            H      = half*(ML + one)
+            M2     = H*H
+            HM     = ML - one
+            MP_L   = M2*(one + half*HM*HM)
+            PP_L   = M2*(two - ML + 0.75D0*ML*HM*HM)*PGasL
+          else
+            MP_L   = zero
+            PP_L   = zero
+          endif
+
+          MR     = UR/A
+
+          if( MR <= -one ) then
+            MM_R   = MR
+            PM_R   = PGasR
+          else if( MR <= one ) then
+            H      = half*(one - MR)
+            HM     = MR + one
+            M2     =-H*H
+            MM_R   = M2*(one + half*HM*HM)
+            PM_R   = M2*(-two - MR + 0.75D0*MR*HM*HM)*PGasR
+          else
+            MM_R   = zero
+            PM_R   = zero
+          endif
+
+          PP     =  PP_L + PM_R
+          MM     = (MP_L + MM_R)*A
+          if( MM >= zero ) then
+            CONR                         = MM*RhoL
+            Wgdnv(CHF_IX[i;j;k],iRho  )  = CONR
+            Wgdnv(CHF_IX[i;j;k],inorm )  = CONR*UL + PP
+            Wgdnv(CHF_IX[i;j;k],itan1 )  = CONR*VL
+            Wgdnv(CHF_IX[i;j;k],itan2 )  = CONR*WL
+            Wgdnv(CHF_IX[i;j;k],iPres )  = MM*(EL + PGasL)
+          else
+            CONR                         = MM*RhoR
+            Wgdnv(CHF_IX[i;j;k],iRho  )  = CONR
+            Wgdnv(CHF_IX[i;j;k],inorm )  = CONR*UR + PP
+            Wgdnv(CHF_IX[i;j;k],itan1 )  = CONR*VR
+            Wgdnv(CHF_IX[i;j;k],itan2 )  = CONR*WR
+            Wgdnv(CHF_IX[i;j;k],iPres )  = MM*(ER + PGasR)
+          endif
+        CHF_ENDDO
+
+        return
+        end

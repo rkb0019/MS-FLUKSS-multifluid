@@ -1,0 +1,76 @@
+mhdam.problem = kelvin
+
+mhdam.gamma = 1.4
+
+mhdam.verbosity = 0
+
+mhdam.max_step = 100000
+mhdam.max_time = 0.5
+
+mhdam.domain_length = 2.0
+mhdam.num_cells =  64 128  4
+mhdam.is_periodic = 1 1 0
+mhdam.max_level = 2
+mhdam.ref_ratio = 2 2   2 2   2 2   2 2 
+
+mhdam.regrid_interval = 5 -1 -1 -1 -1 -1
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.2
+mhdam.refine_B_thresh = 0.2
+
+mhdam.output_density_gradient = -1
+mhdam.output_B_gradient = -1
+
+# Blocking factor. For each box B in the grids, this is the number Nref 
+# for which it is guaranteed to be true that refine(coarsen(B;Nref);Nref) == B. 
+# Default = 1. Note that this will also be the minimum possible box size.
+mhdam.block_factor = 4
+
+# Maximum length of a grid in any dimension. An input value of 0
+# means the maximum value will be infinity (no limit).
+mhdam.max_grid_size = 32
+
+# Overall grid e±ciency to be generated. If this number is set
+# low, the grids will tend to be larger and less filled with tags. If this number
+# is set high, the grids will tend to be smaller and more filled with tags. This
+# controls the aggressiveness of agglomeration by box merging.
+mhdam.fill_ratio = 0.75
+
+# Proper nesting buffer size. This will be the minimum number
+# of level l cells between any level l+1 cell and a level l-1 cell. Default = 1.
+mhdam.grid_buffer_size = 4
+
+mhdam.char_reconstruction = 0
+
+mhdam.limiter_RHO = 9
+mhdam.limiter_VX = 9
+mhdam.limiter_VY = 9
+mhdam.limiter_VZ = 9
+mhdam.limiter_P = 9
+mhdam.limiter_BX = 9
+mhdam.limiter_BY = 9
+mhdam.limiter_BZ = 9
+
+mhdam.time_approximation = 1
+
+mhdam.flux = 1
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+mhdam.8wave_use = 1
+
+
+mhdam.checkpoint_interval = -1000
+mhdam.plot_interval = -1
+mhdam.plot_prefix  = klv.p
+mhdam.chk_prefix = klv.c
+mhdam.tecplot_interval = 100000
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1
+
+#mhdam.restart_file = klv1200.2d.hdf5

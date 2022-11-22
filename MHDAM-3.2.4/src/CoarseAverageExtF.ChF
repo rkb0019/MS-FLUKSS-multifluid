@@ -1,0 +1,50 @@
+C      _______              __
+C     / ___/ /  ___  __ _  / /  ___
+C    / /__/ _ \/ _ \/  V \/ _ \/ _ \
+C    \___/_//_/\___/_/_/_/_.__/\___/
+C    Please refer to Copyright.txt, in Chombo's root directory.
+
+#include "CONSTANTS.H"
+      
+      
+      subroutine averagewithvolumes(
+     &     CHF_FRA[coarse],
+     &     CHF_CONST_FRA[fine],
+     &     CHF_CONST_FRA1[volf],
+     &     CHF_BOX[box],     
+     &     CHF_CONST_INT[refRatio],     
+     &     CHF_BOX[bref])
+
+      integer var
+      integer CHF_DDECL[ic;jc;kc]
+      integer CHF_DDECL[ip;jp;kp]
+      integer CHF_DDECL[ii;jj;kk]
+
+      real_t coarseSum,vol,volc
+
+c     bref is a box that will go from (0,0,0) to (refRatio-1)*(1,1,1)
+                  
+                        
+      do var = 0, CHF_NCOMP[coarse] - 1
+        CHF_MULTIDO[box;ic;jc;kc]
+          CHF_DTERM[
+          ip = ic*refRatio;
+          jp = jc*refRatio;
+          kp = kc*refRatio]
+
+          coarseSum = zero
+          volc      = zero
+                    
+          CHF_MULTIDO[ bref; ii; jj; kk ]                                       
+            vol       = volf(CHF_IX[ip+ii;jp+jj;kp+kk])
+            coarseSum = coarseSum + vol*fine( CHF_IX[ip+ii;jp+jj;kp+kk],var)
+            volc      = volc + vol            
+          CHF_ENDDO
+                                        
+          coarse(CHF_IX[ic;jc;kc],var) = coarseSum / volc
+          
+        CHF_ENDDO
+      enddo
+           
+      return
+      end

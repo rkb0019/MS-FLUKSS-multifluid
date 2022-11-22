@@ -1,0 +1,24 @@
+C
+C   Fortran parameters for the planar oblique shock wave problem:
+C
+        real_t densityL,  densityR
+        real_t pressureL, pressureR
+        real_t velxL,     velxR
+        real_t velyL,     velyR
+        real_t angleSW
+        real_t startX
+
+        real_t obliqueAe
+        real_t obliqueAv
+        real_t obliquePsi
+        real_t obliqueK
+
+        common /obliquecm/
+     &                    densityL,   densityR,
+     &                    pressureL,  pressureR,
+     &                    velxL,      velxR,
+     &                    velyL,      velyR,
+     &                    angleSW,    startX,
+     &                    obliqueAe,  obliqueAv,
+     &                    obliquePsi, obliqueK
+     

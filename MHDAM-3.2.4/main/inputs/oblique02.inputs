@@ -1,0 +1,60 @@
+mhdam.problem = oblique
+
+mhdam.gamma = 1.4
+
+mhdam.verbosity = 0
+
+mhdam.densityL   = 1.0
+mhdam.pressureL  = 0.7142857
+mhdam.velxL      = 2.9
+mhdam.velyL      = 0.0
+mhdam.angleSW    = 90.0
+mhdam.startX     = 0.5
+mhdam.obliqueAe  = 0.0
+mhdam.obliqueAv  = 0.025
+mhdam.obliquePsi = 90.0
+mhdam.obliqueK   = 10.0
+
+mhdam.max_step = 10000
+mhdam.max_time = 10000000.0
+
+mhdam.domain_length = 1.0
+mhdam.num_cells =  512 512 4
+mhdam.is_periodic = 0 1 1
+mhdam.max_level = 0
+mhdam.ref_ratio = 2 2 2 2 
+
+mhdam.regrid_interval = 2 2 2 2 2 2
+mhdam.tag_buffer_size = 3
+
+mhdam.refine_density_thresh = 0.015
+mhdam.refine_B_thresh = -1
+
+mhdam.block_factor = 4
+mhdam.max_grid_size = 32
+mhdam.fill_ratio = 0.75
+
+mhdam.limiter_RHO = 9
+mhdam.limiter_VX = 9
+mhdam.limiter_VY = 9
+mhdam.limiter_VZ = 9
+mhdam.limiter_P = 9
+mhdam.limiter_BX = 9
+mhdam.limiter_BY = 9
+mhdam.limiter_BZ = 9
+
+mhdam.time_approximation = 1
+
+mhdam.divB_method = 1
+mhdam.divB_cleaning = 0
+
+mhdam.checkpoint_interval = 1000
+mhdam.plot_interval = 1000
+mhdam.plot_prefix  = plt
+mhdam.chk_prefix = chk
+
+mhdam.cfl = 0.5
+mhdam.initial_cfl = 0.5
+
+mhdam.max_dt_growth = 1.1
+mhdam.dt_tolerance_factor = 1.1

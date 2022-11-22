@@ -1,0 +1,575 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+
+        subroutine MAXWAVESPEED_E(
+     &    CHF_FRA1[cmax],
+     &    CHF_CONST_FRA[cons],
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iMOMX, iMOMY, iMOMZ, iENG
+        real_t  ru, rv, rw, u, v, w, rho, invrho, p
+        real_t  umax, ke, a
+
+#include "EosCommon.fh"
+
+        iMOMX  = iRHO + 1
+        iMOMY  = iRHO + 2
+        iMOMZ  = iRHO + 3
+        iENG   = iRHO + 4
+        
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = cons(CHF_IX[i;j;k],iRHO)
+          rho    = max( rho, smallr )
+          invrho = one/rho
+
+          ru     = cons(CHF_IX[i;j;k],iMOMX)
+          rv     = cons(CHF_IX[i;j;k],iMOMY)
+          rw     = cons(CHF_IX[i;j;k],iMOMZ)
+
+          u      = ru*invrho
+          v      = rv*invrho
+          w      = rw*invrho
+
+          ke     = ru*u + rv*v + rw*w
+
+          p      = hgamma*(cons(CHF_IX[i;j;k],iENG) - half*ke)
+          p      = max( p, smallp )
+
+          a      = sqrt( gamma*p*invrho )
+
+          umax   = max( abs( u ), abs( v ), abs( w ) ) + a
+
+          cmax(CHF_IX[i;j;k]) = max( umax, cmax(CHF_IX[i;j;k]) )
+        CHF_ENDDO
+
+        return
+        end
+        
+        subroutine MINDT_SPHERICAL_E(
+     &    CHF_FRA1[dt],
+     &    CHF_CONST_FRA[cons],    
+     &    CHF_CONST_INT[iRHO], 
+     &    CHF_CONST_INT[level],     
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])             
+
+        integer CHF_DDECL[i;j;k]
+        real_t  CHF_DDECL[ p;rdphi,dphi;rdtheta,dtheta]        
+        real_t  ru, rv, rw, rho, invrho
+        real_t  dtmin, ke, a
+        real_t  ur, uphi, utheta
+        integer iMOMR, iMOMP, iMOMT, iENG
+
+#include "EosCommon.fh"
+        
+        iMOMR  = iRHO + 1
+        iMOMP  = iRHO + 2
+        iMOMT  = iRHO + 3
+        iENG   = iRHO + 4
+                                      
+       CHF_MULTIDO[box;i;j;k]          
+          CHF_DTERM[ ;          
+            dphi   = m_dphi  (j/m_ref_factor(level))*m_inv_factor(level);
+            dtheta = m_dtheta(k,level)]
+          CHF_DSELECT[ ;
+            rdphi   = m_rn(i,level)*dphi;
+            rdphi   = m_rn(i,level)*dphi*m_thetac(k,ISIN,level)
+            rdtheta = m_rn(i,level)*dtheta  ]
+                              
+          rho    = cons(CHF_IX[i;j;k],iRHO)
+          invrho = one/rho
+
+          ru     = cons(CHF_IX[i;j;k],iMOMR)
+          rv     = cons(CHF_IX[i;j;k],iMOMP)
+          rw     = cons(CHF_IX[i;j;k],iMOMT)
+
+          ur     = ru*invrho
+          uphi   = rv*invrho
+          utheta = rw*invrho                    
+
+          ke     = ru*ur + rv*uphi + rw*utheta
+          
+          p      = hgamma*(cons(CHF_IX[i;j;k],iENG) - half*ke)
+          p      = max( p, smallp )
+          
+          a      = sqrt( gamma*p*invrho )          
+          
+          dtmin  = dt(CHF_IX[i;j;k])
+
+          dtmin  = min( m_dr(i,level)/(abs( ur ) + a), dtmin )
+          
+          dtmin  = min( rdphi/(abs( uphi ) + a ), dtmin )
+          
+#if CH_SPACEDIM == 3                              
+          dtmin  = min( rdtheta/(abs( utheta ) + a), dtmin )
+#endif          
+                    
+          dt(CHF_IX[i;j;k]) = dtmin
+        CHF_ENDDO
+
+        return
+        end
+
+
+        subroutine CONSTOPRIM_E(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_CONST_INT[iRHOP],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iVELX, iVELY, iVELZ, iPRES
+        integer iMOMX, iMOMY, iMOMZ, iENG
+        real_t rho, p, ke, uu, vv, ww, ru, rv, rw
+
+#include "EosCommon.fh"
+
+        iMOMX  = iRHO + 1
+        iMOMY  = iRHO + 2
+        iMOMZ  = iRHO + 3
+        iENG   = iRHO + 4
+
+        iVELX  = iRHOP + 1
+        iVELY  = iRHOP + 2
+        iVELZ  = iRHOP + 3
+        iPRES  = iRHOP + 4
+
+        CHF_MULTIDO[box;i;j;k]
+          rho  = U(CHF_IX[i;j;k],iRHO)
+          ru   = U(CHF_IX[i;j;k],iMOMX)
+          rv   = U(CHF_IX[i;j;k],iMOMY)
+          rw   = U(CHF_IX[i;j;k],iMOMZ)
+
+          uu   = ru/rho
+          vv   = rv/rho
+          ww   = rw/rho
+
+          ke   = ru*uu + rv*vv + rw*ww
+
+          p    = hgamma*(U(CHF_IX[i;j;k],iENG) - half*ke)
+          p    = max( p, smallp )
+
+          W(CHF_IX[i;j;k],iVELX) = uu
+          W(CHF_IX[i;j;k],iVELY) = vv
+          W(CHF_IX[i;j;k],iVELZ) = ww
+
+          W(CHF_IX[i;j;k],iRHOP) = rho
+          W(CHF_IX[i;j;k],iPRES) = p
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine PRIMTOCONS_E(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_CONST_INT[iRHOP],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i ;j ;k ]
+        integer iMOMX, iMOMY, iMOMZ, iENG
+        integer iVELX, iVELY, iVELZ, iPRES
+        real_t  p, rho, ke, uu, vv, ww
+
+#include "EosCommon.fh"
+
+        iMOMX  = iRHO + 1
+        iMOMY  = iRHO + 2
+        iMOMZ  = iRHO + 3
+        iENG   = iRHO + 4
+
+        iVELX  = iRHOP + 1
+        iVELY  = iRHOP + 2
+        iVELZ  = iRHOP + 3
+        iPRES  = iRHOP + 4
+
+        CHF_MULTIDO[box;I;J;K]
+          rho  = max( W(CHF_IX[i;j;k],iRHOP), smallr )
+
+          uu   =      W(CHF_IX[i;j;k],iVELX)
+          vv   =      W(CHF_IX[i;j;k],iVELY)
+          ww   =      W(CHF_IX[i;j;k],iVELZ)
+
+          p    =      W(CHF_IX[i;j;k],iPRES)
+
+          ke   = uu*uu + vv*vv + ww*ww
+
+          U(CHF_IX[i;j;k],iRHO)   = rho
+          U(CHF_IX[i;j;k],iMOMX)  = rho*uu
+          U(CHF_IX[i;j;k],iMOMY)  = rho*vv
+          U(CHF_IX[i;j;k],iMOMZ)  = rho*ww
+
+          U(CHF_IX[i;j;k],iENG)   = p/hgamma + half*rho*ke
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine SOURCEAXISYMMETRIC_E(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_CONST_INT[iRHOP],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iMOMX, iMOMY, iMOMZ, iENG
+        integer iVELX, iVELY, iVELZ, iPRES
+
+        real_t Rho, Ux, Uy, Uz, P, e, y, UxU, h
+
+#include "EosCommon.fh"
+
+        iMOMX  = iRHO + 1
+        iMOMY  = iRHO + 2
+        iMOMZ  = iRHO + 3
+        iENG   = iRHO + 4
+
+        iVELX  = iRHOP + 1
+        iVELY  = iRHOP + 2
+        iVELZ  = iRHOP + 3
+        iPRES  = iRHOP + 4
+
+        CHF_MULTIDO[box;i;j;k]
+          y      = dx*(j + half)
+          h      =-dt/y
+
+          Rho    = W(CHF_IX[i;j;k],iRHOP)
+
+          Ux     = W(CHF_IX[i;j;k],iVELX)
+          Uy     = W(CHF_IX[i;j;k],iVELY)
+          Uz     = W(CHF_IX[i;j;k],iVELZ)
+
+          P      = W(CHF_IX[i;j;k],iPRES)
+
+          UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+
+          e      = p/hgamma + Rho*UxU
+
+          h      = h*Uy
+
+          S(CHF_IX[i;j;k],iRHO )  = h*Rho
+
+          S(CHF_IX[i;j;k],iMOMX)  = h*Rho*Ux
+          S(CHF_IX[i;j;k],iMOMY)  = h*Rho*Uy
+          S(CHF_IX[i;j;k],iMOMZ)  = zero
+
+          S(CHF_IX[i;j;k],iENG )  = h*(e + p)
+        CHF_ENDDO
+
+        return
+        end
+        
+        subroutine SOURCEAXISYMMETRIC_POLAR_E(
+     &    CHF_FRA[S],
+     &    CHF_CONST_FRA[W],
+     &    CHF_CONST_REAL[dt],    
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_CONST_INT[iRHOP], 
+     &    CHF_CONST_INT[level],     
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k]
+
+        real_t Rho, Ux, Uy, Uz, P, e, y, UxU, h
+        real_t sinPhi,cosPhi, phi
+        
+        integer iMOMX, iMOMY, iMOMZ, iENG
+        integer iVELR, iVELP, iVELT, iPRES
+        
+#include "EosCommon.fh"
+
+        iMOMX  = iRHO + 1
+        iMOMY  = iRHO + 2
+        iMOMZ  = iRHO + 3
+        iENG   = iRHO + 4
+
+        iVELR  = iRHOP + 1
+        iVELP  = iRHOP + 2
+        iVELT  = iRHOP + 3
+        iPRES  = iRHOP + 4
+
+        CHF_MULTIDO[box;i;j;k]   
+          sinPhi = m_phic(j,ISIN,level)
+          cosPhi = m_phic(j,ICOS,level)
+                    
+          y      = m_rc(i,level)*sinPhi
+          h      =-dt/y
+
+          Rho    = W(CHF_IX[i;j;k],iRHOP)
+
+          Ux     = W(CHF_IX[i;j;k],iVELR)*cosPhi - W(CHF_IX[i;j;k],iVELP)*sinPhi
+          Uy     = W(CHF_IX[i;j;k],iVELR)*sinPhi + W(CHF_IX[i;j;k],iVELP)*cosPhi
+          Uz     = W(CHF_IX[i;j;k],iVELT)
+
+          P      = W(CHF_IX[i;j;k],iPRES)
+          
+          UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+
+          e      = p*invhgamma + Rho*UxU
+
+          S(CHF_IX[i;j;k],iRHO ) = h*Rho*Uy
+
+          S(CHF_IX[i;j;k],iMOMX) = h*Rho*Ux*Uy
+          S(CHF_IX[i;j;k],iMOMY) = h*Rho*Uy*Uy
+          S(CHF_IX[i;j;k],iMOMZ) = zero
+
+          S(CHF_IX[i;j;k],iENG ) = h*Uy*(e + p)
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine ADDSOURCE_E(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[S],
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iMOMX, iMOMY, iMOMZ, iENG
+
+        iMOMX  = iRHO + 1
+        iMOMY  = iRHO + 2
+        iMOMZ  = iRHO + 3
+        iENG   = iRHO + 4
+
+        CHF_MULTIDO[box;i;j;k]
+          U(CHF_IX[i;j;k],iRHO )  = U(CHF_IX[i;j;k],iRHO ) + S(CHF_IX[i;j;k],iRHO )
+
+          CHF_DTERM[
+          U(CHF_IX[i;j;k],iMOMX)  = U(CHF_IX[i;j;k],iMOMX) + S(CHF_IX[i;j;k],iMOMX);
+          U(CHF_IX[i;j;k],iMOMY)  = U(CHF_IX[i;j;k],iMOMY) + S(CHF_IX[i;j;k],iMOMY);
+          U(CHF_IX[i;j;k],iMOMZ)  = U(CHF_IX[i;j;k],iMOMZ) + S(CHF_IX[i;j;k],iMOMZ)]
+
+          U(CHF_IX[i;j;k],iENG )  = U(CHF_IX[i;j;k],iENG ) + S(CHF_IX[i;j;k],iENG )
+        CHF_ENDDO
+
+        return
+        end
+
+        subroutine POSTPROCESSING_E(
+     &    CHF_FRA[U],
+     &    CHF_CONST_FRA[Uold],
+     &    CHF_CONST_REAL[dt],
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iMOMX, iMOMY, iMOMZ, iENG
+
+        integer iWas
+        real_t Rho, Ux, Uy, Uz, P, E, UxU
+
+#include "EosCommon.fh"
+
+        iMOMX  = iRHO + 1
+        iMOMY  = iRHO + 2
+        iMOMZ  = iRHO + 3
+        iENG   = iRHO + 4
+
+        CHF_MULTIDO[box;i;j;k]
+          Rho    = U(CHF_IX[i;j;k],iRHO)
+
+          Ux     = U(CHF_IX[i;j;k],iMOMX)/Rho
+          Uy     = U(CHF_IX[i;j;k],iMOMY)/Rho
+          Uz     = U(CHF_IX[i;j;k],iMOMZ)/Rho
+          E      = U(CHF_IX[i;j;k],iENG )
+
+          UxU    = half   *(Ux*Ux + Uy*Uy + Uz*Uz)
+
+          P      = hgamma*(E - Rho*UxU)
+
+          iWas   = 0
+          if( Rho < smallR ) then
+            Rho    = smallR
+            iWas   = 1
+          endif
+
+          if( P < smallP ) then
+            P      = smallP
+            iWas   = 1
+          endif
+
+          if( iWas == 1 ) then
+            U(CHF_IX[i;j;k],iRHO )  = Rho
+
+            U(CHF_IX[i;j;k],iMOMX)  = Rho*Ux
+            U(CHF_IX[i;j;k],iMOMY)  = Rho*Uy
+            U(CHF_IX[i;j;k],iMOMZ)  = Rho*Uz
+
+            U(CHF_IX[i;j;k],iENG )  = p/hgamma + Rho*UxU
+          endif
+        CHF_ENDDO
+
+        return
+        end
+        
+        subroutine FLUXESHANCOCK_E(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[Prim],          
+     &    CHF_CONST_INT[idir],
+     &    CHF_CONST_INT[iRHO],
+     &    CHF_CONST_INT[iRHOP],
+     &    CHF_BOX[box])
+     
+     
+        integer CHF_DDECL[i;j;k]
+        integer inorm,  itan1,  itan2
+        integer inormc, itanc1, itanc2
+        integer iMOMX, iENG, iVELX, iPRES
+
+        real_t  rho, p, u, v, w, e, ke        
+
+#include "EosCommon.fh"
+
+        iMOMX  = iRHO + 1
+        iENG   = iRHO + 4
+
+        iVELX  = iRHOP + 1
+        iPRES  = iRHOP + 4
+
+        inorm  = iVELX + idir
+        itan1  = iVELX + mod( idir + 1, 3 )
+        itan2  = iVELX + mod( idir + 2, 3 )
+
+        inormc = iMOMX + idir
+        itanc1 = iMOMX + mod( idir + 1, 3 )
+        itanc2 = iMOMX + mod( idir + 2, 3 )
+
+        CHF_MULTIDO[box;i;j;k]
+          rho    = max( smallr, Prim(CHF_IX[i;j;k],iRHOP) )
+          u      =              Prim(CHF_IX[i;j;k],inorm)
+          v      =              Prim(CHF_IX[i;j;k],itan1)
+          w      =              Prim(CHF_IX[i;j;k],itan2)
+          p      = max( smallp, Prim(CHF_IX[i;j;k],iPRES) )
+          ke     = half*(u*u  + v*v  + w*w )
+          e      = p*invhgamma + rho*ke
+
+          F(CHF_IX[i;j;k],iRHO  ) = rho*u
+          F(CHF_IX[i;j;k],inormc) = rho*u*u + p
+          F(CHF_IX[i;j;k],itanc1) = rho*u*v
+          F(CHF_IX[i;j;k],itanc2) = rho*u*w
+          F(CHF_IX[i;j;k],iENG  ) = u*(e + p)          
+        CHF_ENDDO
+
+        return
+        end
+
+
+      subroutine CHARANALYSIS_E( CHF_FRA[dWLeft],
+     &                           CHF_FRA[dWRight],
+     &                           CHF_CONST_FRA[W],
+     &                           CHF_CONST_INT[dir],
+     &                           CHF_BOX[box])
+
+#include "EosCommon.fh"
+
+      integer CHF_DDECL[i;j;k], inorm
+      real_t  p, rho, dP, dRho, dUn, c, c2, h1, h2, h3
+c                                        Constant gamma characteristic expansion
+      inorm  = WVELX + dir
+
+      CHF_MULTIDO[box;i;j;k]
+        p      = max( W(CHF_IX[i;j;k],WPRES), smallp )
+        rho    = max( W(CHF_IX[i;j;k],WRHO ), smallr )
+
+        c2     = gamma*p/rho
+        c      = sqrt( c2 )
+
+        h1     = one/c2
+        h2     = half*rho/c
+        h3     = half*h1
+
+        dP     = dWLeft(CHF_IX[i;j;k],WPRES)
+        dRho   = dWLeft(CHF_IX[i;j;k],WRHO )
+        dUn    = dWLeft(CHF_IX[i;j;k],inorm)
+
+        dWLeft(CHF_IX[i;j;k],WPRES) = h2*dUn  + h3*dP
+        dWLeft(CHF_IX[i;j;k],WRHO ) =-h2*dUn  + h3*dP
+        dWLeft(CHF_IX[i;j;k],inorm) =    dRho - h1*dP
+
+        dP     = dWRight(CHF_IX[i;j;k],WPRES)
+        dRho   = dWRight(CHF_IX[i;j;k],WRHO )
+        dUn    = dWRight(CHF_IX[i;j;k],inorm)
+
+        dWRight(CHF_IX[i;j;k],WPRES) = h2*dUn  + h3*dP
+        dWRight(CHF_IX[i;j;k],WRHO ) =-h2*dUn  + h3*dP
+        dWRight(CHF_IX[i;j;k],inorm) =    dRho - h1*dP
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine CHARSYNTHESIS_E( CHF_FRA[dWLeft],
+     &                            CHF_FRA[dWRight],
+     &                            CHF_CONST_FRA[W],
+     &                            CHF_CONST_INT[dir],
+     &                            CHF_BOX[box])
+
+#include "EosCommon.fh"
+
+      integer CHF_DDECL[inorm;itan1;itan2]
+      integer CHF_DDECL[i;j;k]
+      real_t  p, rho, c, c2, h1
+      real_t  alphap, alpham, alpha0r
+      real_t  CHF_DDECL[Un;Ut1;Ut2]
+      integer spacedim
+
+      spacedim = CH_SPACEDIM
+
+      CHF_DTERM[
+      inorm  = WVELX +     dir              ;
+      itan1  = WVELX + mod(dir + 1,spacedim);
+      itan2  = WVELX + mod(dir + 2,spacedim)]
+
+      CHF_MULTIDO[box;i;j;k]
+        CHF_DTERM[
+        Un     =      W(CHF_IX[i;j;k],inorm);
+        Ut1    =      W(CHF_IX[i;j;k],itan1);
+        Ut2    =      W(CHF_IX[i;j;k],itan2)]
+
+        p      = max( W(CHF_IX[i;j;k],WPRES), smallp )
+        rho    = max( W(CHF_IX[i;j;k],WRHO ), smallr )
+
+        c2     = gamma*p/rho
+        c      = sqrt( c2 )
+
+        h1     = c/rho
+
+        alphap   = dWLeft(CHF_IX[i;j;k],WPRES)
+        alpham   = dWLeft(CHF_IX[i;j;k],WRHO )
+        alpha0r  = dWLeft(CHF_IX[i;j;k],inorm)
+
+        CHF_DTERM[
+        dWLeft(CHF_IX[i;j;k],inorm) = Un  - (alphap - alpham)*h1;
+        dWLeft(CHF_IX[i;j;k],itan1) = Ut1 - dWLeft(CHF_IX[i;j;k],itan1);
+        dWLeft(CHF_IX[i;j;k],itan2) = Ut2 - dWLeft(CHF_IX[i;j;k],itan2)]
+
+        dWLeft(CHF_IX[i;j;k],WPRES) = p   - (alphap + alpham)*c2
+        dWLeft(CHF_IX[i;j;k],WRHO ) = rho - (alphap + alpham + alpha0r)
+
+        alphap   = dWRight(CHF_IX[i;j;k],WPRES)
+        alpham   = dWRight(CHF_IX[i;j;k],WRHO )
+        alpha0r  = dWRight(CHF_IX[i;j;k],inorm)
+
+        CHF_DTERM[
+        dWRight(CHF_IX[i;j;k],inorm) = Un  + (alphap - alpham)*h1;
+        dWRight(CHF_IX[i;j;k],itan1) = Ut1 + dWRight(CHF_IX[i;j;k],itan1);
+        dWRight(CHF_IX[i;j;k],itan2) = Ut2 + dWRight(CHF_IX[i;j;k],itan2)]
+
+        dWRight(CHF_IX[i;j;k],WPRES) = p   + (alphap + alpham)*c2
+        dWRight(CHF_IX[i;j;k],WRHO ) = rho + alphap + alpham + alpha0r
+      CHF_ENDDO
+
+      return
+      end

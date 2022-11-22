@@ -1,0 +1,87 @@
+#include "CONSTANTS.H"
+
+c
+c multidimensional limiting
+c
+c bn:  box which spans the neighbors of a cell (generally (-1,1) in
+c      each coordinate direction
+c bcoarse: coarse-level box over which to limit slopes
+c 
+
+      subroutine interplimit_BCL (
+     &     CHF_FRA       [ islope ],
+     &     CHF_FRA       [ jslope ],
+     &     CHF_FRA       [ kslope ],
+     &     CHF_CONST_FRA [ state ],
+     &     CHF_BOX       [ bcoarse ],
+     &     CHF_BOX       [ bn ],
+     &     CHF_BOX       [ physdomain]
+     &     )
+
+      integer CHF_DDECL [ i ; j ; k  ], var
+      integer CHF_DDECL [ ii; jj; kk ]
+      integer CHF_DDECL [ in; jn; kn ]
+      REAL_T statemax, statemin, deltasum, eta, val
+
+      do var = 0, CHF_NCOMP[islope] - 1
+        CHF_MULTIDO [ bcoarse; i; j; k ]
+          val      = state(CHF_IX[i;j;k],var)
+          statemax = val
+          statemin = val
+          
+          CHF_MULTIDO [ bn; ii; jj; kk ]
+            CHF_DTERM[
+              in = i + ii;
+              jn = j + jj;
+              kn = k + kk]
+
+            if(
+              CHF_DTERM[
+     &             in .ge. CHF_LBOUND[state;     0] .and.
+     &             in .gt. CHF_LBOUND[physdomain;0] .and.
+     &             in .le. CHF_UBOUND[state;     0] .and.
+     &             in .lt. CHF_UBOUND[physdomain;0] ;
+     &          .and.
+     &             jn .ge. CHF_LBOUND[state;     1] .and.
+     &             jn .gt. CHF_LBOUND[physdomain;1] .and.
+     &             jn .le. CHF_UBOUND[state;     1] .and.
+     &             jn .lt. CHF_UBOUND[physdomain;1] ;
+     &          .and.
+     &             kn .ge. CHF_LBOUND[state;     2] .and.
+     &             kn .gt. CHF_LBOUND[physdomain;2] .and.
+     &             kn .le. CHF_UBOUND[state;     2] .and.
+     &             kn .lt. CHF_UBOUND[physdomain;2] ]
+     &        ) then
+              statemax = max( statemax, state(CHF_IX[in;jn;kn],var) )
+              statemin = min( statemin, state(CHF_IX[in;jn;kn],var) )
+            endif
+          CHF_ENDDO
+
+          deltasum = half * (
+             CHF_DTERM[
+     &           abs( islope ( CHF_IX[i;j;k], var ) );
+     &         + abs( jslope ( CHF_IX[i;j;k], var ) );
+     &         + abs( kslope ( CHF_IX[i;j;k], var ) )]
+     &         )
+
+          eta = min( statemax - val, val - statemin )
+
+          if( eta .le. 1.0e-9*abs( statemax - statemin ) ) then
+            eta = zero
+          else
+            if( deltasum .gt. eta ) then
+              eta = eta/deltasum
+            else
+              eta = one
+            endif
+          endif
+
+          CHF_DTERM[
+            islope(CHF_IX[i;j;k],var) = eta*islope(CHF_IX[i;j;k],var);
+            jslope(CHF_IX[i;j;k],var) = eta*jslope(CHF_IX[i;j;k],var);
+            kslope(CHF_IX[i;j;k],var) = eta*kslope(CHF_IX[i;j;k],var)]
+        CHF_ENDDO
+      enddo
+
+      return
+      end

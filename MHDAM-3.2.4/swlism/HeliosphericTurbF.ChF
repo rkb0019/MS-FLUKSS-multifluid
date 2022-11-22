@@ -1,0 +1,612 @@
+#include "CONSTANTS.H"
+#include "LGintegrator.H"
+#include "SphericalIntegrator.H"
+
+        subroutine SETHELIOS_TM(
+     &    CHF_CONST_REAL[aulismZ2],
+     &    CHF_CONST_REAL[aulismLambda],
+     &    CHF_CONST_REAL[aulismSigmaC],
+     &    CHF_CONST_REAL[ausunZ2],
+     &    CHF_CONST_REAL[ausunLambda],
+     &    CHF_CONST_REAL[ausunSigmaC] )
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        lismZ2     = aulismZ2/lismV**2
+        lismLambda = aulismLambda/eos_AU
+        lismSigmaC = aulismSigmaC
+
+        sunZ2      = ausunZ2/lismV**2
+        sunLambda  = ausunLambda/eos_AU
+        sunSigmaC  = ausunSigmaC
+
+        return
+        end
+
+
+        subroutine HELIOINIT_TM(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iRhoZ2SC, iRhoLm
+        real_t  x, y, z, r, rr, rho
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        z      = zero
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r      = CHF_DTERM[x*x; + y*y; + z*z]
+          r      = sqrt( r )
+
+          if( r > initR ) then
+            U(CHF_IX[i;j;k],iRhoZ2)    = lismZ2
+            U(CHF_IX[i;j;k],iRhoZ2SC)  = lismZ2*lismSigmaC
+            U(CHF_IX[i;j;k],iRhoLm)    = lismLambda
+          else
+            rr     = r/sunIntBCRadius
+            rho    = sunRho/(rr*rr)
+
+            U(CHF_IX[i;j;k],iRhoZ2)    = rho*sunZ2
+            U(CHF_IX[i;j;k],iRhoZ2SC)  = rho*sunZ2*sunSigmaC
+            U(CHF_IX[i;j;k],iRhoLm)    = rho*sunLambda
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+
+        subroutine HELIOINITSPHERICAL_TM(
+     &    CHF_FRA[U],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_CONST_INT[level],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3
+        real_t r, rr, rho, Z2, ratio
+
+        integer CHF_DDECL[i;j;k]
+        integer iRhoZ2SC, iRhoLm
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        ratio    = initR/sunIntBCRadius
+
+        CHF_MULTIDO[box;i;j;k]
+          r      = m_rc(i,level)
+
+          if( r >  initR) then
+            U(CHF_IX[i;j;k],iRhoZ2)    = lismZ2
+            U(CHF_IX[i;j;k],iRhoZ2SC)  = lismZ2*lismSigmaC
+            U(CHF_IX[i;j;k],iRhoLm)    = lismLambda
+          else
+            rr     = r/sunIntBCRadius
+            rho    = sunRho/(rr*rr)
+
+            Z2     = sunZ2 - (sunZ2 - lismZ2)/(ratio - one)*(rr - one)
+
+            U(CHF_IX[i;j;k],iRhoZ2)    = rho*Z2
+            U(CHF_IX[i;j;k],iRhoZ2SC)  = rho*Z2*sunSigmaC
+            U(CHF_IX[i;j;k],iRhoLm)    = rho*sunLambda
+          endif
+        CHF_ENDDO
+#endif
+
+        return
+        end
+
+
+        subroutine HELIOREINIT_TM(
+     &    CHF_FRA[U],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_REAL[t],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k]
+        integer iRhoZ2SC, iRhoLm
+
+        real_t x, y, z, r, r2, rho, sunR2
+
+        real_t CHF_DDECL[xl;yl;zl]
+        real_t CHF_DDECL[xh;yh;zh]
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        CHF_DTERM[
+        xl = CHF_LBOUND[U;0]*dx - sunXC;
+        yl = CHF_LBOUND[U;1]*dx - sunYC;
+        zl = CHF_LBOUND[U;2]*dx - sunZC]
+
+        CHF_DTERM[
+        xh = (CHF_UBOUND[U;0]+1)*dx - sunXC;
+        yh = (CHF_UBOUND[U;1]+1)*dx - sunYC;
+        zh = (CHF_UBOUND[U;2]+1)*dx - sunZC]
+
+        if( CHF_DTERM[(xl > sunR); .or. (yl > sunR); .or. (zl > sunR)] ) then
+          return
+        endif
+
+        if( CHF_DTERM[(xh <-sunR); .or. (yh <-sunR); .or. (zh <-sunR)] ) then
+          return
+        endif
+
+        sunR2 = sunR*sunR
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        z      = zero
+        CHF_MULTIDO[box;i;j;k]
+          CHF_DTERM[
+          x      = (i + half)*dx - sunXC;
+          y      = (j + half)*dx - sunYC;
+          z      = (k + half)*dx - sunZC]
+
+          r2      = CHF_DTERM[x*x; + y*y; + z*z]
+
+          if( r2 <= sunR2 ) then
+            r      = sqrt( r2 )
+            r      = r/sunIntBCRadius
+
+            rho    = sunRho/(r*r)
+
+            U(CHF_IX[i;j;k],iRhoZ2)    = rho*sunZ2
+            U(CHF_IX[i;j;k],iRhoZ2SC)  = rho*sunZ2*sunSigmaC
+            U(CHF_IX[i;j;k],iRhoLm)    = rho*sunLambda
+          endif
+        CHF_ENDDO
+
+        return
+        end
+
+
+        subroutine HELIOBC_TM(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_REAL[dx],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_BOX[box])
+
+        real_t density, velx, rhoL, vnL
+        real_t  x, y, z, Z2L, SCL, LmL
+
+        integer CHF_DDECL[i;j;k]
+        integer inorm, iRhoZ2SC, iRhoLm, iSC, iLm
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        inorm    = WVELX + dir
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        if( dir .eq. 0 ) then
+          if( lohisign == -1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Left boundary
+            CHF_MULTIDO[box;i;j;k]
+              rhoL   = WRight(CHF_IX[i;j;k],WRHO  )
+              vnL    = WRight(CHF_IX[i;j;k],inorm )
+              Z2L    = WRight(CHF_IX[i;j;k],iZ2 )
+              SCL    = WRight(CHF_IX[i;j;k],iSC)
+              LmL    = WRight(CHF_IX[i;j;k],iLm)
+
+              rhoL   = max( smallr, rhoL )
+              vnL    = min( -1.0D-6, vnL )
+
+              F(CHF_IX[i;j;k],iRhoZ2)    = rhoL*vnL*Z2L
+              F(CHF_IX[i;j;k],iRhoZ2SC)  = rhoL*vnL*Z2L*SCL
+              F(CHF_IX[i;j;k],iRhoLm)    = rhoL*vnL*LmL
+            CHF_ENDDO
+          else
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Right boundary
+            CHF_MULTIDO[box;i;j;k]
+              density  = one
+              velx     =-one
+
+              F(CHF_IX[i;j;k],iRhoZ2)    = density*velx*Z2L
+              F(CHF_IX[i;j;k],iRhoZ2SC)  = density*velx*Z2L*SCL
+              F(CHF_IX[i;j;k],iRhoLm)    = density*velx*LmL
+            CHF_ENDDO
+          endif
+        else
+          if( lohisign == -1 ) then
+            CHF_MULTIDO[box;i;j;k]
+              vnL    = WRight(CHF_IX[i;j;k],inorm)
+
+              if( vnL >= zero ) then
+                rhoL   = WLeft (CHF_IX[i;j;k],WRHO )
+                Z2L    = WLeft (CHF_IX[i;j;k],iZ2 )
+                SCL    = WLeft (CHF_IX[i;j;k],iSC)
+                LmL    = WLeft (CHF_IX[i;j;k],iLm)
+              else
+                rhoL   = WRight(CHF_IX[i;j;k],WRHO )
+                Z2L    = WRight(CHF_IX[i;j;k],iZ2 )
+                SCL    = WRight(CHF_IX[i;j;k],iSC)
+                LmL    = WRight(CHF_IX[i;j;k],iLm)
+              endif
+
+              F(CHF_IX[i;j;k],iRhoZ2)    = rhoL*vnL*Z2L
+              F(CHF_IX[i;j;k],iRhoZ2SC)  = rhoL*vnL*Z2L*SCL
+              F(CHF_IX[i;j;k],iRhoLm)    = rhoL*vnL*LmL
+            CHF_ENDDO
+          else
+            CHF_MULTIDO[box;i;j;k]
+              vnL    = WLeft(CHF_IX[i;j;k],inorm)
+
+              if( vnL >= zero ) then
+                rhoL   = WLeft (CHF_IX[i;j;k],WRHO )
+                Z2L    = WLeft (CHF_IX[i;j;k],iZ2 )
+                SCL    = WLeft (CHF_IX[i;j;k],iSC)
+                LmL    = WLeft (CHF_IX[i;j;k],iLm)
+              else
+                rhoL   = WRight(CHF_IX[i;j;k],WRHO )
+                Z2L    = WRight(CHF_IX[i;j;k],iZ2 )
+                SCL    = WRight(CHF_IX[i;j;k],iSC)
+                LmL    = WRight(CHF_IX[i;j;k],iLm)
+              endif
+
+              F(CHF_IX[i;j;k],iRhoZ2)    = rhoL*vnL*Z2L
+              F(CHF_IX[i;j;k],iRhoZ2SC)  = rhoL*vnL*Z2L*SCL
+              F(CHF_IX[i;j;k],iRhoLm)    = rhoL*vnL*LmL
+            CHF_ENDDO
+          endif
+        endif
+
+        return
+        end
+
+        subroutine HELIOGS_TM(
+     &    CHF_FRA[W],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_BOX[box])
+
+        integer CHF_DDECL[i;j;k], CHF_DDECL[ii; jj; kk]
+        integer iSC, iLm
+        real_t vN
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        if( dir == 0 ) then
+          if( lohisign == -1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Left boundary
+            ii     = iboxhi0 + 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[ii;j;k],WVELX)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iZ2) = lismZ2
+                W(CHF_IX[i;j;k],iSC) = lismSigmaC
+                W(CHF_IX[i;j;k],iLm) = lismLambda
+              else
+                W(CHF_IX[i;j;k],iZ2) = W(CHF_IX[ii;j;k],iZ2)
+                W(CHF_IX[i;j;k],iSC) = W(CHF_IX[ii;j;k],iSC)
+                W(CHF_IX[i;j;k],iLm) = W(CHF_IX[ii;j;k],iLm)
+              endif
+            CHF_ENDDO
+          else
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Right boundary
+            ii     = iboxlo0 - 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[ii;j;k],WVELX)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iZ2) = W(CHF_IX[ii;j;k],iZ2)
+                W(CHF_IX[i;j;k],iSC) = W(CHF_IX[ii;j;k],iSC)
+                W(CHF_IX[i;j;k],iLm) = W(CHF_IX[ii;j;k],iLm)
+              else
+                W(CHF_IX[i;j;k],iZ2) = lismZ2
+                W(CHF_IX[i;j;k],iSC) = lismSigmaC
+                W(CHF_IX[i;j;k],iLm) = lismLambda
+              endif
+            CHF_ENDDO
+          endif
+        endif
+
+        if( dir == 1 ) then
+          if( lohisign == -1 ) then
+            jj     = iboxhi1 + 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[ii;j;k],WVELY)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iZ2) = lismZ2
+                W(CHF_IX[i;j;k],iSC) = lismSigmaC
+                W(CHF_IX[i;j;k],iLm) = lismLambda
+              else
+                W(CHF_IX[i;j;k],iZ2) = W(CHF_IX[i;jj;k],iZ2)
+                W(CHF_IX[i;j;k],iSC) = W(CHF_IX[i;jj;k],iSC)
+                W(CHF_IX[i;j;k],iLm) = W(CHF_IX[i;jj;k],iLm)
+              endif
+            CHF_ENDDO
+          else
+            jj     = iboxlo1 - 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[ii;j;k],WVELY)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iZ2) = W(CHF_IX[i;jj;k],iZ2)
+                W(CHF_IX[i;j;k],iSC) = W(CHF_IX[i;jj;k],iSC)
+                W(CHF_IX[i;j;k],iLm) = W(CHF_IX[i;jj;k],iLm)
+              else
+                W(CHF_IX[i;j;k],iZ2) = lismZ2
+                W(CHF_IX[i;j;k],iSC) = lismSigmaC
+                W(CHF_IX[i;j;k],iLm) = lismLambda
+              endif
+            CHF_ENDDO
+          endif
+        endif
+
+#if CH_SPACEDIM == 3
+        if( dir == 2 ) then
+          if( lohisign == -1 ) then
+            kk     = iboxhi2 + 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[ii;j;k],WVELZ)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iZ2) = lismZ2
+                W(CHF_IX[i;j;k],iSC) = lismSigmaC
+                W(CHF_IX[i;j;k],iLm) = lismLambda
+              else
+                W(CHF_IX[i;j;k],iZ2) = W(CHF_IX[i;j;kk],iZ2)
+                W(CHF_IX[i;j;k],iSC) = W(CHF_IX[i;j;kk],iSC)
+                W(CHF_IX[i;j;k],iLm) = W(CHF_IX[i;j;kk],iLm)
+              endif
+            CHF_ENDDO
+          else
+            kk     = iboxlo2 - 1
+            CHF_MULTIDO[box;i;j;k]
+              vN     = W(CHF_IX[ii;j;k],WVELZ)
+              if( vN >= zero ) then
+                W(CHF_IX[i;j;k],iZ2) = W(CHF_IX[i;j;kk],iZ2)
+                W(CHF_IX[i;j;k],iSC) = W(CHF_IX[i;j;kk],iSC)
+                W(CHF_IX[i;j;k],iLm) = W(CHF_IX[i;j;kk],iLm)
+              else
+                W(CHF_IX[i;j;k],iZ2) = lismZ2
+                W(CHF_IX[i;j;k],iSC) = lismSigmaC
+                W(CHF_IX[i;j;k],iLm) = lismLambda
+              endif
+            CHF_ENDDO
+          endif
+        endif
+#endif
+        return
+        end
+
+
+        subroutine HELIOBCSPHERICAL_TM(
+     &    CHF_FRA[F],
+     &    CHF_CONST_FRA[WLeft],
+     &    CHF_CONST_FRA[WRight],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_CONST_INT[iRhoZ2],
+     &    CHF_BOX[box] )
+
+        real_t vnL, rhoL, Z2L, SCL, LmL
+
+        integer CHF_DDECL[i;j;k]
+        integer inorm, iRhoZ2SC, iRhoLm, iSC, iLm
+
+#include "SWLISMCommon.fh"
+#include "EosCommon.fh"
+
+        inorm = WVELX + dir
+
+        iSC      = iZ2 + 1
+        iLm      = iZ2 + 2
+
+        iRhoZ2SC = iRhoZ2 + 1
+        iRhoLm   = iRhoZ2 + 2
+
+        if( dir == 0 ) then
+          if( lohisign == 1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!                                                                 Outer boundary
+            CHF_MULTIDO[box;i;j;k]
+              vnL    = WLeft(CHF_IX[i;j;k],inorm)
+
+              if( vnL >= zero ) then
+                rhoL   = WLeft (CHF_IX[i;j;k],WRHO )
+                Z2L    = WLeft (CHF_IX[i;j;k],iZ2 )
+                SCL    = WLeft (CHF_IX[i;j;k],iSC)
+                LmL    = WLeft (CHF_IX[i;j;k],iLm)
+              else
+                rhoL   = WRight(CHF_IX[i;j;k],WRHO )
+                Z2L    = WRight(CHF_IX[i;j;k],iZ2 )
+                SCL    = WRight(CHF_IX[i;j;k],iSC)
+                LmL    = WRight(CHF_IX[i;j;k],iLm)
+              endif
+
+              F(CHF_IX[i;j;k],iRhoZ2)    = rhoL*vnL*Z2L
+              F(CHF_IX[i;j;k],iRhoZ2SC)  = rhoL*vnL*Z2L*SCL
+              F(CHF_IX[i;j;k],iRhoLm)    = rhoL*vnL*LmL
+            CHF_ENDDO
+          else if( lohisign == -1 ) then
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!                                                                Inner  boundary
+            CHF_MULTIDO[box;i;j;k]
+              vnL    = WRight(CHF_IX[i;j;k],inorm)
+
+              if( vnL >= zero ) then
+                rhoL   = WLeft (CHF_IX[i;j;k],WRHO )
+                Z2L    = WLeft (CHF_IX[i;j;k],iZ2 )
+                SCL    = WLeft (CHF_IX[i;j;k],iSC)
+                LmL    = WLeft (CHF_IX[i;j;k],iLm)
+              else
+                rhoL   = WRight(CHF_IX[i;j;k],WRHO )
+                Z2L    = WRight(CHF_IX[i;j;k],iZ2 )
+                SCL    = WRight(CHF_IX[i;j;k],iSC)
+                LmL    = WRight(CHF_IX[i;j;k],iLm)
+              endif
+
+              F(CHF_IX[i;j;k],iRhoZ2)    = rhoL*vnL*Z2L
+              F(CHF_IX[i;j;k],iRhoZ2SC)  = rhoL*vnL*Z2L*SCL
+              F(CHF_IX[i;j;k],iRhoLm)    = rhoL*vnL*LmL
+            CHF_ENDDO
+          endif
+        endif
+
+        return
+        end
+
+
+        subroutine HELIOGSSPHERICAL_TM(
+     &    CHF_FRA[W],
+     &    CHF_CONST_FRA[U],
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[dir],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_CONST_INT[level],
+     &    CHF_CONST_REAL[t],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+
+        integer CHF_DDECL[i;j;k]
+        integer iSC, iLm, ii, inorm
+
+        real_t vnL
+
+#include "SWLISMCommon.fh"
+
+        inorm  = WVELX + dir
+
+        iSC    = iZ2 + 1
+        iLm    = iZ2 + 2
+!                                                                 Inner boundary
+        if( lohisign == -1 ) then
+          CHF_MULTIDO[box;i;j;k]
+            W(CHF_IX[i;j;k],iZ2) = sunZ2
+            W(CHF_IX[i;j;k],iSC) = sunSigmaC
+            W(CHF_IX[i;j;k],iLm) = sunLambda
+          CHF_ENDDO
+        endif
+
+!                                                                 Outer boundary
+        if( lohisign == 1 ) then
+          ii     = iboxlo0 - 1
+          CHF_MULTIDO[box;i;j;k]
+            vnL    = U(CHF_IX[i;j;k],inorm)
+
+            if( vnL >= zero ) then
+              W(CHF_IX[i;j;k],iZ2) = W(CHF_IX[ii;j;k],iZ2)
+              W(CHF_IX[i;j;k],iSC) = W(CHF_IX[ii;j;k],iSC)
+              W(CHF_IX[i;j;k],iLm) = W(CHF_IX[ii;j;k],iLm)
+            else
+              W(CHF_IX[i;j;k],iZ2) = lismZ2
+              W(CHF_IX[i;j;k],iSC) = sunSigmaC
+              W(CHF_IX[i;j;k],iLm) = lismLambda
+            endif
+          CHF_ENDDO
+        endif
+
+        return
+        end
+
+        subroutine OMNIGSSPHERICAL_TM(
+     &    CHF_FRA[W],
+     &    CHF_CONST_R1D[a_Time],
+     &    CHF_CONST_R1D[a_Z2],
+     &    CHF_CONST_INT[iZ2],
+     &    CHF_CONST_REAL[ltime],
+     &    CHF_CONST_REAL[startBC],
+     &    CHF_BOX[box],
+     &    CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3
+        integer CHF_DDECL[i;j;k], iSC, iLm
+        integer iTmax, ierr
+        real_t :: u1, u2, u3, u, dz, dl, ds
+        real_t :: vv1, vv2, zz1, zz2, Z2
+        real_t :: timePhys, timeRef
+        real_t :: buf_in(1), buf_out(1)
+
+        real_t, parameter :: V1        = 400.0D0
+        real_t, parameter :: V2        = 800.0D0
+
+        real_t, parameter :: Z1_       = 2000.0D0
+        real_t, parameter :: Z2_       = 4000.0D0
+
+        real_t, parameter :: L1        = 0.03D0
+        real_t, parameter :: L2        = 0.03D0
+
+        real_t, parameter :: S1        = 0.6D0
+        real_t, parameter :: S2        = 0.8D0
+
+#include "EosCommon.fh"
+#include "SWLISMCommon.fh"
+
+        iSC    = iZ2 + 1
+        iLm    = iZ2 + 2
+
+        iTmax    = CHF_UBOUND[a_Time]
+        timeRef  = eos_AU/(lismV*3600.0D0*24.0D0*365.0D0)         
+        timePhys = (ltime - startBC)*timeRef                     ! time in years                                
+
+        if( timePhys <= a_Time(0) ) then        
+          Z2     = a_Z2(0)
+        else if( timePhys >= a_Time(iTmax) ) then                
+          Z2     = a_Z2(iTmax)
+        else
+          buf_in(1) = timePhys
+          call dfLinearApprox( iTmax+1, a_Time, a_Z2, 1, buf_in, buf_out, ierr)
+          Z2     = buf_out(1)
+        endif
+
+        Z2     = Z2*(1.0D5/lismV)**2
+
+        vv1    = 1.0D5*V1/lismV
+        vv2    = 1.0D5*V2/lismV
+
+        zz1    = Z1_*(1.0D5/lismV)**2
+        zz2    = Z2_*(1.0D5/lismV)**2
+
+        dz     = (zz2 - zz1)/(vv2 - vv1)
+        dl     = (L2  - L1 )/(vv2 - vv1)
+        ds     = (S2  - S1 )/(vv2 - vv1)
+
+        CHF_MULTIDO[box;i;j;k]
+          u1     = W(CHF_IX[i;j;k],WVELR)
+          u2     = W(CHF_IX[i;j;k],WVELP)
+          u3     = W(CHF_IX[i;j;k],WVELT)
+
+          u      = sqrt( u1*u1 + u2*u2 + u3*u3 )
+
+          W(CHF_IX[i;j;k],iZ2) = Z2
+          W(CHF_IX[i;j;k],iSC) = S1  + ds*(u - vv1)
+          W(CHF_IX[i;j;k],iLm) = min( L1, L1  + dl*(u - vv1) )
+
+        CHF_ENDDO
+#endif
+        return
+        end

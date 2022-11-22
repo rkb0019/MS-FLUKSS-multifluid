@@ -1,0 +1,684 @@
+
+#include "CONSTANTS.H"
+
+
+c
+c calculate derivatives with central difference formula for constant grid spacing
+c
+      subroutine interpcentralderiv_c (
+     &     CHF_FRA [slope],
+     &     CHF_CONST_FRA[state],
+     &     CHF_BOX[b],
+     &     CHF_CONST_INT[dir],
+     &     CHF_CONST_REAL[dx]
+     &     )
+
+      integer CHF_DDECL[i,ii; j,jj; k,kk]
+      integer var,coeff
+
+      CHF_DTERM[
+      ii = CHF_ID(0,dir);
+      jj = CHF_ID(1,dir);
+      kk = CHF_ID(2,dir)]
+      
+      coeff = half/dx
+
+      do var = 0, CHF_NCOMP[state] - 1
+         CHF_MULTIDO [ b; i; j; k]
+
+          slope (CHF_IX[i;j;k],var) = coeff * (
+     &        state (CHF_IX[i+ii; j+jj; k+kk],var) -
+     &        state (CHF_IX[i-ii; j-jj; k-kk],var) )
+          CHF_ENDDO
+       end do
+
+      return
+      end
+
+c
+c calculate derivatives with central difference formula for variable grid spacing
+c
+      subroutine interpcentralderiv_v (
+     &     CHF_FRA [slope],
+     &     CHF_CONST_FRA[state],
+     &     CHF_BOX[b],     
+     &     CHF_CONST_INT[dir],
+     &     CHF_CONST_FRA1[dxarr]
+     &     )
+      
+      integer CHF_DDECL[i,ii; j,jj; k,kk]
+      integer var
+      real_t  dx,dxe,dxw,c1,c2,DXP
+      
+      CHF_DTERM[
+      ii = CHF_ID(0,dir);
+      jj = CHF_ID(1,dir);
+      kk = CHF_ID(2,dir)]      
+      
+      CHF_MULTIDO [ b; i; j; k]        
+          
+        dx  = dxarr(CHF_IX[i*ii; j*jj; k*kk])
+        dxe = dxarr(CHF_IX[(i+1)*ii; (j+1)*jj; (k+1)*kk])
+        dxw = dxarr(CHF_IX[(i-1)*ii; (j-1)*jj; (k-1)*kk])
+         
+        c1  = two*(half*dx+dxw)/(dx+dxe)
+        c2  = two*(half*dx+dxe)/(dx+dxw)
+         
+        DXP = one/(dxw + dx + dxe)
+        
+        c1  = c1*DXP
+        c2  = c2*DXP
+        
+        do var = 0, CHF_NCOMP[state] - 1          
+          slope (CHF_IX[i;j;k],var) =
+     &    c1* (
+     &        state (CHF_IX[i+ii; j+jj; k+kk],var) -
+     &        state (CHF_IX[i   ; j   ; k   ],var) ) +
+     &    c2*(
+     &        state (CHF_IX[i   ; j   ; k   ],var) -
+     &        state (CHF_IX[i-ii; j-jj; k-kk],var) )      
+        end do          
+                    
+      CHF_ENDDO            
+       
+      return
+      end
+
+c
+c calculate derivatives with high one-sided difference formula for constant grid spacing
+c
+      subroutine interphisidederiv_c (
+     &     CHF_FRA [slope],
+     &     CHF_CONST_FRA [state],
+     &     CHF_BOX[b],
+     &     CHF_CONST_INT [dir],
+     &     CHF_CONST_REAL[dx]
+     &     )
+
+      integer CHF_DDECL[i,ii; j,jj; k,kk]
+      integer var,coeff
+
+      CHF_DTERM[
+      ii = CHF_ID(0,dir);
+      jj = CHF_ID(1,dir);
+      kk = CHF_ID(2,dir)]
+      
+      coeff = one/dx
+
+      do var = 0, CHF_NCOMP[state] - 1
+         CHF_MULTIDO [ b; i; j; k]
+
+          slope (CHF_IX[i;j;k],var) = coeff * (
+     &          state ( CHF_IX[i+ii;j+jj;k+kk], var)
+     &        - state ( CHF_IX[i   ;j   ;k   ], var))
+          CHF_ENDDO
+       enddo
+
+      return
+      end
+
+c
+c calculate slopes with high one-sided difference formula for variable grid spacing
+c
+      subroutine interphisidederiv_v (
+     &     CHF_FRA [slope],
+     &     CHF_CONST_FRA [state],
+     &     CHF_BOX[b],     
+     &     CHF_CONST_INT [dir],
+     &     CHF_CONST_FRA1[dxarr]     
+     &     )
+
+      integer CHF_DDECL[i,ii; j,jj; k,kk]
+      integer var,ind
+      real_t  dx,dxe,coeff
+      
+      CHF_DTERM[
+      ii = CHF_ID(0,dir);
+      jj = CHF_ID(1,dir);
+      kk = CHF_ID(2,dir)]      
+      
+      CHF_MULTIDO [ b; i; j; k]                                  
+        dx  = dxarr(CHF_IX[i*ii; j*jj; k*kk])
+        dxe = dxarr(CHF_IX[(i+1)*ii; (j+1)*jj; (k+1)*kk])                        
+                        
+        coeff = two/(dx + dxe)        
+                 
+        do var = 0, CHF_NCOMP[state] - 1          
+          slope (CHF_IX[i;j;k],var) =
+     &     coeff*(state ( CHF_IX[i+ii;j+jj;k+kk], var)
+     &          - state ( CHF_IX[i   ;j   ;k   ], var))
+        end do          
+                    
+      CHF_ENDDO            
+      
+      return
+      end
+      
+      
+c
+c calculate derivatives with low one-sided difference formula for constant grid spacing
+c
+      subroutine interplosidederiv_c (
+     &     CHF_FRA [slope],
+     &     CHF_CONST_FRA [state],
+     &     CHF_BOX[b],
+     &     CHF_CONST_INT [dir],
+     &     CHF_CONST_REAL[dx]
+     &     )
+
+      integer CHF_DDECL[i,ii; j,jj; k,kk]
+      integer var,coeff
+
+      CHF_DTERM[
+      ii = CHF_ID(0,dir);
+      jj = CHF_ID(1,dir);
+      kk = CHF_ID(2,dir)]
+      
+      coeff = one/dx
+
+      do var = 0, CHF_NCOMP[state] - 1
+         CHF_MULTIDO [ b; i; j; k]
+
+          slope (CHF_IX[i;j;k],var) = coeff * (
+     &        state ( CHF_IX[ i   ;j   ;k   ], var) -
+     &        state ( CHF_IX[ i-ii;j-jj;k-kk], var) )
+          CHF_ENDDO
+       enddo
+
+      return
+      end
+
+c
+c calculate slopes with low one-sided difference formula for variable grid spacing
+c
+      subroutine interplosidederiv_v (
+     &     CHF_FRA [slope],
+     &     CHF_CONST_FRA [state],
+     &     CHF_BOX[b],     
+     &     CHF_CONST_INT [dir],
+     &     CHF_CONST_FRA1[dxarr]     
+     &     )
+
+      integer CHF_DDECL[i,ii; j,jj; k,kk]
+      integer var
+      real_t  dx,dxw,coeff
+      
+      CHF_DTERM[
+      ii = CHF_ID(0,dir);
+      jj = CHF_ID(1,dir);
+      kk = CHF_ID(2,dir)]      
+      
+      CHF_MULTIDO [ b; i; j; k]                
+        dx  = dxarr(CHF_IX[i*ii; j*jj; k*kk])        
+        dxw = dxarr(CHF_IX[(i-1)*ii; (j-1)*jj; (k-1)*kk])
+                                          
+        coeff = two/(dx + dxw)        
+                 
+        do var = 0, CHF_NCOMP[state] - 1          
+          slope (CHF_IX[i;j;k],var) =    
+     &    coeff*(state ( CHF_IX[ i   ;j   ;k   ], var) -
+     &           state ( CHF_IX[ i-ii;j-jj;k-kk], var))
+        end do          
+                    
+      CHF_ENDDO            
+      
+      return
+      end
+
+c
+c multidimensional limiting
+c
+c bn:  box which spans the neighbors of a cell (generally (-1,1) in
+c      each coordinate direction
+c bcoarse: coarse-level box over which to limit slopes
+c      
+      subroutine interplimit_v (
+     &     CHF_FRA [ islope ],
+     &     CHF_FRA [ jslope ],
+     &     CHF_FRA [ kslope ],
+     &     CHF_CONST_FRA [ state ],
+     &     CHF_CONST_FRA1 [ igrid ],
+     &     CHF_CONST_FRA1 [ jgrid ],
+     &     CHF_CONST_FRA1 [ kgrid ],     
+     &     CHF_BOX [ bcoarse ],
+     &     CHF_BOX [ bn ],
+     &     CHF_BOX [ physdomain ]
+     &     )
+
+      integer CHF_DDECL [ i ; j ; k  ], var
+      integer CHF_DDECL [ ii; jj; kk ]
+      integer CHF_DDECL [ in; jn; kn ]
+      REAL_T  CHF_DDECL [ dx; dy; dz ]
+      REAL_T statemax, statemin, deltasum,  eta
+c       REAL_T tempone, tempzero, minuscule
+
+c       tempone = one
+c       tempzero = zero
+c       minuscule = 1.e-12
+
+      do var = 0, CHF_NCOMP[ islope ] - 1
+         CHF_MULTIDO [ bcoarse; i; j; k]
+             statemax = state ( CHF_IX[i;j;k], var )
+             statemin = state ( CHF_IX[i;j;k], var )
+
+             CHF_MULTIDO [ bn; ii; jj; kk ]
+
+             CHF_DTERM[
+                 in = i + ii;
+                 jn = j + jj;
+                 kn = k + kk]
+
+                 if (
+                 CHF_DTERM[
+     &                in .ge. CHF_LBOUND[ state; 0 ] .and.
+     &                in .le. CHF_UBOUND[ state; 0 ] ;
+     &                .and.
+     &                jn .ge. CHF_LBOUND[state; 1 ] .and.
+     &                jn .le. CHF_UBOUND[ state; 1 ] ;
+     &                .and.
+     &                kn .ge. CHF_LBOUND[ state; 2 ] .and.
+     &                kn .le. CHF_UBOUND[ state; 2 ] ]
+     &                ) then
+                    statemax = max ( statemax, state(CHF_IX[in;jn;kn],var))
+                    statemin = min ( statemin, state(CHF_IX[in;jn;kn],var))
+                 endif
+             CHF_ENDDO
+             
+             CHF_DTERM[
+             dx  = igrid(CHF_IX[i;0;0]);
+             dy  = jgrid(CHF_IX[0;j;0]);
+             dz  = kgrid(CHF_IX[0;0;k])]             
+             
+             deltasum = half * (
+                CHF_DTERM[
+     &            abs ( islope ( CHF_IX[i;j;k], var )*dx );
+     &            +
+     &            abs ( jslope ( CHF_IX[i;j;k], var )*dy );
+     &            +
+     &            abs ( kslope ( CHF_IX[i;j;k], var )*dz )]
+     &            )
+c
+c (TJL) the slope limiting is being done differently to avoid the problem(s)
+c GHM mentions below.
+c
+c              if ( deltasum .gt. zero ) then
+c c
+c c (GHM) deltasum can be arbitrarily small, while the numerator
+c c statemax-state can be arbitrarily large, and so an FP overflow
+c c may occur (this happens when state is a local extrema).
+c c since eta is limited to <=tempone anyway, rewrite to avoid FPE.
+c c
+c c               etamax = ( statemax - state ( CHF_IX[i;j;k], var ) )
+c c    &               / deltasum
+c c               etamin = ( state ( CHF_IX[i;j;k], var ) - statemin )
+c c    &               / deltasum
+c                 deltasum = max(deltasum,minuscule)
+c                 etamax = min( statemax - state ( CHF_IX[i;j;k], var ),
+c      &                   tempone*deltasum )
+c                 etamax = etamax/deltasum
+c                 etamin = min( state ( CHF_IX[i;j;k], var ) - statemin,
+c      &                   tempone*deltasum )
+c                 etamin = etamin/deltasum
+c                 eta = max ( min ( etamin, etamax, tempone ), tempzero )
+
+              eta = min(statemax - state(CHF_IX[i;j;k],var),
+     &                  state(CHF_IX[i;j;k],var) - statemin)
+
+c Believe it or not, the following data snuck past the (deltasum>eta)
+c test, then did a divide by zero.  Apparently not all zeros are
+c created equal.
+c deltasum=  0.0000000000000000E+000 eta=  0.0000000000000000E+000
+c This result was obtained in a test using double precision with
+c pgf77.  This error did not occur with the same initial conditions
+c using double precision, but g77.  Go figure.  To fix this problem,
+c I recon that if eta and deltasum are both close to zero, we ought
+c to limit fully ...
+c GHM 9/5/02
+              if( eta .le. 1.e-9*abs(statemax) ) then
+                 eta = zero
+              else
+
+              if (deltasum .gt. eta) then
+                eta = eta/deltasum
+              else
+                eta = one
+              endif
+
+c GHM 9/5/02
+              endif
+
+c
+!c (TJL) this needs to be revisited.
+c
+c c ::: design decision not to limit slopes near physical boundaries
+c c               now enforced in FineInterp() calling function
+c c               by modification of the box size bcoarse.
+c c               GHM 7/12/01
+c
+c c               CHF_DTERM[
+c c               if (i.eq.CHF_LBOUND[physdomain;0]) then
+c c                  eta = one
+c c               else if (i.eq.CHF_UBOUND[physdomain;0]) then
+c c                  eta = one ;
+c c               else if (j.eq.CHF_LBOUND[physdomain;1]) then
+c c                  eta = one
+c c               else if (j.eq.CHF_UBOUND[physdomain;1]) then
+c c                  eta = one ;
+c c               else if (k.eq.CHF_LBOUND[physdomain;2]) then
+c c                  eta = one
+c c               else if (k.eq.CHF_UBOUND[physdomain;2]) then
+c c                  eta = one ]
+c c               endif
+
+              CHF_DTERM[
+              islope ( CHF_IX[i;j;k], var ) =
+     &             eta * islope ( CHF_IX[i;j;k], var ) ;
+              jslope ( CHF_IX[i;j;k], var ) =
+     &             eta * jslope ( CHF_IX[i;j;k], var ) ;
+              kslope ( CHF_IX[i;j;k], var ) =
+     &             eta * kslope ( CHF_IX[i;j;k], var )  ]
+c              end if
+         CHF_ENDDO
+      end do
+
+      return
+      end
+
+
+      subroutine interplinear_v (
+     &     CHF_FRA [ fine ],
+     &     CHF_CONST_FRA [ slope ],
+     &     CHF_CONST_FRA1 [ crseCC ],
+     &     CHF_CONST_FRA1 [ fineCC ],     
+     &     CHF_CONST_FRA1 [ volc ],
+     &     CHF_CONST_FRA1 [ volf ],
+     &     CHF_BOX [ b ],
+     &     CHF_CONST_INT [ dir ],     
+     &     CHF_CONST_INT [ ref_ratio ],     
+     &     CHF_BOX[bref]
+     &     )
+
+      integer CHF_DDECL[ ic; jc; kc ]
+      integer CHF_DDECL[ if; jf; kf ]
+      integer CHF_DDECL[ ii; jj; kk ]
+      integer CHF_DDECL[ idir; jdir; kdir ]
+      integer var, id
+
+      real_t rnf,rnc,drf,drc,rcc,rcf,dphif,dphic
+      real_t dxf, coef1, coef2, refScale, cc, cf
+c bref is a box that will go from (0,0,0) to (ref_ratio-1)*(1,1,1)
+
+      refScale = one / (ref_ratio**CH_SPACEDIM)    
+
+      CHF_DTERM[
+      idir = CHF_ID(0,dir);
+      jdir = CHF_ID(1,dir);
+      kdir = CHF_ID(2,dir)]      
+                    
+            
+      CHF_MULTIDO[ b; ic; jc; kc ]                      
+        coef1 = volc(CHF_IX [ ic; jc; kc ])*refScale
+                
+        cc    = crseCC(CHF_IX[ic*idir; jc*jdir; kc*kdir])
+        
+        CHF_MULTIDO[ bref; ii; jj; kk ]
+          CHF_DTERM[
+              if = ic*ref_ratio + ii;
+              jf = jc*ref_ratio + jj;
+              kf = kc*ref_ratio + kk ]
+              
+                        
+          cf   = fineCC(CHF_IX[if*idir; jf*jdir; kf*kdir])
+          
+          dxf  = cf - cc          
+                              
+          coef2 = (coef1/volf(CHF_IX [ if; jf; kf ])) * dxf
+          do var = 0, CHF_NCOMP[fine] - 1                      
+              fine( CHF_IX[if;jf;kf],var) =
+     &             fine( CHF_IX[if;jf;kf],var) +
+     &    coef2 * slope( CHF_IX[ic;jc;kc],var)
+          end do
+        CHF_ENDDO
+      CHF_ENDDO
+      
+
+      return
+      end
+
+
+      subroutine interp_divB_0( CHF_FRA      [ islope ],
+     &                          CHF_FRA      [ jslope ],
+     &                          CHF_FRA      [ kslope ],
+     &                          CHF_BOX      [ bcoarse ],
+     &                          CHF_CONST_INT[ iBX ]
+     &                        )
+
+      integer CHF_DDECL[ i ; j ; k  ]
+      integer iBY, iBZ
+      real_t  DBXDX, DBYDY, DBZDZ, divB, del, delX, delY, delZ
+      real_t  adel, del2, fact, minmod
+      real_t  eps_divB
+      parameter (eps_divB = 1.0D-8)
+
+      iBY    = iBX + 1
+      iBZ    = iBY + 1
+
+      fact   =-one/(CHF_DTERM[ one; + one; + one ])
+
+      CHF_MULTIDO[ bcoarse; i; j; k ]
+        CHF_DTERM[
+          DBXDX  = islope(CHF_IX[i;j;k],iBX);
+          DBYDY  = jslope(CHF_IX[i;j;k],iBY);
+          DBZDZ  = kslope(CHF_IX[i;j;k],iBZ)]
+
+        divB   = CHF_DTERM[ DBXDX; + DBYDY; + DBZDZ ]
+
+        del    = fact*divB
+        adel   = abs( del )
+
+        if( adel > eps_divB ) then
+          CHF_DTERM[
+            delX   = minmod( -DBXDX, del );
+            delY   = minmod( -DBYDY, del );
+            delZ   = minmod( -DBZDZ, del )]
+
+          del2   = CHF_DTERM[ delX; + delY; + delZ]
+
+          if( abs( del2 ) < abs( divB ) ) then
+#if CH_SPACEDIM == 2
+            delX   = minmod( DBXDX, -DBYDY );
+            delY   =-delX
+
+            delX   = delX - DBXDX
+            delY   = delY - DBYDY
+#else
+            if( abs( delX ) < adel ) then
+              del    =-half*(delX + divB)
+
+              delY   = minmod( -DBYDY, del )
+              delZ   = minmod( -DBZDZ, del )
+
+              del2   = CHF_DTERM[ delX; + delY; + delZ]
+
+              if( abs( del2 ) < abs( divB ) ) then
+                if( abs( delY ) < adel ) then
+                  delZ   =-(divB + delX + delY)
+                else
+                  delY   =-(divB + delX + delZ)
+                endif
+              endif
+            else
+              if( abs( delY ) < adel ) then
+                del    =-half*(delY + divB)
+
+                delX   = minmod( -DBXDX, del )
+                delZ   = minmod( -DBZDZ, del )
+
+                del2   = CHF_DTERM[ delX; + delY; + delZ]
+
+                if( abs( del2 ) < abs( divB ) ) then
+                  if( abs( delX ) < adel ) then
+                    delZ   =-(divB + delX + delY)
+                  else
+                    delX   =-(divB + delY + delZ)
+                  endif
+                endif
+              else
+                del    =-half*(delZ + divB)
+                adel   = abs( del )
+
+                delX   = minmod( -DBXDX, del )
+                delY   = minmod( -DBYDY, del )
+
+                del2   = CHF_DTERM[ delX; + delY; + delZ]
+
+                if( abs( del2 ) < abs( divB ) ) then
+                  if( abs( delX ) < adel ) then
+                    delY   =-(divB + delX + delZ)
+                  else
+                    delX   =-(divB + delY + delZ)
+                  endif
+                endif
+              endif
+            endif
+#endif
+          endif
+
+          CHF_DTERM[
+            islope(CHF_IX[i;j;k],iBX) = islope(CHF_IX[i;j;k],iBX) + delX;
+            jslope(CHF_IX[i;j;k],iBY) = jslope(CHF_IX[i;j;k],iBY) + delY;
+            kslope(CHF_IX[i;j;k],iBZ) = kslope(CHF_IX[i;j;k],iBZ) + delZ]
+        endif
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine correct_divB( CHF_FRA      [ fine ],
+     &                         CHF_CONST_FRA[ slope ],
+     &                         CHF_BOX      [ b ],
+     &                         CHF_CONST_INT[ dir ],
+     &                         CHF_CONST_INT[ ref_ratio ],
+     &                         CHF_CONST_INT[ iBX ]
+     &                       )
+
+      integer CHF_DDECL[ ic; jc; kc ]
+      integer CHF_DDECL[ if; jf; kf ]
+      integer CHF_DDECL[ il; jl; kl ]
+      integer CHF_DDECL[ ir; jr; kr ]
+      integer CHF_DDECL[ ii; jj; kk ]
+      integer iB, RR1
+      real_t  HR, DBC, DBF
+ 
+      iB     = iBX + dir
+
+      HR     = half/ref_ratio
+      RR1    = ref_ratio - 1
+
+      if( dir == 0 ) then
+        CHF_MULTIDO[ b; ic; jc; kc ]
+          CHF_DTERM[
+            if     = ic*ref_ratio;
+            jf     = jc*ref_ratio;
+            kf     = kc*ref_ratio]
+
+          CHF_DTERM[
+            il     = if + RR1
+            ir     = il;
+            jl     = jf
+            jr     = jl + RR1;
+            kl     = kf
+            kr     = kl + RR1]
+
+          DBC    = HR*(slope(CHF_IX[ic  ;jc;kc],iB)
+     &           +     slope(CHF_IX[ic+1;jc;kc],iB))
+
+          CHF_DTERM[
+            do  ii = il, ir;
+            do  jj = jl, jr;
+            do  kk = kl, kr]
+
+              DBF    = 0.25D0*(fine(CHF_IX[ii+1;jj;kk],iB)
+     &               -         fine(CHF_IX[ii  ;jj;kk],iB) - DBC)
+
+              fine(CHF_IX[ii  ;jj;kk],iB) = fine(CHF_IX[ii  ;jj;kk],iB) + DBF
+              fine(CHF_IX[ii+1;jj;kk],iB) = fine(CHF_IX[ii+1;jj;kk],iB) - DBF
+
+          CHF_DTERM[
+            enddo;
+            enddo;
+            enddo]
+        CHF_ENDDO
+      else if( dir == 1 ) then
+        CHF_MULTIDO[ b; ic; jc; kc ]
+          CHF_DTERM[
+            if     = ic*ref_ratio;
+            jf     = jc*ref_ratio;
+            kf     = kc*ref_ratio]
+
+          CHF_DTERM[
+            il     = if
+            ir     = il + RR1;
+            jl     = jf + RR1
+            jr     = jl;
+            kl     = kf
+            kr     = kl + RR1]
+
+          DBC    = HR*(slope(CHF_IX[ic;jc  ;kc],iB)
+     &           +     slope(CHF_IX[ic;jc+1;kc],iB))
+
+          CHF_DTERM[
+            do  ii = il, ir;
+            do  jj = jl, jr;
+            do  kk = kl, kr]
+
+              DBF    = 0.25D0*(fine(CHF_IX[ii;jj+1;kk],iB)
+     &               -         fine(CHF_IX[ii;jj  ;kk],iB) - DBC)
+
+              fine(CHF_IX[ii;jj  ;kk],iB) = fine(CHF_IX[ii;jj  ;kk],iB) + DBF
+              fine(CHF_IX[ii;jj+1;kk],iB) = fine(CHF_IX[ii;jj+1;kk],iB) - DBF
+
+          CHF_DTERM[
+            enddo;
+            enddo;
+            enddo]
+        CHF_ENDDO
+      else
+        CHF_MULTIDO[ b; ic; jc; kc ]
+          CHF_DTERM[
+            if     = ic*ref_ratio;
+            jf     = jc*ref_ratio;
+            kf     = kc*ref_ratio]
+
+          CHF_DTERM[
+            il     = if
+            ir     = il + RR1;
+            jl     = jf
+            jr     = jl + RR1;
+            kl     = kf + RR1
+            kr     = kl]
+
+          DBC    = HR*(slope(CHF_IX[ic;jc;kc  ],iB)
+     &           +     slope(CHF_IX[ic;jc;kc+1],iB))
+
+          CHF_DTERM[
+            do  ii = il, ir;
+            do  jj = jl, jr;
+            do  kk = kl, kr]
+
+              DBF    = 0.25D0*(fine(CHF_IX[ii;jj;kk+1],iB)
+     &               -         fine(CHF_IX[ii;jj;kk  ],iB) - DBC)
+
+              fine(CHF_IX[ii;jj;kk  ],iB) = fine(CHF_IX[ii;jj;kk  ],iB) + DBF
+              fine(CHF_IX[ii;jj;kk+1],iB) = fine(CHF_IX[ii;jj;kk+1],iB) - DBF
+
+          CHF_DTERM[
+            enddo;
+            enddo;
+            enddo]
+        CHF_ENDDO
+      endif
+
+      return
+      end subroutine correct_divB
+

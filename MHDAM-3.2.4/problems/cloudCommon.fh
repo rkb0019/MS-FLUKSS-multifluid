@@ -1,0 +1,13 @@
+C
+C   Fortran parameters for the planar cloud problem example:
+C
+        real_t cloudRL, cloudUL, cloudPL, cloudBYL, cloudBZL
+        real_t cloudVL, cloudWL, cloudBXL
+        real_t cloudRR, cloudUR, cloudPR, cloudBYR, cloudBZR
+        real_t cloudXS, cloudXC, cloudYC, cloudZC, cloudR0, cloudRho
+        common /cloudcm/
+     .                   cloudRL, cloudUL, cloudPL, cloudBYL, cloudBZL,
+     .                   cloudVL, cloudWL, cloudBXL,
+     .                   cloudRR, cloudUR, cloudPR, cloudBYR, cloudBZR,
+     .                   cloudXS, cloudXC, cloudYC, cloudZC,
+     .                   cloudR0, cloudRho

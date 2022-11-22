@@ -1,0 +1,753 @@
+C      _______              __
+C     / ___/ /  ___  __ _  / /  ___
+C    / /__/ _ \/ _ \/  V \/ _ \/ _ \
+C    \___/_//_/\___/_/_/_/_.__/\___/
+C    Please refer to Copyright.txt, in Chombo's root directory.
+
+#include "CONSTANTS.H"
+#include "SphericalIntegrator.H"
+#include "LGintegrator.H"
+
+      
+      subroutine  SETLEVELGRIDSPACING(
+     &   CHF_FRA1[dudvdw],
+     &   CHF_FRA1[uvwc],
+     &   CHF_FRA1[uvwn],    
+     &   CHF_CONST_INT[dir], 
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData])
+      
+      real_t du,u      
+      integer ind,CHF_DDECL[i;j;k],CHF_DDECL[ioff;joff;koff],nmax
+      
+      CHF_DTERM[
+        ioff = CHF_ID(0,dir);
+        joff = CHF_ID(1,dir);
+        koff = CHF_ID(2,dir)]
+      
+      if (dir == 0) then        
+        CHF_MULTIDO[dudvdw; i; j; k ]                                         
+          ind = CHF_DTERM[i;+j;+k]
+          dudvdw(CHF_IX[i;j;k]) = m_dr(ind,level)
+          uvwc(  CHF_IX[i;j;k]) = m_rc(ind,level)
+          uvwn(  CHF_IX[i;j;k]) = m_rn(ind,level)        
+        CHF_ENDDO
+        nmax = CHF_UBOUND[uvwn;0]
+        uvwn(CHF_IX[nmax*ioff;nmax*joff;nmax*koff]) = m_rn(nmax,level)                          
+        return
+      endif
+      
+      if (dir == 1) then
+        u = m_rlo(dir) - 4.0D0*m_dphi(m_ilo(dir))*m_inv_factor(level)
+        nmax = CHF_UBOUND[uvwn;1]
+      else if (dir == 2) then
+c This code works fine for the base level only. Anyway, refinement through the axis is not allowed.   
+c UPDATE 02/27/2011. This should not be the problem any more   
+#if CH_SPACEDIM == 3              
+        u = m_rlo(dir) - (
+     &    m_dtheta(m_ilo(dir)-1,level)+m_dtheta(m_ilo(dir)-2,level)+
+     &    m_dtheta(m_ilo(dir)-3,level)+m_dtheta(m_ilo(dir)-4,level))
+        nmax = CHF_UBOUND[uvwn;2]
+#endif                          
+      endif                  
+                    
+      CHF_MULTIDO[dudvdw; i; j; k ]      
+        ind = CHF_DTERM[i;+j;+k]
+        if (dir == 1) then
+          du = m_dphi(ind/m_ref_factor(level))*m_inv_factor(level)          
+        else if (dir == 2) then
+          du = m_dtheta(ind,level)
+        endif
+
+        dudvdw(CHF_IX[ind*ioff;ind*joff;ind*koff]) = du
+        uvwc(  CHF_IX[ind*ioff;ind*joff;ind*koff]) = u + half*du
+        uvwn(  CHF_IX[ind*ioff;ind*joff;ind*koff]) = u
+        u = u + du
+      CHF_ENDDO
+      uvwn(CHF_IX[nmax*ioff;nmax*joff;nmax*koff]) = u
+                 
+      return
+      end
+               
+      subroutine VOLUMESPHERICAL(
+     &  CHF_FRA1[vol],          
+     &  CHF_BOX[box],     
+     &  CHF_CONST_INT[level],
+     &  CHF_USE[SphericalData])
+     
+      integer CHF_DDECL[i;j;k]
+      real_t  dphi,dr,rn      
+            
+      CHF_MULTIDO[ box; i; j; k ]                             
+        dr   = m_dr(i,level)
+        rn   = m_rn(i,level)
+        dphi = m_dphi(j/m_ref_factor(level))*m_inv_factor(level)
+        
+        vol(CHF_IX[i;j;k]) = CHF_DSELECT[ 0; half*dr*dphi*(two*rn + dr);
+     &     dr*dphi*(rn*rn + rn*dr + third*dr*dr)*
+     &         abs(m_thetan(k,ICOS,level)-m_thetan(k+1,ICOS,level))]
+          
+      CHF_ENDDO      
+           
+      return
+      end
+      
+      
+      
+      
+      subroutine GETNODECOORDSSPHERICAL_CS(
+     &   CHF_REALVECT[coords],
+     &   CHF_CONST_INTVECT[iv],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData])
+           
+     
+#if CH_SPACEDIM == 2
+      coords(0) = m_rn(iv(0),level)*m_phin(iv(1),ICOS,level)
+      coords(1) = m_rn(iv(0),level)*m_phin(iv(1),ISIN,level)
+#endif     
+
+#if CH_SPACEDIM == 3      
+      real_t tmp
+      tmp = m_rn(iv(0),level)*m_thetan(iv(2),ISIN,level)
+      coords(0) = tmp*m_phin(iv(1),ICOS,level)
+      coords(1) = tmp*m_phin(iv(1),ISIN,level)
+      coords(2) = m_rn(iv(0),level)*m_thetan(iv(2),ICOS,level)
+#endif           
+                       
+      return
+      end
+           
+      
+      subroutine GETNODECOORDSSPHERICAL_CS_FAB(
+     &   CHF_FRA[coords],
+     &   CHF_BOX[box],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData])
+     
+      integer CHF_DDECL[i;j;k]
+      real_t tmp
+      
+      CHF_MULTIDO[ box; i; j; k ]                                           
+                      
+#if CH_SPACEDIM == 2
+      coords(CHF_IX[i;j;k],0) = m_rn(i,level)*m_phin(j,ICOS,level)
+      coords(CHF_IX[i;j;k],1) = m_rn(i,level)*m_phin(j,ISIN,level)
+#endif     
+
+#if CH_SPACEDIM == 3            
+      tmp = m_rn(i,level)*m_thetan(k,ISIN,level)
+      coords(CHF_IX[i;j;k],0) = tmp*m_phin(j,ICOS,level)
+      coords(CHF_IX[i;j;k],1) = tmp*m_phin(j,ISIN,level)
+      coords(CHF_IX[i;j;k],2) = m_rn(i,level)*m_thetan(k,ICOS,level)
+#endif           
+      CHF_ENDDO                       
+      return
+      end
+
+
+      
+      subroutine AREASPOLAR(
+     &  CHF_FRA1[area],          
+     &  CHF_BOX[box],     
+     &  CHF_CONST_INT[dir],
+     &  CHF_CONST_INT[level],
+     &  CHF_USE[SphericalData])
+     
+      integer CHF_DDECL[i;j;k]
+      real_t  dphi,rn
+      
+      
+                  
+      if (dir == 0) then            
+      CHF_MULTIDO[ box; i; j; k ]                                     
+        rn = m_rn(i,level)
+        dphi = m_dphi(j/m_ref_factor(level))*m_inv_factor(level)
+        area(CHF_IX[i;j;k]) = rn*dphi          
+      CHF_ENDDO      
+      endif
+      
+      if (dir == 1) then            
+      CHF_MULTIDO[ box; i; j; k ]                                             
+        area(CHF_IX[i;j;k]) = m_dr(i,level)
+      CHF_ENDDO      
+      endif
+                       
+      return
+      end
+         
+
+        
+      
+      subroutine AREASSPHERICAL(
+     &  CHF_FRA1[area],          
+     &  CHF_BOX[box],     
+     &  CHF_CONST_INT[dir],
+     &  CHF_CONST_INT[level],
+     &  CHF_USE[SphericalData])
+
+#if CH_SPACEDIM == 3             
+      integer CHF_DDECL[i;j;k]
+      real_t  dphi,dtheta,dr,rn                  
+                  
+      if (dir == 0) then            
+      CHF_MULTIDO[ box; i; j; k ]                                     
+        rn = m_rn(i,level)
+        dphi = m_dphi(j/m_ref_factor(level))*m_inv_factor(level)
+        area(CHF_IX[i;j;k]) = rn*rn*dphi*abs(
+     &     m_thetan(k,ICOS,level)-m_thetan(k+1,ICOS,level))
+          
+      CHF_ENDDO      
+      endif
+      
+      if (dir == 1) then            
+      CHF_MULTIDO[ box; i; j; k ]                                     
+        dr = m_dr(i,level)
+        rn = m_rn(i,level)
+        dtheta = m_dtheta(k,level)
+        area(CHF_IX[i;j;k]) = half*dr*dtheta*(two*rn + dr)          
+      CHF_ENDDO      
+      endif
+      
+      if (dir == 2) then            
+      CHF_MULTIDO[ box; i; j; k ]                                     
+        dr = m_dr(i,level)
+        rn = m_rn(i,level)
+        dphi = m_dphi(j/m_ref_factor(level))*m_inv_factor(level)
+        area(CHF_IX[i;j;k]) = half*dr*dphi*m_thetan(k,ISIN,level)*(two*rn + dr)          
+      CHF_ENDDO      
+      endif
+      
+#endif           
+      return
+      end
+         
+! Cartesian -> Polar
+      subroutine TRANSCARTESIANTOPOLAR(
+     &   CHF_FRA[a_U], 
+     &   CHF_CONST_I1D[vectors],
+     &   CHF_BOX[box],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData] )
+        
+      integer CHF_DDECL[i;j;k]
+      integer var 
+      real_t u,v,sinF,cosF,ur,up
+      
+      CHF_MULTIDO[ box; i; j; k ]            
+        cosF   = m_phic(j,ICOS,level)
+        sinF   = m_phic(j,ISIN,level)
+        
+        do var = 0, CHF_UBOUND[vectors]
+          u  = a_U(CHF_IX[i;j;k],vectors(var))
+          v  = a_U(CHF_IX[i;j;k],vectors(var)+1)
+          
+          ur =  u*cosF + v*sinF
+          up = -u*sinF + v*cosF
+          
+          a_U(CHF_IX[i;j;k],vectors(var))   = ur
+          a_U(CHF_IX[i;j;k],vectors(var)+1) = up       
+        enddo
+      CHF_ENDDO      
+      
+      return
+      end
+
+!    Cartesian -> Spherical     
+      subroutine TRANSCARTESIANTOSPHERICAL(
+     &   CHF_FRA[a_U], 
+     &   CHF_CONST_I1D[vectors],
+     &   CHF_BOX[box],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData] )
+
+#if CH_SPACEDIM == 3                
+      integer CHF_DDECL[i;j;k]
+      integer var 
+      real_t u,v,w,sinF,cosF,sinT,cosT,uPolar,ur,up,ut
+      
+      CHF_MULTIDO[ box; i; j; k ]    
+        cosF   = m_phic(j,ICOS,level)
+        sinF   = m_phic(j,ISIN,level)        
+        cosT   = m_thetac(k,ICOS,level)
+        sinT   = m_thetac(k,ISIN,level)
+        
+        do var = 0, CHF_UBOUND[vectors]        
+          u  = a_U(CHF_IX[i;j;k],vectors(var))
+          v  = a_U(CHF_IX[i;j;k],vectors(var)+1)
+          w  = a_U(CHF_IX[i;j;k],vectors(var)+2)
+                          
+          uPolar = u*cosF + v*sinF        
+          
+          ur =  uPolar*sinT + w*cosT
+          up = -u*sinF    + v*cosF
+          ut =  uPolar*cosT - w*sinT
+          
+          a_U(CHF_IX[i;j;k],vectors(var))   = ur
+          a_U(CHF_IX[i;j;k],vectors(var)+1) = up       
+          a_U(CHF_IX[i;j;k],vectors(var)+2) = ut
+        enddo
+      CHF_ENDDO      
+#endif        
+      return
+      end
+      
+      subroutine TRANSCARTESIANTOSPHERICALZ(
+     &   CHF_FRA[a_U], 
+     &   CHF_CONST_I1D[vectors],
+     &   CHF_BOX[box],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData] )
+
+#if CH_SPACEDIM == 3                
+      integer CHF_DDECL[i;j;k]
+      integer var 
+      real_t u,v,w,sinF,cosF,sinT,cosT,uPolar,ur,up,ut
+      
+      CHF_MULTIDO[ box; i; j; k ]    
+        sinF = -m_phic(j,ISIN,level)
+        cosF = -m_phic(j,ICOS,level)
+        sinT = m_thetac(k,ISIN,level)
+        cosT = m_thetac(k,ICOS,level)
+        
+        do var = 0, CHF_UBOUND[vectors]        
+          u  = a_U(CHF_IX[i;j;k],vectors(var))
+          v  = a_U(CHF_IX[i;j;k],vectors(var)+1)
+          w  = a_U(CHF_IX[i;j;k],vectors(var)+2)
+                          
+          uPolar = u*cosF + v*sinF        
+          
+          ur =  uPolar*sinT + w*cosT
+          up = -u*sinF    + v*cosF
+          ut =  uPolar*cosT - w*sinT
+          
+          a_U(CHF_IX[i;j;k],vectors(var))   = ur
+          a_U(CHF_IX[i;j;k],vectors(var)+1) = up       
+          a_U(CHF_IX[i;j;k],vectors(var)+2) = ut
+        enddo
+      CHF_ENDDO      
+#endif        
+      return
+      end
+
+!    Polar -> Cartesian
+      subroutine TRANSPOLARTOCARTESIAN(
+     &   CHF_FRA[a_U], 
+     &   CHF_CONST_I1D[vectors],
+     &   CHF_CONST_INT[iType],
+     &   CHF_BOX[box],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData] )
+        
+      integer CHF_DDECL[i;j;k]
+      integer var 
+      real_t u,v,sinF,cosF,ur,up
+      real_t phi(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1)
+      
+      if (iType == 0) then
+          phi(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1) = 
+     &    m_phic(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1,level)
+      else
+          phi(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1) = 
+     &    m_phin(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1,level)      
+      endif
+      
+      CHF_MULTIDO[ box; i; j; k ]    
+        sinF = phi(j,ISIN)
+        cosF = phi(j,ICOS)
+        
+        do var = 0, CHF_UBOUND[vectors]        
+          ur  = a_U(CHF_IX[i;j;k],vectors(var))
+          up  = a_U(CHF_IX[i;j;k],vectors(var)+1)
+          
+          u = ur*cosF - up*sinF
+          v = ur*sinF + up*cosF
+          
+          a_U(CHF_IX[i;j;k],vectors(var))   = u
+          a_U(CHF_IX[i;j;k],vectors(var)+1) = v       
+        enddo
+      CHF_ENDDO      
+      
+      return
+      end
+
+ 
+!    Spherical -> Cartesian
+      subroutine TRANSSPHERICALTOCARTESIAN(
+     &   CHF_FRA[a_U], 
+     &   CHF_CONST_I1D[vectors],
+     &   CHF_CONST_INT[iType],
+     &   CHF_BOX[box],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData] )
+
+#if CH_SPACEDIM == 3        
+      integer CHF_DDECL[i;j;k]
+      integer var
+      real_t u,v,w,sinF,cosF,sinT,cosT,tmp,ur,up,ut
+      
+      real_t phi(  CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1)
+      real_t theta(CHF_LBOUND[box;2]:CHF_UBOUND[box;2],0:1)
+      
+      if (iType == 0) then
+          phi(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1) = 
+     &    m_phic(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1,level)
+     
+          theta(CHF_LBOUND[box;2]:CHF_UBOUND[box;2],0:1) = 
+     &    m_thetac(CHF_LBOUND[box;2]:CHF_UBOUND[box;2],0:1,level)
+      else if (iType == 1) then
+          phi(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1) = 
+     &    m_phin(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1,level)
+     
+          theta(CHF_LBOUND[box;2]:CHF_UBOUND[box;2],0:1) = 
+     &    m_thetac(CHF_LBOUND[box;2]:CHF_UBOUND[box;2],0:1,level)     
+      else
+          phi(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1) = 
+     &    m_phic(CHF_LBOUND[box;1]:CHF_UBOUND[box;1],0:1,level)
+     
+          theta(CHF_LBOUND[box;2]:CHF_UBOUND[box;2],0:1) = 
+     &    m_thetan(CHF_LBOUND[box;2]:CHF_UBOUND[box;2],0:1,level)           
+      endif
+      
+      CHF_MULTIDO[ box; i; j; k ]    
+        sinF = phi(j,ISIN)
+        cosF = phi(j,ICOS)
+        sinT = theta(k,ISIN)
+        cosT = theta(k,ICOS)
+        
+        do var = 0, CHF_UBOUND[vectors]                
+          ur  = a_U(CHF_IX[i;j;k],vectors(var))
+          up  = a_U(CHF_IX[i;j;k],vectors(var)+1)
+          ut  = a_U(CHF_IX[i;j;k],vectors(var)+2)
+                          
+          tmp = ur*sinT + ut*cosT        
+          
+          u =  tmp*cosF - up*sinF
+          v =  tmp*sinF + up*cosF
+          w =  ur*cosT - ut*sinT
+          
+          a_U(CHF_IX[i;j;k],vectors(var))   = u
+          a_U(CHF_IX[i;j;k],vectors(var)+1) = v       
+          a_U(CHF_IX[i;j;k],vectors(var)+2) = w
+        enddo
+      CHF_ENDDO      
+#endif
+        
+      return
+      end
+      
+!    Replace momentum values with velocity values
+      subroutine COMPUTE_VELOCITIES(
+     &   CHF_FRA[U],   
+     &   CHF_CONST_I1D[velvec],     
+     &   CHF_BOX[box],     
+     &   CHF_USE[SphericalData] )
+
+      integer CHF_DDECL[i;j;k], v
+      integer iURHO,iUMOMX,iUMOMY,iUMOMZ      
+      real_t  invrho
+                  
+      do v=0,CHF_UBOUND[velvec]
+      iURHO  = velvec(v)-1
+      iUMOMX = iURHO+1
+      iUMOMY = iURHO+2
+      iUMOMZ = iURHO+3
+      CHF_MULTIDO[ box; i; j; k ]                  
+        invrho = one/U(CHF_IX[i;j;k],iURHO)
+        U(CHF_IX[i;j;k],iUMOMX) = invrho * U(CHF_IX[i;j;k],iUMOMX)
+        U(CHF_IX[i;j;k],iUMOMY) = invrho * U(CHF_IX[i;j;k],iUMOMY)
+        U(CHF_IX[i;j;k],iUMOMZ) = invrho * U(CHF_IX[i;j;k],iUMOMZ)        
+      CHF_ENDDO    
+      enddo  
+        
+      return
+      end
+      
+      subroutine COMPUTE_MOMENTUM(
+     &   CHF_FRA[U],   
+     &   CHF_CONST_I1D[velvec],     
+     &   CHF_BOX[box],     
+     &   CHF_USE[SphericalData] )
+
+      integer CHF_DDECL[i;j;k],v            
+      integer iURHO,iUMOMX,iUMOMY,iUMOMZ      
+      real_t  rho
+      
+      do v=0,CHF_UBOUND[velvec]
+      iURHO  = velvec(v)-1
+      iUMOMX = iURHO+1
+      iUMOMY = iURHO+2
+      iUMOMZ = iURHO+3
+      CHF_MULTIDO[ box; i; j; k ]    
+        rho = U(CHF_IX[i;j;k],iURHO)
+        U(CHF_IX[i;j;k],iUMOMX) = rho * U(CHF_IX[i;j;k],iUMOMX)
+        U(CHF_IX[i;j;k],iUMOMY) = rho * U(CHF_IX[i;j;k],iUMOMY)
+        U(CHF_IX[i;j;k],iUMOMZ) = rho * U(CHF_IX[i;j;k],iUMOMZ)        
+      CHF_ENDDO      
+      enddo
+                    
+      return
+      end
+
+
+
+!    Prepare fluxes on finer level for FluxRegister
+      subroutine FR_INCREMENTFINE_POLAR(
+     &   CHF_FRA[a_U], 
+     &   CHF_CONST_I1D[vectors],
+     &   CHF_CONST_INT[refRatio],
+     &   CHF_BOX[box],
+     &   CHF_CONST_INT[dir],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData] )
+
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ic;jc;kc]
+      
+      integer lb1,ub1,var     
+      
+      real_t u,v,sinF,cosF,ur,up
+                            
+      real_t phi(CHF_LBOUND[box;1]/refRatio:CHF_UBOUND[box;1]/refRatio,0:1)      
+      
+      lb1=CHF_LBOUND[box;1]/refRatio
+      ub1=CHF_UBOUND[box;1]/refRatio;      
+      
+      if (dir == 0) then
+          phi(lb1:ub1,0:1) = m_phic(lb1:ub1,0:1,level-1)               
+      else 
+          phi(lb1:ub1,0:1) = m_phin(lb1:ub1,0:1,level-1)               
+      endif
+      
+      CHF_MULTIDO[ box; i; j; k ]    
+        jc = j/refRatio  
+        sinF = phi(jc,ISIN)
+        cosF = phi(jc,ICOS)
+
+        do var = 0, CHF_UBOUND[vectors]
+          ur  = a_U(CHF_IX[i;j;k],vectors(var))
+          up  = a_U(CHF_IX[i;j;k],vectors(var)+1)
+          
+          u = ur*cosF - up*sinF
+          v = ur*sinF + up*cosF
+          
+          a_U(CHF_IX[i;j;k],vectors(var))   = u
+          a_U(CHF_IX[i;j;k],vectors(var)+1) = v       
+        enddo
+      CHF_ENDDO      
+        
+      return
+      end
+
+
+!    Prepare fluxes on finer level for FluxRegister
+      subroutine FR_INCREMENTFINE_SPHERICAL(
+     &   CHF_FRA[a_U], 
+     &   CHF_CONST_I1D[vectors],
+     &   CHF_CONST_INT[refRatio],
+     &   CHF_BOX[box],
+     &   CHF_CONST_INT[dir],
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData] )
+
+#if CH_SPACEDIM == 3        
+      integer CHF_DDECL[i;j;k]
+      integer CHF_DDECL[ic;jc;kc]
+      
+      integer lb1,lb2,ub1,ub2
+      
+      integer var
+            
+      
+      real_t u,v,w,sinF,cosF,sinT,cosT,tmp,ur,up,ut
+      
+      real_t phi  (CHF_LBOUND[box;1]/refRatio:CHF_UBOUND[box;1]/refRatio,0:1)
+      real_t theta(CHF_LBOUND[box;2]/refRatio:CHF_UBOUND[box;2]/refRatio,0:1)
+      
+      CHF_DTERM[ ;
+        lb1=CHF_LBOUND[box;1]/refRatio
+        ub1=CHF_UBOUND[box;1]/refRatio;
+        lb2=CHF_LBOUND[box;2]/refRatio
+        ub2=CHF_UBOUND[box;2]/refRatio ]
+      
+      if (dir == 0) then
+          phi  (lb1:ub1,0:1) = m_phic  (lb1:ub1,0:1,level-1)     
+          theta(lb2:ub2,0:1) = m_thetac(lb2:ub2,0:1,level-1)
+      else if (dir == 1) then
+          phi  (lb1:ub1,0:1) = m_phin  (lb1:ub1,0:1,level-1)     
+          theta(lb2:ub2,0:1) = m_thetac(lb2:ub2,0:1,level-1)     
+      else
+          phi  (lb1:ub1,0:1) = m_phic  (lb1:ub1,0:1,level-1)     
+          theta(lb2:ub2,0:1) = m_thetan(lb2:ub2,0:1,level-1)           
+      endif
+      
+      CHF_MULTIDO[ box; i; j; k ]          
+        jc = j/refRatio  
+        kc = k/refRatio
+  
+        sinF = phi(jc,ISIN)
+        cosF = phi(jc,ICOS)
+        sinT = theta(kc,ISIN)
+        cosT = theta(kc,ICOS)
+        
+        do var = 0, CHF_UBOUND[vectors]
+          ur  = a_U(CHF_IX[i;j;k],vectors(var))
+          up  = a_U(CHF_IX[i;j;k],vectors(var)+1)
+          ut  = a_U(CHF_IX[i;j;k],vectors(var)+2)
+                          
+          tmp = ur*sinT + ut*cosT        
+          
+          u =  tmp*cosF - up*sinF
+          v =  tmp*sinF + up*cosF
+          w =  ur*cosT - ut*sinT
+          
+          a_U(CHF_IX[i;j;k],vectors(var))   = u
+          a_U(CHF_IX[i;j;k],vectors(var)+1) = v       
+          a_U(CHF_IX[i;j;k],vectors(var)+2) = w
+        enddo
+      CHF_ENDDO      
+#endif
+        
+      return
+      end
+      
+      subroutine METRICTENSOR_R(
+     &   CHF_FRA1[g],           
+     &   CHF_BOX[box],          
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData])
+     
+      integer CHF_DDECL[i;j;k]
+
+      CHF_MULTIDO[ box; i; j; k ]
+        g(CHF_IX[i;j;k]) = m_rc(i,level)
+      CHF_ENDDO           
+      
+      return
+      end
+      
+      subroutine METRICTENSOR11_SPHERICAL(
+     &   CHF_FRA1[g],           
+     &   CHF_BOX[box],          
+     &   CHF_CONST_INT[level],
+     &   CHF_USE[SphericalData])
+     
+#if CH_SPACEDIM == 3             
+
+      integer CHF_DDECL[i;j;k]
+
+      CHF_MULTIDO[ box; i; j; k ]
+        g(CHF_IX[i;j;k]) = m_rc(i,level)*m_thetac(k,ISIN,level)            
+      CHF_ENDDO           
+#endif   
+
+      return
+      end  
+     
+      subroutine ZAXISCOPY(
+     &   CHF_CONST_FRA[a_from],
+     &   CHF_FRA[a_to],
+     &   CHF_CONST_INT[a_GS],
+     &   CHF_CONST_INT[sign])
+
+#if CH_SPACEDIM == 3        
+      integer i,j,ito,ifrom,var,gs
+      integer shift, phisize
+             
+      phisize = CHF_UBOUND[a_from;1]+1
+      shift = phisize/2
+      
+!      if (sign == -1) then
+!        ito2   = -2
+!        ifrom2 =  1
+!        ito1   = -1
+!        ifrom1 =  0
+!      endif
+
+!      if (sign == 1) then
+!        ito1   = CHF_UBOUND[a_from;2]+1
+!        ifrom1 = CHF_UBOUND[a_from;2]
+!        ito2   = CHF_UBOUND[a_from;2]+2
+!        ifrom2 = CHF_UBOUND[a_from;2]-1
+!      endif
+
+      
+      if (sign == -1) then      
+        ito   = -1
+        ifrom =  0
+        do gs=1, a_GS      
+          do i=CHF_LBOUND[a_from;0],CHF_UBOUND[a_from;0]
+          do j=CHF_LBOUND[a_from;1],CHF_UBOUND[a_from;1]
+          do var = 0,CHF_NCOMP[a_from]-1      
+            a_to(i,j,ito,var) = a_from(i,MOD(j+shift,phisize),ifrom,var)       
+          enddo
+          enddo
+          enddo
+          ito   = ito   - 1  
+          ifrom = ifrom + 1
+        enddo
+      endif
+      
+      if (sign == 1) then
+        ito   = CHF_UBOUND[a_from;2]+1
+        ifrom = CHF_UBOUND[a_from;2]
+        do gs=1, a_GS      
+          do i=CHF_LBOUND[a_from;0],CHF_UBOUND[a_from;0]
+          do j=CHF_LBOUND[a_from;1],CHF_UBOUND[a_from;1]
+          do var = 0,CHF_NCOMP[a_from]-1      
+            a_to(i,j,ito,var) = a_from(i,MOD(j+shift,phisize),ifrom,var)       
+          enddo
+          enddo
+          enddo
+          ito   = ito   + 1  
+          ifrom = ifrom - 1
+        enddo
+      endif            
+#endif       
+       
+      return
+      end
+
+
+     
+      subroutine ZAXISFIRSTORDER(
+     &    CHF_FRA[W],        
+     &    CHF_CONST_INT[lohisign],
+     &    CHF_CONST_INT[kbnd],
+     &    CHF_CONST_INT[nGS],
+     &    CHF_BOX[box])
+#if CH_SPACEDIM == 3
+      integer CHF_DDECL[i;j;k]
+      integer ks,ivar
+                    
+      if (lohisign == (-1) ) then
+      ks = kbnd - 1
+      do k = kbnd, kbnd+nGS-1        
+      do i = CHF_LBOUND[box;0], CHF_UBOUND[box;0]      
+      do j = CHF_LBOUND[box;1], CHF_UBOUND[box;1]     
+      do ivar = 0,CHF_NCOMP[W]-1       
+          W(CHF_IX[i;j;ks],ivar)  =  W(CHF_IX[i;j;k],ivar)                      
+      enddo
+      enddo
+      enddo
+      ks = ks - 1
+      enddo        
+      endif 
+      
+      if (lohisign == 1) then
+      ks = kbnd + 1
+      do k = kbnd, kbnd-nGS+1, -1
+      do i = CHF_LBOUND[box;0], CHF_UBOUND[box;0]    
+      do j = CHF_LBOUND[box;1], CHF_UBOUND[box;1]      
+      do ivar = 0,CHF_NCOMP[W]-1       
+          W(CHF_IX[i;j;ks],ivar)  =  W(CHF_IX[i;j;k],ivar)                      
+      enddo
+      enddo
+      enddo
+      ks = ks + 1
+      enddo        
+      endif 
+          
+#endif
+      return
+      end
